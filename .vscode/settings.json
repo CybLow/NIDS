@@ -1,0 +1,27 @@
+
+"terminal.integrated.profiles.windows": {
+    "MSYS2 CLANG64": {
+      "path": ["C:\\msys64\\usr\\bin\\bash.exe"],
+      "args": ["-l"],
+      "env": { "MSYSTEM": "CLANG64" },
+      "overrideName": true
+    },
+    "MSYS2 CLANG32": {
+      "path": ["C:\\msys64\\usr\\bin\\bash.exe"],
+      "args": ["-l"],
+      "env": { "MSYSTEM": "CLANG32" },
+      "overrideName": true
+    },
+    "MYSYS2 MINGW64": {
+      "path": ["C:\\msys64\\usr\\bin\\bash.exe"],
+      "args": ["-l"],
+      "env": { "MSYSTEM": "MINGW64" },
+      "overrideName": true
+    },
+    "MYSYS2 MINGW32": {
+      "path": ["C:\\msys64\\usr\\bin\\bash.exe"],
+      "args": ["-l"],
+      "env": { "MSYSTEM": "MINGW32" },
+      "overrideName": true
+    }
+  }
