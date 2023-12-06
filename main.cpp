@@ -1,6 +1,7 @@
 #include <pcap.h>
 #include <iostream>
 
+//fhzuyhgfzeui
 void packetHandler(unsigned char* userData, const struct pcap_pkthdr* pkthdr, const unsigned char* packetData) {
     // Traitez ici les données de la trame
     std::cout << "Capture d'une trame de taille : " << pkthdr->len << " octets" << std::endl;
