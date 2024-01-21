@@ -1,8 +1,11 @@
 #include "../../include/packet/PacketCapture.h"
 #include "../../include/packet/PacketProcessor.h"
+
 #include <iostream>
+#include <qobjectdefs.h>
 #include <utility>
 
+PacketSignalEmitter signalEmitter;
 
 PacketCapture::PacketCapture(string  interface)
         : interface_(move(interface)), handle_(nullptr), capturing(false) {}
@@ -33,6 +36,10 @@ void PacketCapture::StartCapture() {
         std::cout << "Capture thread ending." << std::endl;
     });
 
+}
+
+void handlePacketSignal(const PacketInfo& info) {
+    signalEmitter.emitPacketCaptured(info);
 }
 
 void PacketCapture::StopCapture() {

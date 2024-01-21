@@ -21,12 +21,15 @@ add_executable(NIDS
         src/utils/ListNetworkInterfaces.cpp
         include/utils/ListNetworkInterfaces.h
         src/ui/ui.cpp
-        include/ui/ui.h)
+        include/ui/ui.h
+        src/packet/PacketSignalEmitter.cpp
+        include/packet/PacketSignalEmitter.h)
 target_link_libraries(NIDS ${PCAP_LIBRARY})
 
 find_package(Threads REQUIRED)
 target_link_libraries(NIDS ${CMAKE_THREAD_LIBS_INIT})
 
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 find_package(Qt5 COMPONENTS Core Gui Widgets REQUIRED)
 set(CMAKE_AUTOMOC ON)
 target_link_libraries(NIDS Qt5::Widgets Qt5::Core Qt5::Gui)

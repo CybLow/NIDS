@@ -8,15 +8,18 @@
 #include <thread>
 #include <atomic>
 //#include <ndpi/ndpi_api.h>
+#include "../../src/packet/PacketSignalEmitter.cpp"
 
 using namespace std;
 
 class PacketCapture {
 public:
-    explicit PacketCapture(string  interface);
+    explicit PacketCapture(string interface);
     bool Initialize();
     void StartCapture();
+    void handlePacketSignal(const PacketInfo& info);
     void StopCapture();
+    PacketSignalEmitter signalEmitter;
     ~PacketCapture();
 
 private:

@@ -1,3 +1,4 @@
+#include <iostream>
 #include <QApplication>
 #include <QMainWindow>
 #include <QLineEdit>
@@ -11,6 +12,9 @@
 #include <QFrame>
 #include <QMenuBar>
 #include <QInputDialog>
+#include <string>
+
+#include "../packet/PacketSignalEmitter.cpp"
 #include "../../include/utils/ListNetworkInterfaces.h"
 #include "../../include/packet/PacketCapture.h"
 
@@ -79,6 +83,10 @@ public:
 
         connect(startStopButton, &QPushButton::clicked, this, &PacketCaptureUI::toggleButton);
 
+        PacketCapture* packetCaptureInstance;
+        PacketSignalEmitter* emitter = &(packetCaptureInstance->signalEmitter);
+
+        connect(emitter, &PacketSignalEmitter::packetCaptured, this, &PacketCaptureUI::onPacketCaptured);
 
         for(const std::string& interface : interfaces) {
             networkCardComboBox->addItem(QString::fromStdString(interface));
@@ -147,10 +155,9 @@ private slots:
             PacketCapture capture("wlo1");
             if (button->text() == "Start") {
                 //std::string selected_interface = networkCardComboBox->currentText().toStdString();
-
+                button->setText("Stop");
                 capture.Initialize();
                 capture.StartCapture();
-                button->setText("Stop");
             } else {
                 button->setText("Start");
                 capture.StopCapture();
@@ -163,6 +170,21 @@ private slots:
                 }
             }
         }
+    }
+
+    void onPacketCaptured(const PacketInfo& info) {
+        // Ajoutez le paquet au tableau
+        QTableWidget *tableWidget = findChild<QTableWidget *>();
+        int row = tableWidget->rowCount();
+        tableWidget->insertRow(row);
+        tableWidget->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
+        //tableWidget->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(info.networkCard)));
+        tableWidget->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(std::to_string(info.protocol))));
+        //tableWidget->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(info.application)));
+        //tableWidget->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(info.ipSource)));
+        //tableWidget->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(info.portSource)));
+        //tableWidget->setItem(row, 6, new QTableWidgetItem(QString::fromStdString(info.ipDestination)));
+        //tableWidget->setItem(row, 7, new QTableWidgetItem(QString::fromStdString(info.portDestination)));
     }
 
     void securityClicked() {
