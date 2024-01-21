@@ -16,8 +16,8 @@ string NetworkInterfaceSelector::SelectInterface() {
     for (pcap_if_t* iface = interfaces; iface != nullptr; iface = iface->next) {
         // Exclure certaines interfaces spécifiques
         if (strstr(iface->name, "bluetooth") == nullptr &&
-            strstr(iface->name, "lo") == nullptr &&
-            strstr(iface->name, "nflog") == nullptr &&
+            //strstr(iface->name, "lo") == nullptr &&
+            //strstr(iface->name, "nflog") == nullptr &&
             strstr(iface->name, "nfqueue") == nullptr &&
             strstr(iface->name, "dbus") == nullptr) {
             cout << index << ": " << iface->name;
@@ -36,8 +36,8 @@ string NetworkInterfaceSelector::SelectInterface() {
     pcap_if_t* selectedInterface = interfaces;
     for (int i = 0; i < selected; selectedInterface = selectedInterface->next) {
         if (strstr(selectedInterface->name, "bluetooth") == nullptr &&
-            strstr(selectedInterface->name, "lo") == nullptr &&
-            strstr(selectedInterface->name, "nflog") == nullptr &&
+            //strstr(selectedInterface->name, "lo") == nullptr &&
+            //strstr(selectedInterface->name, "nflog") == nullptr &&
             strstr(selectedInterface->name, "nfqueue") == nullptr &&
             strstr(selectedInterface->name, "dbus") == nullptr) {
             if (i++ == selected) break;

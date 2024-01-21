@@ -17,10 +17,7 @@
  * sport
  * dip
  * dport
- * method
  * protocol
- * application
- * malicious
  *
  */
 

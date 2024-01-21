@@ -4,7 +4,7 @@
 
 using namespace std;
 
-int main() {
+/*int main() {
     try {
         NetworkInterfaceSelector interfaceSelector;
         auto selectedInterface = interfaceSelector.SelectInterface();
@@ -29,4 +29,4 @@ int main() {
 
     cout << "Program ending" << endl;  // Confirmer la fin du programme
     return 0;
-}
+}*/
