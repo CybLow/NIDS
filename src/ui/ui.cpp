@@ -1,6 +1,7 @@
 #include "../../include/utils/ListNetworkInterfaces.h"
 #include "../../include/packet/PacketCapture.h"
 #include "include/ui/ui.h"
+#include "include/ui/FullListDialog.h"
 
 #include <QRegularExpression>
 #include <QGridLayout>
@@ -9,6 +10,7 @@
 #include <QApplication>
 #include <QMainWindow>
 #include <QLineEdit>
+#include <iostream>
 
 
 PacketCaptureUI::PacketCaptureUI(QWidget *parent): QMainWindow(parent),
@@ -145,6 +147,11 @@ void PacketCaptureUI::connectSignalsSlots() {
     connect(sourcePortEdit, &QLineEdit::textChanged, this, &PacketCaptureUI::validateInputs);
     connect(destinationNetworkEdit, &QLineEdit::textChanged, this, &PacketCaptureUI::validateInputs);
     connect(destinationPortEdit, &QLineEdit::textChanged, this, &PacketCaptureUI::validateInputs);
+
+    connect(applicationComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(onApplicationComboBoxChanged(int)));
+    connect(sourcePortEdit, &QLineEdit::textChanged, this, &PacketCaptureUI::updateApplicationComboBoxBasedOnPort);
+    connect(destinationPortEdit, &QLineEdit::textChanged, this, &PacketCaptureUI::updateApplicationComboBoxBasedOnPort);
+
 }
 
 void PacketCaptureUI::populateNetworkCardComboBox() {
@@ -186,6 +193,12 @@ void PacketCaptureUI::toggleCapture() {
             connect(&(packetCaptureInstance->notifier_), &PacketCaptureNotifier::packetReceived,
                     this, &PacketCaptureUI::updatePacketTable, Qt::QueuedConnection);
         }
+
+        currentPacketData = gatherPacketData();
+        cout << "PacketFilter: "<< currentPacketData.networkCard << " with " << currentPacketData.protocol << " using "
+        << currentPacketData.application << " from " << currentPacketData.sourceIP << ":" << currentPacketData.sourcePort
+        << " to " << currentPacketData.destinationIP << ":" << currentPacketData.destinationPort << endl;
+
         packetCaptureInstance->start(); // Start the thread
         startStopButton->setText("Stop");
 
@@ -196,8 +209,6 @@ void PacketCaptureUI::toggleCapture() {
         destinationPortEdit->setReadOnly(true);
     }
 }
-
-
 
 
 void PacketCaptureUI::updatePacketTable(const PacketInfo& info) {
@@ -213,8 +224,9 @@ void PacketCaptureUI::updatePacketTable(const PacketInfo& info) {
     };
 
     tableWidget->setItem(row, 0, createNonEditableItem(QString::number(row + 1)));
-    // FAIRE EN SORTE DE METTRE LA CARTE RESEAU UTILISEE
-    tableWidget->setItem(row, 1, createNonEditableItem("eth0"));//info.networkCard));
+
+    QString selectedInterface = networkCardComboBox->currentText();
+    tableWidget->setItem(row, 1, createNonEditableItem(selectedInterface));
     tableWidget->setItem(row, 2, createNonEditableItem(QString::fromStdString(info.protocol)));
     tableWidget->setItem(row, 3, createNonEditableItem(QString::fromStdString(info.application)));
     tableWidget->setItem(row, 4, createNonEditableItem(QString::fromStdString(info.ipSource)));
@@ -289,6 +301,7 @@ void PacketCaptureUI::sendEmailPrompt() {
 }
 
 void PacketCaptureUI::populateProtocolComboBox() {
+    protocolComboBox->addItem("ALL");
     protocolComboBox->addItem("TCP");
     protocolComboBox->addItem("UDP");
     protocolComboBox->addItem("ICMP");
@@ -297,13 +310,78 @@ void PacketCaptureUI::populateProtocolComboBox() {
 }
 
 void PacketCaptureUI::populateApplicationComboBox() {
-    applicationComboBox->addItem("HTTP");
-    applicationComboBox->addItem("FTP");
-    applicationComboBox->addItem("SSH");
-    // Add other applications as needed
-    // https://www.stationx.net/common-ports-cheat-sheet/
-    // AJOUTER CETTE LISTE D'APP AVEC LES PORTS COMMUN
-    // CELA PERMET D'EVITER DE FAIRE DE LA DPI (DEEP PACKET INSPECTION) AVEC LIBNDPI
+    applicationComboBox->blockSignals(true); // Prevent triggering onApplicationComboBoxChanged
+    applicationComboBox->clear();
+    QStringList mainApplications = {"ALL", "HTTP", "FTP", "SSH", "HTTPS", "SMTP", "DNS", "Telnet", "Unknown"};
+
+    for (const QString& app : mainApplications) {
+        applicationComboBox->addItem(app);
+    }
+
+    applicationComboBox->addItem("Other...");
+    applicationComboBox->blockSignals(false); // Re-enable signals
+}
+
+void PacketCaptureUI::onApplicationComboBoxChanged(int index) {
+    if (index == -1) return;
+
+    QString selectedItem = applicationComboBox->itemText(index);
+
+    if (selectedItem == "Other...") {
+        FullListDialog dialog(getUniqueServices(), this);
+        if (dialog.exec() == QDialog::Accepted) {
+            QString selectedService = dialog.getSelectedService();
+            if (!selectedService.isEmpty()) {
+                // Update the combo box with the new service
+                int existingIndex = applicationComboBox->findText(lastCustomService);
+                if (existingIndex != -1) {
+                    applicationComboBox->removeItem(existingIndex); // Remove the old custom item
+                }
+
+                applicationComboBox->blockSignals(true);
+                applicationComboBox->addItem(selectedService);
+                applicationComboBox->setCurrentIndex(applicationComboBox->findText(selectedService));
+                applicationComboBox->blockSignals(false);
+
+                lastCustomService = selectedService; // Update the last custom service
+            }
+        }
+    } else if (selectedItem == "Show Main Applications") {
+        populateApplicationComboBox();
+    }
+}
+
+void PacketCaptureUI::updateApplicationComboBoxBasedOnPort() {
+    QStringList majorApps = {"ALL", "HTTP", "FTP", "SSH", "HTTPS", "SMTP", "DNS", "Telnet", "Unknown"};
+
+    // Get port numbers from both fields
+    bool sourceOk, destOk;
+    int sourcePort = sourcePortEdit->text().toInt(&sourceOk);
+    int destPort = destinationPortEdit->text().toInt(&destOk);
+
+    auto updateComboBox = [&](int port) {
+        string serviceName = getServiceNameByPort(port);
+        if (majorApps.contains(QString::fromStdString(serviceName))) {
+            populateApplicationComboBox();
+            applicationComboBox->setCurrentIndex(applicationComboBox->findText(QString::fromStdString(serviceName)));
+        } else {
+            int existingIndex = applicationComboBox->findText(lastAddedService);
+            if (existingIndex != -1) {
+                applicationComboBox->removeItem(existingIndex);
+            }
+            applicationComboBox->addItem(QString::fromStdString(serviceName));
+            applicationComboBox->setCurrentIndex(applicationComboBox->count() - 1);
+            lastAddedService = QString::fromStdString(serviceName);
+        }
+    };
+
+    // Prioritize destination port; if not valid, check source port
+    if (destOk) {
+        updateComboBox(destPort);
+    } else if (sourceOk) {
+        updateComboBox(sourcePort);
+    }
+    // If neither port is valid, no update is done
 }
 
 void PacketCaptureUI::validateInputs() {
@@ -320,8 +398,27 @@ void PacketCaptureUI::validateInputs() {
     // Add similar checks for destination IP and port if necessary
 
     // Enable the Start button only if all conditions are met
-    startStopButton->setEnabled(isSIPValid && isSPortValid && isDIPValid && isDPortValid ||
-    isSIPEmpty && isSPortEmpty && isDIPEmpty && isDPortEmpty);
+    startStopButton->setEnabled(
+            isSIPValid && isSPortValid && isDIPValid && isDPortValid ||
+            isSIPEmpty && isSPortEmpty && isDIPEmpty && isDPortEmpty ||
+
+            isSIPValid && isSPortEmpty && isDIPEmpty && isDPortEmpty ||
+            isSIPValid && isSPortValid && isDIPEmpty && isDPortEmpty ||
+            isSIPValid && isSPortValid && isDIPValid && isDPortEmpty ||
+
+            isSIPEmpty && isSPortValid && isDIPEmpty && isDPortEmpty ||
+            isSIPEmpty && isSPortValid && isDIPValid && isDPortEmpty ||
+            isSIPEmpty && isSPortValid && isDIPValid && isDPortValid ||
+
+            isSIPEmpty && isSPortEmpty && isDIPValid && isDPortEmpty ||
+            isSIPEmpty && isSPortEmpty && isDIPValid && isDPortValid ||
+
+            isSIPValid && isSPortEmpty && isDIPValid && isDPortValid ||
+            isSIPValid && isSPortEmpty && isDIPValid && isDPortEmpty ||
+            isSIPValid && isSPortEmpty && isDIPEmpty && isDPortValid ||
+
+            isSIPEmpty && isSPortValid && isDIPEmpty && isDPortValid ||
+            isSIPEmpty && isSPortEmpty && isDIPEmpty && isDPortValid );
 
 }
 
@@ -340,6 +437,19 @@ void PacketCaptureUI::setupPacketCapture() {
     connect(&(packetCaptureInstance->notifier_), &PacketCaptureNotifier::packetReceived,
             this, &PacketCaptureUI::updatePacketTable, Qt::QueuedConnection);
 }
+
+PacketFilter PacketCaptureUI::gatherPacketData() {
+    PacketFilter data;
+    data.networkCard = networkCardComboBox->currentText().toStdString();
+    data.protocol = protocolComboBox->currentText().toStdString();
+    data.application = applicationComboBox->currentText().toStdString();
+    data.sourceIP = sourceNetworkEdit->text().toStdString();
+    data.destinationIP = destinationNetworkEdit->text().toStdString();
+    data.sourcePort = sourcePortEdit->text().toStdString();
+    data.destinationPort = destinationPortEdit->text().toStdString();
+    return data;
+}
+
 
 // Other necessary implementations...
 

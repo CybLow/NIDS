@@ -25,7 +25,11 @@ add_executable(NIDS
         src/packet/PacketSignalEmitter.cpp
         include/packet/PacketSignalEmitter.h
         src/packet/PacketCaptureNotifier.cpp
-        include/packet/PacketCaptureNotifier.h)
+        include/packet/PacketCaptureNotifier.h
+        src/ui/FullListDialog.cpp
+        include/ui/FullListDialog.h
+        src/packet/PacketFilter.cpp
+        include/packet/PacketFilter.h)
 target_link_libraries(NIDS ${PCAP_LIBRARY})
 
 find_package(Threads REQUIRED)

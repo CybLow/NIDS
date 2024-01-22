@@ -4,9 +4,16 @@
 #include <netinet/ip.h>
 #include <string>
 #include <QString>
+#include <map>
+#include <set>
 
 using namespace std;
 
+extern const map<int, string> portToServiceMap;
+
+set<string> getUniqueServices();
+
+string getServiceNameByPort(int port);
 
 struct PacketInfo {
     string protocol;
@@ -16,5 +23,9 @@ struct PacketInfo {
     string ipDestination;
     string portDestination;
 };
+
+//
+//entre un port de filtre choisi automatiquement l'appli
+//si le port est inconnu noté Unknow
 
 #endif // PACKET_INFO_H

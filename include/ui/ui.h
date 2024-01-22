@@ -23,6 +23,7 @@
 
 #include "../packet/PacketCapture.h"
 #include "../packet/PacketInfo.h"
+#include "../packet/PacketFilter.h"
 
 class PacketCaptureUI : public QMainWindow {
 Q_OBJECT
@@ -59,32 +60,27 @@ private:
     QRegularExpression ipRegex;
     QRegularExpression portRegex;
 
-    /*struct PacketInfo {
-        QString networkCard;
-        QString protocol;
-        QString application;
-        QString ipSource;
-        QString portSource;
-        QString ipDestination;
-        QString portDestination;
-    };*/
+    QString lastCustomService;
+    QString lastAddedService;
 
+    PacketFilter currentPacketData;
 public slots:
     void updatePacketTable(const PacketInfo &info);
 
 private slots:
     void toggleCapture();
-    //void updatePacketTable(const PacketInfo& info);
     void securitySettings();
     void notificationSettings();
     void sendEmailPrompt();
     void populateProtocolComboBox();
     void populateApplicationComboBox();
     void validateInputs();
-    //void onTestButtonClicked();
     void setupPacketCapture();
+    void onApplicationComboBoxChanged(int index);
 
-    //void updatePacketTable(const PacketInfo &info);
+    void updateApplicationComboBoxBasedOnPort();
+
+    PacketFilter gatherPacketData();
 };
 
 
