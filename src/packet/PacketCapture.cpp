@@ -27,7 +27,9 @@ void PacketCapture::run() {
 
     capturing.store(true);
     std::cout << "Starting packet capture on " << interface_ << "..." << std::endl;
+    startPcapDump("dump.pcap");
     pcap_loop(handle_, 0, PacketCallback, reinterpret_cast<u_char*>(this));
+
 }
 
 void PacketCapture::StopCapture() {
@@ -40,6 +42,7 @@ void PacketCapture::StopCapture() {
         pcap_close(handle_);
         handle_ = nullptr;
     }
+    stopPcapDump();
     std::cout << "Capture stopped." << std::endl;
 }
 
@@ -92,7 +95,36 @@ void PacketCapture::ProcessPacket(const struct pcap_pkthdr* pkthdr, const u_char
     // Process packetInfo further as needed
     cout << "Capture: " << packetInfo.protocol << " from " << packetInfo.ipSource << ":" << packetInfo.portDestination <<
     " to " << packetInfo.ipDestination << ":" << packetInfo.portDestination << endl;
+    dumpPacket(pkthdr,packet);
     notifier_.emitPacketReceived(packetInfo);
+}
+
+// Start dumping packets to a file
+void PacketCapture::startPcapDump(const std::string& filename) {
+    dumpFile_ = filename;
+    dumper_ = pcap_dump_open(handle_, dumpFile_.c_str());
+
+    if (dumper_ == nullptr) {
+        std::cerr << "Error opening dump file: " << pcap_geterr(handle_) << std::endl;
+        return;
+    }
+
+    // Other initializations if necessary
+}
+
+// This function should be called every time a packet is captured
+void PacketCapture::dumpPacket(const struct pcap_pkthdr* header, const u_char* packet) {
+    if (dumper_ != nullptr) {
+        pcap_dump((unsigned char*)dumper_, header, packet);
+    }
+}
+
+// Stop dumping packets and close the file
+void PacketCapture::stopPcapDump() {
+    if (dumper_ != nullptr) {
+        pcap_dump_close(dumper_);
+        dumper_ = nullptr;
+    }
 }
 
 #include "../../include/packet/PacketCapture.moc"
