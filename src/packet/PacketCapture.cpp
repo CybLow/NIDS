@@ -2,8 +2,15 @@
 #include "../../include/packet/PacketProcessor.h"
 
 #include <iostream>
-#include <qobjectdefs.h>
 #include <utility>
+#include <netinet/ip.h>         // For IP header
+#include <netinet/tcp.h>        // For TCP header
+#include <netinet/udp.h>        // For UDP header
+#include <arpa/inet.h>          // For inet_ntoa
+#include <netinet/if_ether.h>   // For ether_header and ETHERTYPE_IP
+// Or use <net/ethernet.h> instead of <netinet/if_ether.h> depending on your system
+
+
 
 
 PacketCapture::PacketCapture(string  interface)
@@ -58,13 +65,57 @@ void PacketCapture::PacketCallback(u_char* userData, const struct pcap_pkthdr* p
     capture->ProcessPacket(pkthdr, packet);
 }
 
+void PacketCapture::setPacketInfoCallback(const PacketInfoCallback& callback) {
+    packetInfoCallback_ = callback;
+}
+
 void PacketCapture::ProcessPacket(const struct pcap_pkthdr* pkthdr, const u_char* packet) {
-
-
-    PacketProcessor processor;
     PacketInfo packetInfo;
-    cout << "Capture.." << endl;
-    // Ici, vous traiteriez le paquet
-    //processor.ProcessPacket(&packet); // Mettez à jour selon votre logique de traitement de paquet
-    //packetBuffer_.push_back();
+
+    // Parse Ethernet header
+    const struct ether_header* ethernetHeader;
+    const struct ip* ipHeader;
+    const struct tcphdr* tcpHeader;
+    const struct udphdr* udpHeader;
+
+    // Assuming Ethernet + IPv4 packets
+    ethernetHeader = (struct ether_header*)packet;
+    if (ntohs(ethernetHeader->ether_type) == ETHERTYPE_IP) {
+        ipHeader = (struct ip*)(packet + sizeof(struct ether_header));
+        packetInfo.ipSource = inet_ntoa(ipHeader->ip_src);
+        packetInfo.ipDestination = inet_ntoa(ipHeader->ip_dst);
+
+        // Check protocol and parse accordingly
+        if (ipHeader->ip_p == IPPROTO_TCP) {
+            tcpHeader = (tcphdr*)((u_char*)ipHeader + sizeof(struct ip));
+            packetInfo.protocol = "TCP";
+            packetInfo.portSource = std::to_string(ntohs(tcpHeader->th_sport));
+            packetInfo.portDestination = std::to_string(ntohs(tcpHeader->th_dport));
+
+            // Determine application based on port or other criteria
+        } else if (ipHeader->ip_p == IPPROTO_UDP) {
+            udpHeader = (udphdr*)((u_char*)ipHeader + sizeof(struct ip));
+            packetInfo.protocol = "UDP";
+            packetInfo.portSource = std::to_string(ntohs(udpHeader->uh_sport));
+            packetInfo.portDestination = std::to_string(ntohs(udpHeader->uh_dport));
+
+            // Determine application based on port or other criteria
+        } else if (ipHeader->ip_p == IPPROTO_ICMP) {
+            packetInfo.protocol = "ICMP";
+            // ICMP doesn't have ports
+        } else {
+            packetInfo.protocol = "Unknown";
+            // Other protocols such as IGMP and others
+        }
+        // Additional protocol parsing as necessary
+    }
+
+    // Process packetInfo further as needed
+    cout << "Capture: " << packetInfo.protocol << " from " << packetInfo.ipSource << ":" << packetInfo.portDestination <<
+    " to " << packetInfo.ipDestination << ":" << packetInfo.portDestination << endl;
+    notifier_.emitPacketReceived(packetInfo);
+
+    if (packetInfoCallback_) {
+        packetInfoCallback_(packetInfo);
+    }
 }

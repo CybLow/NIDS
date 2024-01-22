@@ -1,5 +1,5 @@
 #include "../include/packet/PacketCapture.h"
-#include "../include/utils/NetworkInterfaceSelector.h"
+
 #include "include/ui/ui.h"
 #include <iostream>
 #include <QApplication>
@@ -32,3 +32,16 @@ using namespace std;
     cout << "Program ending" << endl;  // Confirmer la fin du programme
     return 0;
 }*/
+
+
+int main(int argc, char *argv[]) {
+    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    QApplication app(argc, argv);
+
+    qRegisterMetaType<PacketInfo>("PacketInfo");
+
+
+    PacketCaptureUI window;
+    window.show();
+    return app.exec();
+}

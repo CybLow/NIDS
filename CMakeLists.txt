@@ -23,7 +23,9 @@ add_executable(NIDS
         src/ui/ui.cpp
         include/ui/ui.h
         src/packet/PacketSignalEmitter.cpp
-        include/packet/PacketSignalEmitter.h)
+        include/packet/PacketSignalEmitter.h
+        src/packet/PacketCaptureNotifier.cpp
+        include/packet/PacketCaptureNotifier.h)
 target_link_libraries(NIDS ${PCAP_LIBRARY})
 
 find_package(Threads REQUIRED)

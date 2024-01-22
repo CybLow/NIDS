@@ -5,7 +5,7 @@
 
 class PacketProcessor {
 public:
-    void ProcessPacket(PacketInfo& packet);
+    void ProcessPacket(const PacketInfo &packet);
 };
 
 #endif // PACKET_PROCESSOR_H

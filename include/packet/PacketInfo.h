@@ -3,14 +3,18 @@
 
 #include <netinet/ip.h>
 #include <string>
+#include <QString>
+
+using namespace std;
+
 
 struct PacketInfo {
-    struct ip* ipHeader;
-    const u_char* payload;
-    int payloadLength;
-    int protocol;
-    std::string sourceApp; // Nom de l'application source (SSH, Apache, etc.)
+    string protocol;
+    string application;
+    string ipSource;
+    string portSource;
+    string ipDestination;
+    string portDestination;
 };
-
 
 #endif // PACKET_INFO_H
