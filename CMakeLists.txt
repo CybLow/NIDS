@@ -25,13 +25,16 @@ add_executable(NIDS
         include/utils/ListNetworkInterfaces.h
         src/ui/ui.cpp
         include/ui/ui.h
-        src/packet/PacketSignalEmitter.cpp
-        include/packet/PacketSignalEmitter.h
         src/packet/PacketCaptureNotifier.cpp
         include/packet/PacketCaptureNotifier.h
         src/ui/FullListDialog.cpp
         include/ui/FullListDialog.h
         src/packet/PacketFilter.cpp
+        include/packet/PacketFilter.h
+        src/packet/packetToCsv.cpp
+        include/packet/packetToCsv.h
+        src/packet/packetToCsv.cpp
+        include/packet/packetToCsv.h)
         include/packet/PacketFilter.h
         src/ui/HexAsciiDisplay.cpp
         include/ui/HexAsciiDisplay.h)
