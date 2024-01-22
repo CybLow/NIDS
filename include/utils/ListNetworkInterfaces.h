@@ -5,6 +5,7 @@
 #ifndef LISTNETWORKINTERFACES_H
 #define LISTNETWORKINTERFACES_H
 #include <vector>
+#include <string>
 
 
 class ListNetworkInterfaces {

@@ -1,6 +1,8 @@
 #include "../include/packet/PacketCapture.h"
 #include "../include/utils/NetworkInterfaceSelector.h"
+#include "include/ui/ui.h"
 #include <iostream>
+#include <QApplication>
 
 using namespace std;
 

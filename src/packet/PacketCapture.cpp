@@ -5,7 +5,6 @@
 #include <qobjectdefs.h>
 #include <utility>
 
-PacketSignalEmitter signalEmitter;
 
 PacketCapture::PacketCapture(string  interface)
         : interface_(move(interface)), handle_(nullptr), capturing(false) {}
@@ -38,9 +37,6 @@ void PacketCapture::StartCapture() {
 
 }
 
-void handlePacketSignal(const PacketInfo& info) {
-    signalEmitter.emitPacketCaptured(info);
-}
 
 void PacketCapture::StopCapture() {
     capturing.store(false, std::memory_order_relaxed);

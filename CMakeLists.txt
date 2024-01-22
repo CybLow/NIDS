@@ -33,6 +33,3 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 find_package(Qt5 COMPONENTS Core Gui Widgets REQUIRED)
 set(CMAKE_AUTOMOC ON)
 target_link_libraries(NIDS Qt5::Widgets Qt5::Core Qt5::Gui)
-
-#find_library(NDPI_LIBRARY NAMES ndpi)
-#target_link_libraries(NIDS ${NDPI_LIBRARY})

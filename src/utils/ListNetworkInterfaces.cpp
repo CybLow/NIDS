@@ -3,6 +3,7 @@
 //
 #include <pcap.h>
 #include <iostream>
+#include <string>
 #include "../../include/utils/ListNetworkInterfaces.h"
 
 std::vector<std::string> ListNetworkInterfaces::listInterfaces() {
