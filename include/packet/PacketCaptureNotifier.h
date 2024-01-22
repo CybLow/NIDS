@@ -11,7 +11,6 @@ Q_OBJECT
 
 public:
     void emitPacketReceived(const PacketInfo& packetInfo) {
-        qDebug() << "Emitting packet signal with info:" << packetInfo.ipSource.c_str();
         emit packetReceived(packetInfo);
     }
 

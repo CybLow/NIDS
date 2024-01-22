@@ -9,31 +9,23 @@
 #include <QApplication>
 #include <QMainWindow>
 #include <QLineEdit>
-#include <QDebug>
-#include <iostream>
 
 
-PacketCaptureUI::PacketCaptureUI(QWidget *parent)
-        : QMainWindow(parent),
-          emailNotificationEnabled(false),
-          windowsNotificationEnabled(false),
-          securityEnabled(false) {
-    setupUi();
-    connectSignalsSlots();
-    packetCaptureInstance = nullptr;
-
-    QString selectedInterface = networkCardComboBox->currentText();
-    packetCaptureInstance = new PacketCapture(string (selectedInterface.toStdString()));
-    connect(&(packetCaptureInstance->notifier_), &PacketCaptureNotifier::packetReceived,
-            this, &PacketCaptureUI::updatePacketTable, Qt::DirectConnection);
-
+PacketCaptureUI::PacketCaptureUI(QWidget *parent): QMainWindow(parent),
+    emailNotificationEnabled(false),
+    windowsNotificationEnabled(false),
+    securityEnabled(false) {
+        setupUi();
+        connectSignalsSlots();
+        packetCaptureInstance = nullptr;
 }
 
 PacketCaptureUI::~PacketCaptureUI() {
     // Cleanup if necessary
     if (packetCaptureInstance) {
         packetCaptureInstance->StopCapture(); // Ensure capture is stopped
-        delete packetCaptureInstance; // Delete the instance
+        packetCaptureInstance->wait();        // Wait for thread to finish
+        delete packetCaptureInstance;         // Delete the instance
     }
 }
 
@@ -136,7 +128,6 @@ void PacketCaptureUI::setupUi() {
 
     // Populate Network Card ComboBox
     populateNetworkCardComboBox();
-    setupPacketCapture();
 }
 
 void PacketCaptureUI::connectSignalsSlots() {
@@ -154,9 +145,6 @@ void PacketCaptureUI::connectSignalsSlots() {
     connect(sourcePortEdit, &QLineEdit::textChanged, this, &PacketCaptureUI::validateInputs);
     connect(destinationNetworkEdit, &QLineEdit::textChanged, this, &PacketCaptureUI::validateInputs);
     connect(destinationPortEdit, &QLineEdit::textChanged, this, &PacketCaptureUI::validateInputs);
-
-    //connect(startStopButton, &QPushButton::clicked, this, &PacketCaptureUI::onTestButtonClicked);
-    //connect(packetTable, &QTableWidget::itemSelectionChanged, this, &PacketCaptureUI::onTableSelectionChanged);
 }
 
 void PacketCaptureUI::populateNetworkCardComboBox() {
@@ -164,44 +152,51 @@ void PacketCaptureUI::populateNetworkCardComboBox() {
     for (const std::string& interface : networkInterfaces) {
         networkCardComboBox->addItem(QString::fromStdString(interface));
     }
+
+    // Automatically set up packet capture when a network card is selected
+    connect(networkCardComboBox, &QComboBox::currentTextChanged, this, &PacketCaptureUI::setupPacketCapture);
 }
 
 void PacketCaptureUI::toggleCapture() {
-    if (!packetCaptureInstance) {
-        // Start capturing
-        packetCaptureInstance = new PacketCapture(networkCardComboBox->currentText().toStdString());
-        // NEED TO PUT THIS VALUE IN THE PACKETINFO NETWORKCARD
-        startStopButton->setText("Stop");
-        packetCaptureInstance->Initialize();
-        packetCaptureInstance->StartCapture();
-
-
-        // Disable input fields
-        sourceNetworkEdit->setReadOnly(true);
-        sourcePortEdit->setReadOnly(true);
-        // Similarly for destination fields
-    } else {
+    if (packetCaptureInstance && packetCaptureInstance->isRunning()) {
         // Stop capturing
         packetCaptureInstance->StopCapture();
+        packetCaptureInstance->wait(); // Wait for the thread to finish
         startStopButton->setText("Start");
 
-        // Re-enable input fields
+        // Re-enable input fields and other relevant UI components
         sourceNetworkEdit->setReadOnly(false);
         sourcePortEdit->setReadOnly(false);
+        destinationNetworkEdit->setReadOnly(false);
+        destinationPortEdit->setReadOnly(false);
 
-
+        // Additional logic if needed after stopping capture
         int ret = QMessageBox::question(this, "Filtering Report",
                                         "Do you need a filtering report?",
                                         QMessageBox::Yes | QMessageBox::No);
         if (ret == QMessageBox::Yes) {
             // Implement the logic to generate the report here
-            //generateReport(); // Hypothetical function
+            // generateReport(); // Hypothetical function
         }
+    } else {
+        // Start capturing
+        if (!packetCaptureInstance) {
+            QString selectedInterface = networkCardComboBox->currentText();
+            packetCaptureInstance = new PacketCapture(selectedInterface.toStdString(), this);
+            connect(&(packetCaptureInstance->notifier_), &PacketCaptureNotifier::packetReceived,
+                    this, &PacketCaptureUI::updatePacketTable, Qt::QueuedConnection);
+        }
+        packetCaptureInstance->start(); // Start the thread
+        startStopButton->setText("Stop");
 
-        //packetCaptureInstance->deleteLater(); // Schedule the object for deletion
-        packetCaptureInstance = nullptr;
+        // Disable input fields and other relevant UI components
+        sourceNetworkEdit->setReadOnly(true);
+        sourcePortEdit->setReadOnly(true);
+        destinationNetworkEdit->setReadOnly(true);
+        destinationPortEdit->setReadOnly(true);
     }
 }
+
 
 
 
@@ -217,10 +212,9 @@ void PacketCaptureUI::updatePacketTable(const PacketInfo& info) {
         return item;
     };
 
-    qDebug() << "updatePacketTable called with packet info:" << info.ipSource.c_str();
-
     tableWidget->setItem(row, 0, createNonEditableItem(QString::number(row + 1)));
-    tableWidget->setItem(row, 1, createNonEditableItem("eth"));//info.networkCard));
+    // FAIRE EN SORTE DE METTRE LA CARTE RESEAU UTILISEE
+    tableWidget->setItem(row, 1, createNonEditableItem("eth0"));//info.networkCard));
     tableWidget->setItem(row, 2, createNonEditableItem(QString::fromStdString(info.protocol)));
     tableWidget->setItem(row, 3, createNonEditableItem(QString::fromStdString(info.application)));
     tableWidget->setItem(row, 4, createNonEditableItem(QString::fromStdString(info.ipSource)));
@@ -230,6 +224,7 @@ void PacketCaptureUI::updatePacketTable(const PacketInfo& info) {
 }
 
 
+// SERA PEUT ETRE A RETIRER
 void PacketCaptureUI::securitySettings() {
     QMenu securityMenu(this);
     QAction *enableAction = new QAction("Enable", this);
@@ -269,12 +264,12 @@ void PacketCaptureUI::notificationSettings() {
 
     connect(windowsNotificationAction, &QAction::toggled, this, [this](bool checked) {
         windowsNotificationEnabled = checked;
-        // Handle the change in notification settings
+        // TODO : IMPLEMENTER L'ENVOI DE NOTIFICATION WINDOWS
     });
 
     connect(sendEmailAction, &QAction::toggled, this, [this](bool checked) {
         emailNotificationEnabled = checked;
-        // You may want to save this setting or change the behavior of the program
+
     });// Additional connections for notifications
 
     connect(sendEmailAction, &QAction::triggered, this, &PacketCaptureUI::sendEmailPrompt);
@@ -289,6 +284,7 @@ void PacketCaptureUI::sendEmailPrompt() {
     QString email = QInputDialog::getText(this, tr("Enter Email Address"), tr("Email:"), QLineEdit::Normal, "", &ok);
     if (ok && !email.isEmpty()) {
         // Logic to handle the email
+        // TODO : IMPLEMENTER L'ENVOI D'EMAIL
     }
 }
 
@@ -305,6 +301,9 @@ void PacketCaptureUI::populateApplicationComboBox() {
     applicationComboBox->addItem("FTP");
     applicationComboBox->addItem("SSH");
     // Add other applications as needed
+    // https://www.stationx.net/common-ports-cheat-sheet/
+    // AJOUTER CETTE LISTE D'APP AVEC LES PORTS COMMUN
+    // CELA PERMET D'EVITER DE FAIRE DE LA DPI (DEEP PACKET INSPECTION) AVEC LIBNDPI
 }
 
 void PacketCaptureUI::validateInputs() {
@@ -327,40 +326,20 @@ void PacketCaptureUI::validateInputs() {
 }
 
 void PacketCaptureUI::setupPacketCapture() {
-    qDebug() << "Setting up packet capture";
-    QString selectedInterface = networkCardComboBox->currentText();
-    packetCaptureInstance = new PacketCapture(selectedInterface.toStdString());
-    bool isConnected = connect(&(packetCaptureInstance->notifier_), &PacketCaptureNotifier::packetReceived,
-                               this, &PacketCaptureUI::updatePacketTable);
-    qDebug() << "Connection status:" << isConnected;
-
-
-    connect(&(packetCaptureInstance->notifier_), &PacketCaptureNotifier::packetReceived,
-            this, &PacketCaptureUI::updatePacketTable, Qt::DirectConnection);
-
-
-
-
-
-}
-
-/*
-void PacketCaptureUI::onTestButtonClicked() {
-    PacketInfo testInfo;
-    //testInfo.networkCard = "eth0";
-    testInfo.protocol = "TCP";
-    testInfo.application = "HTTP";
-    testInfo.ipSource = "192.168.1.1";
-    testInfo.portSource = "80";
-    testInfo.ipDestination = "192.168.1.100";
-    testInfo.portDestination = "8080";
-
-    for (int i = 0; i < 1000; i++){
-        updatePacketTable(testInfo);
+    if (packetCaptureInstance) {
+        // If an instance already exists, make sure it's stopped and deleted
+        if (packetCaptureInstance->isRunning()) {
+            packetCaptureInstance->StopCapture();
+            packetCaptureInstance->wait(); // Wait for the thread to finish
+        }
+        delete packetCaptureInstance;
     }
-    //updatePacketTable(testInfo);
-}*/
 
+    QString selectedInterface = networkCardComboBox->currentText();
+    packetCaptureInstance = new PacketCapture(selectedInterface.toStdString(), this);
+    connect(&(packetCaptureInstance->notifier_), &PacketCaptureNotifier::packetReceived,
+            this, &PacketCaptureUI::updatePacketTable, Qt::QueuedConnection);
+}
 
 // Other necessary implementations...
 

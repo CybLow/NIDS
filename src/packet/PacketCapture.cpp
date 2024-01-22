@@ -1,26 +1,17 @@
 #include "../../include/packet/PacketCapture.h"
-#include "../../include/packet/PacketProcessor.h"
-
 #include <iostream>
-#include <utility>
-#include <netinet/ip.h>         // For IP header
-#include <netinet/tcp.h>        // For TCP header
-#include <netinet/udp.h>        // For UDP header
-#include <arpa/inet.h>          // For inet_ntoa
-#include <netinet/if_ether.h>   // For ether_header and ETHERTYPE_IP
-// Or use <net/ethernet.h> instead of <netinet/if_ether.h> depending on your system
+#include <netinet/ip.h>        // For IP header
+#include <netinet/tcp.h>       // For TCP header
+#include <netinet/udp.h>       // For UDP header
+#include <arpa/inet.h>         // For inet_ntoa
+#include <netinet/if_ether.h>  // For ether_header and ETHERTYPE_IP
 
-
-
-
-PacketCapture::PacketCapture(string  interface)
-        : interface_(move(interface)), handle_(nullptr), capturing(false) {}
-
+PacketCapture::PacketCapture(const std::string& interface, QObject *parent)
+        : QThread(parent), interface_(interface), handle_(nullptr), capturing(false) {}
 
 PacketCapture::~PacketCapture() {
     StopCapture();
 }
-
 
 bool PacketCapture::Initialize() {
     char errbuf[PCAP_ERRBUF_SIZE];
@@ -28,30 +19,23 @@ bool PacketCapture::Initialize() {
     return handle_ != nullptr;
 }
 
-
-void PacketCapture::StartCapture() {
-    if (!handle_) {
-        std::cerr << "Capture handle not initialized." << std::endl;
+void PacketCapture::run() {
+    if (!Initialize()) {
+        std::cerr << "Failed to initialize packet capture." << std::endl;
         return;
     }
 
-    capturing.store(true, std::memory_order_relaxed);
-    captureThread = std::thread([this] {
-        std::cout << "Starting packet capture on " << interface_ << "..." << std::endl;
-        pcap_loop(handle_, 0, PacketCallback, reinterpret_cast<u_char*>(this));
-        std::cout << "Capture thread ending." << std::endl;
-    });
-
+    capturing.store(true);
+    std::cout << "Starting packet capture on " << interface_ << "..." << std::endl;
+    pcap_loop(handle_, 0, PacketCallback, reinterpret_cast<u_char*>(this));
 }
 
-
 void PacketCapture::StopCapture() {
-    capturing.store(false, std::memory_order_relaxed);
-    pcap_breakloop(handle_); // Interrompre pcap_loop
+    if (!capturing.load()) return;
 
-    if (captureThread.joinable()) {
-        captureThread.join();
-    }
+    capturing.store(false);
+    pcap_breakloop(handle_);
+
     if (handle_) {
         pcap_close(handle_);
         handle_ = nullptr;
@@ -59,14 +43,9 @@ void PacketCapture::StopCapture() {
     std::cout << "Capture stopped." << std::endl;
 }
 
-
 void PacketCapture::PacketCallback(u_char* userData, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
     PacketCapture* capture = reinterpret_cast<PacketCapture*>(userData);
     capture->ProcessPacket(pkthdr, packet);
-}
-
-void PacketCapture::setPacketInfoCallback(const PacketInfoCallback& callback) {
-    packetInfoCallback_ = callback;
 }
 
 void PacketCapture::ProcessPacket(const struct pcap_pkthdr* pkthdr, const u_char* packet) {
@@ -114,8 +93,6 @@ void PacketCapture::ProcessPacket(const struct pcap_pkthdr* pkthdr, const u_char
     cout << "Capture: " << packetInfo.protocol << " from " << packetInfo.ipSource << ":" << packetInfo.portDestination <<
     " to " << packetInfo.ipDestination << ":" << packetInfo.portDestination << endl;
     notifier_.emitPacketReceived(packetInfo);
-
-    if (packetInfoCallback_) {
-        packetInfoCallback_(packetInfo);
-    }
 }
+
+#include "../../include/packet/PacketCapture.moc"
