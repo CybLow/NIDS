@@ -18,6 +18,7 @@ struct PacketFilter {
     string sourcePort;
     string destinationPort;
 
+    string customBPFFilter;
     string generatePcapFilterString() const;
 };
 

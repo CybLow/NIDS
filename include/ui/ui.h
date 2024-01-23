@@ -47,9 +47,9 @@ private:
     HexAsciiDisplay* hexAsciiDisplay;
 
     // UI Components
-    QLineEdit *sourceNetworkEdit, *sourcePortEdit, *destinationNetworkEdit, *destinationPortEdit, *messageTextEdit;
+    QLineEdit *sourceNetworkEdit, *sourcePortEdit, *destinationNetworkEdit, *destinationPortEdit, *filterTextEdit;
     QPushButton *startStopButton;
-    QLabel *networkCardLabel, *protocolLabel, *applicationLabel, *sourceNetworkLabel, *sourcePortLabel, *destinationNetworkLabel, *destinationPortLabel, *messageTextLabel;
+    QLabel *networkCardLabel, *protocolLabel, *applicationLabel, *sourceNetworkLabel, *sourcePortLabel, *destinationNetworkLabel, *destinationPortLabel, *filterTextLabel;
 
     QComboBox *networkCardComboBox, *protocolComboBox, *applicationComboBox;
     QTableWidget *packetTable;

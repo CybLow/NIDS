@@ -28,7 +28,8 @@ struct PacketInfo {
 };
 
 //
-//entre un port de filtre choisi automatiquement l'appli
-//si le port est inconnu noté Unknow
+// BUG : IF APPLICATION ARE CHOOSED IN APPLICATION LIST
+// THE FILTER WILL TAKE IN COUNT THIS
+// NOW : ONLY WORK WITH SOURCE AND DESTINATION PORT (FOR APPLICATION)
 
 #endif // PACKET_INFO_H

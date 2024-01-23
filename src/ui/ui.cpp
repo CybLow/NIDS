@@ -47,14 +47,14 @@ void PacketCaptureUI::setupUi() {
     sourcePortLabel = new QLabel("Port Source", this);
     destinationNetworkLabel = new QLabel("IP Destination", this);
     destinationPortLabel = new QLabel("Port Destination", this);
-    messageTextLabel = new QLabel("Custom Filter", this);
+    filterTextLabel = new QLabel("Custom Filter", this);
 
     // Edit lines
     sourceNetworkEdit = new QLineEdit(this);
     sourcePortEdit = new QLineEdit(this);
     destinationNetworkEdit = new QLineEdit(this);
     destinationPortEdit = new QLineEdit(this);
-    messageTextEdit = new QLineEdit(this);
+    filterTextEdit = new QLineEdit(this);
 
     // Combo boxes
     networkCardComboBox = new QComboBox(this);
@@ -113,8 +113,8 @@ void PacketCaptureUI::setupUi() {
     gridLayout->addWidget(destinationNetworkEdit, 1, 5);
     gridLayout->addWidget(destinationPortLabel, 0, 6);
     gridLayout->addWidget(destinationPortEdit, 1, 6);
-    gridLayout->addWidget(messageTextLabel, 2, 0);
-    gridLayout->addWidget(messageTextEdit, 2, 1, 1, 6);
+    gridLayout->addWidget(filterTextLabel, 2, 0);
+    gridLayout->addWidget(filterTextEdit, 2, 1, 1, 6);
     gridLayout->addWidget(startStopButton, 2, 7);
     gridLayout->addWidget(packetTable, 3, 0, 1, 8);
 
@@ -143,7 +143,6 @@ void PacketCaptureUI::setupUi() {
     resize(1500, 400);
 
     validateInputs();
-    // Populate Network Card ComboBox
     populateNetworkCardComboBox();
 }
 
@@ -547,6 +546,8 @@ PacketFilter PacketCaptureUI::gatherPacketData() {
     data.destinationIP = destinationNetworkEdit->text().toStdString();
     data.sourcePort = sourcePortEdit->text().toStdString();
     data.destinationPort = destinationPortEdit->text().toStdString();
+
+    data.customBPFFilter = filterTextEdit->text().toStdString();
     return data;
 }
 
