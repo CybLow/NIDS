@@ -25,7 +25,7 @@ PacketCaptureUI::PacketCaptureUI(QWidget *parent): QMainWindow(parent),
         packetCaptureInstance = nullptr;
 
         systemTrayIcon = new QSystemTrayIcon(this);
-        //systemTrayIcon->setIcon(QIcon(":/path/to/icon")); // Set an icon here
+        systemTrayIcon->setIcon(QIcon("logo.png")); // Set an icon here
         systemTrayIcon->setVisible(true);
     }
 
