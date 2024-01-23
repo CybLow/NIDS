@@ -6,6 +6,7 @@
 #include <QString>
 #include <map>
 #include <set>
+#include <vector>
 
 using namespace std;
 
@@ -22,6 +23,8 @@ struct PacketInfo {
     string portSource;
     string ipDestination;
     string portDestination;
+
+    vector<u_char> rawData;
 };
 
 //

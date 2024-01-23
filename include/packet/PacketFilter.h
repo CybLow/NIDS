@@ -18,14 +18,7 @@ struct PacketFilter {
     string sourcePort;
     string destinationPort;
 
-    PacketFilter() = default;
-
-    PacketFilter(const string& netCard, const string& proto, const string& app,
-               const string& srcIP, const string& destIP,
-               const string& srcPort, const string& destPort)
-            : networkCard(netCard), protocol(proto), application(app),
-              sourceIP(srcIP), destinationIP(destIP),
-              sourcePort(srcPort), destinationPort(destPort) {}
+    string generatePcapFilterString() const;
 };
 
 

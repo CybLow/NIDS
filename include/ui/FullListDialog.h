@@ -8,6 +8,8 @@
 #include <string>
 #include <QPushButton>
 
+using namespace std;
+
 class FullListDialog : public QDialog {
 Q_OBJECT
 public:

@@ -1,13 +1,15 @@
 #include "../../include/packet/PacketCapture.h"
-#include <iostream>
-#include <netinet/ip.h>        // For IP header
-#include <netinet/tcp.h>       // For TCP header
-#include <netinet/udp.h>       // For UDP header
-#include <arpa/inet.h>         // For inet_ntoa
-#include <netinet/if_ether.h>  // For ether_header and ETHERTYPE_IP
 
-PacketCapture::PacketCapture(const std::string& interface, QObject *parent)
-        : QThread(parent), interface_(interface), handle_(nullptr), capturing(false) {}
+#include <iostream>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
+#include <arpa/inet.h>
+#include <netinet/if_ether.h>
+
+PacketCapture::PacketCapture(const string& interface, const string& filterStr, QObject *parent)
+        : QThread(parent), interface_(interface), filterString_(filterStr), handle_(nullptr), capturing(false) {}
+
 
 PacketCapture::~PacketCapture() {
     StopCapture();
@@ -21,12 +23,15 @@ bool PacketCapture::Initialize() {
 
 void PacketCapture::run() {
     if (!Initialize()) {
-        std::cerr << "Failed to initialize packet capture." << std::endl;
+        cerr << "Failed to initialize packet capture." << endl;
         return;
     }
 
     capturing.store(true);
-    std::cout << "Starting packet capture on " << interface_ << "..." << std::endl;
+    cout << "Starting packet capture on " << interface_ << "..." << endl;
+
+    setPcapFilter();
+
     startPcapDump("dump.pcap");
     pcap_loop(handle_, 0, PacketCallback, reinterpret_cast<u_char*>(this));
 
@@ -43,7 +48,7 @@ void PacketCapture::StopCapture() {
         handle_ = nullptr;
     }
     stopPcapDump();
-    std::cout << "Capture stopped." << std::endl;
+    cout << "Capture stopped." << endl;
 }
 
 void PacketCapture::PacketCallback(u_char* userData, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
@@ -71,15 +76,17 @@ void PacketCapture::ProcessPacket(const struct pcap_pkthdr* pkthdr, const u_char
         if (ipHeader->ip_p == IPPROTO_TCP) {
             tcpHeader = (tcphdr*)((u_char*)ipHeader + sizeof(struct ip));
             packetInfo.protocol = "TCP";
-            packetInfo.portSource = std::to_string(ntohs(tcpHeader->th_sport));
-            packetInfo.portDestination = std::to_string(ntohs(tcpHeader->th_dport));
+            packetInfo.portSource = to_string(ntohs(tcpHeader->th_sport));
+            packetInfo.portDestination = to_string(ntohs(tcpHeader->th_dport));
+            packetInfo.application = getApplicationNameByPort(packetInfo);
 
             // Determine application based on port or other criteria
         } else if (ipHeader->ip_p == IPPROTO_UDP) {
             udpHeader = (udphdr*)((u_char*)ipHeader + sizeof(struct ip));
             packetInfo.protocol = "UDP";
-            packetInfo.portSource = std::to_string(ntohs(udpHeader->uh_sport));
-            packetInfo.portDestination = std::to_string(ntohs(udpHeader->uh_dport));
+            packetInfo.portSource = to_string(ntohs(udpHeader->uh_sport));
+            packetInfo.portDestination = to_string(ntohs(udpHeader->uh_dport));
+            packetInfo.application = getApplicationNameByPort(packetInfo);
 
             // Determine application based on port or other criteria
         } else if (ipHeader->ip_p == IPPROTO_ICMP) {
@@ -92,24 +99,53 @@ void PacketCapture::ProcessPacket(const struct pcap_pkthdr* pkthdr, const u_char
         // Additional protocol parsing as necessary
     }
 
-    // Process packetInfo further as needed
+    packetInfo.rawData.assign(packet, packet + pkthdr->len);
+
     cout << "Capture: " << packetInfo.protocol << " from " << packetInfo.ipSource << ":" << packetInfo.portDestination <<
     " to " << packetInfo.ipDestination << ":" << packetInfo.portDestination << endl;
     dumpPacket(pkthdr,packet);
     notifier_.emitPacketReceived(packetInfo);
 }
 
+string PacketCapture::getApplicationNameByPort(PacketInfo& packetInfo) {
+    string applicationName;
+
+    if (!filterData.destinationPort.empty()) {
+        applicationName = getServiceNameByPort(stoi(filterData.destinationPort));
+    } else if (!filterData.sourcePort.empty()) {
+        applicationName = getServiceNameByPort(stoi(filterData.sourcePort));
+    } else {
+        // If both are defined, prioritize destination port
+        applicationName = getServiceNameByPort(stoi(packetInfo.portDestination));
+    }
+    return applicationName;
+}
+
+void PacketCapture::setPcapFilter() {
+
+    struct bpf_program fp;
+    if (!filterString_.empty() && pcap_compile(handle_, &fp, filterString_.c_str(), 0, PCAP_NETMASK_UNKNOWN) != -1) {
+        if (pcap_setfilter(handle_, &fp) != -1) {
+            cout << "Filter set: " << filterString_ << endl; // Use member variable filterString_
+        } else {
+            cerr << "Could not install filter: " << pcap_geterr(handle_) << endl;
+        }
+        pcap_freecode(&fp);
+    } else {
+        cerr << "Could not parse filter: " << pcap_geterr(handle_) << endl;
+    }
+}
+
 // Start dumping packets to a file
-void PacketCapture::startPcapDump(const std::string& filename) {
+void PacketCapture::startPcapDump(const string& filename) {
     dumpFile_ = filename;
     dumper_ = pcap_dump_open(handle_, dumpFile_.c_str());
 
     if (dumper_ == nullptr) {
-        std::cerr << "Error opening dump file: " << pcap_geterr(handle_) << std::endl;
+        cerr << "Error opening dump file: " << pcap_geterr(handle_) << endl;
         return;
     }
 
-    // Other initializations if necessary
 }
 
 // This function should be called every time a packet is captured

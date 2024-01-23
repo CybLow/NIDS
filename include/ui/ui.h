@@ -17,13 +17,19 @@
 #include <QFrame>
 #include <QMenuBar>
 #include <QInputDialog>
+#include <QSystemTrayIcon>
+#include <QApplication>
 #include <QRegularExpressionValidator>
 #include <vector>
 #include <string>
+#include <QScrollArea>
 
 #include "../packet/PacketCapture.h"
 #include "../packet/PacketInfo.h"
 #include "../packet/PacketFilter.h"
+#include "HexAsciiDisplay.h"
+
+using namespace std;
 
 class PacketCaptureUI : public QMainWindow {
 Q_OBJECT
@@ -36,7 +42,9 @@ private:
     void setupUi();
     void connectSignalsSlots();
     void populateNetworkCardComboBox();
-    void configureValidators();
+
+    QScrollArea* scrollArea;  // Member variable for the scroll area
+    HexAsciiDisplay* hexAsciiDisplay;
 
     // UI Components
     QLineEdit *sourceNetworkEdit, *sourcePortEdit, *destinationNetworkEdit, *destinationPortEdit, *messageTextEdit;
@@ -51,9 +59,9 @@ private:
     QRegularExpressionValidator *ipValidator, *portValidator;
 
     // Additional members
-    std::vector<std::string> networkInterfaces;
+    vector<string> networkInterfaces;
     bool emailNotificationEnabled;
-    bool windowsNotificationEnabled;
+    bool notificationEnabled;
     bool securityEnabled;
 
     PacketCapture* packetCaptureInstance;
@@ -64,6 +72,10 @@ private:
     QString lastAddedService;
 
     PacketFilter currentPacketData;
+
+    QSystemTrayIcon *systemTrayIcon;
+    vector<PacketInfo> packetInfoList;
+
 public slots:
     void updatePacketTable(const PacketInfo &info);
 
@@ -81,6 +93,14 @@ private slots:
     void updateApplicationComboBoxBasedOnPort();
 
     PacketFilter gatherPacketData();
+
+    void generateReport();
+
+    void displaySelectedPacketRawData();
+
+    void addPacketToTable(const PacketInfo &packetInfo);
+
+    void ensureScrollAreaVisibility();
 };
 
 

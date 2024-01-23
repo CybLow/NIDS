@@ -29,7 +29,9 @@ add_executable(NIDS
         src/ui/FullListDialog.cpp
         include/ui/FullListDialog.h
         src/packet/PacketFilter.cpp
-        include/packet/PacketFilter.h)
+        include/packet/PacketFilter.h
+        src/ui/HexAsciiDisplay.cpp
+        include/ui/HexAsciiDisplay.h)
 target_link_libraries(NIDS ${PCAP_LIBRARY})
 
 find_package(Threads REQUIRED)

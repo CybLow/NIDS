@@ -6,7 +6,7 @@
 #include <QDebug>
 
 
-FullListDialog::FullListDialog(const std::set<std::string>& services, QWidget* parent)
+FullListDialog::FullListDialog(const set<string>& services, QWidget* parent)
         : QDialog(parent), listWidget(new QListWidget(this)),
           okButton(new QPushButton("OK", this)),
           cancelButton(new QPushButton("Cancel", this)) {

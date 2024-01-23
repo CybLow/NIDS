@@ -6,23 +6,29 @@
 #include <string>
 #include <atomic>
 #include <functional>
+
+#include "PacketFilter.h"
 #include "PacketInfo.h"
 #include "PacketCaptureNotifier.h"
+
+using namespace std;
 
 class PacketCapture : public QThread {
 Q_OBJECT
 
 public:
-    explicit PacketCapture(const std::string& interface, QObject *parent = nullptr);
+    explicit PacketCapture(const string& interface, const string& filterStr, QObject *parent = nullptr);
     ~PacketCapture() override;
 
     bool Initialize();
     void StopCapture();
-    void startPcapDump(const std::string& filename);
+    void startPcapDump(const string& filename);
     void dumpPacket(const struct pcap_pkthdr* header, const u_char* packet);
     void stopPcapDump();
-    using PacketInfoCallback = std::function<void(const PacketInfo&)>;
+    using PacketInfoCallback = function<void(const PacketInfo&)>;
     PacketCaptureNotifier notifier_;
+
+    void setPcapFilter();
 
 protected:
     void run() override;
@@ -31,13 +37,18 @@ private:
     static void PacketCallback(u_char* userData, const struct pcap_pkthdr* pkthdr, const u_char* packet);
     void ProcessPacket(const struct pcap_pkthdr* pkthdr, const u_char* packet);
 
-    std::string interface_;
+    string interface_;
     pcap_dumper_t* dumper_; // Pcap dumper
-    std::string dumpFile_; // Path to the dump file
+    string dumpFile_; // Path to the dump file
     pcap_t* handle_;
-    std::atomic<bool> capturing;
+    atomic<bool> capturing;
 
     PacketInfoCallback packetInfoCallback_;
+    PacketFilter filterData;
+
+    string filterString_;
+
+    string getApplicationNameByPort(PacketInfo &packetInfo);
 };
 
 #endif // PACKET_CAPTURE_H
