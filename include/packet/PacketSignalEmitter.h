@@ -1,8 +1,0 @@
-//
-// Created by sim on 21/01/24.
-//
-
-#ifndef PACKETSIGNALEMITTER_H
-#define PACKETSIGNALEMITTER_H
-
-#endif //PACKETSIGNALEMITTER_H

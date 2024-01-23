@@ -9,24 +9,14 @@ find_package(frugally-deep CONFIG REQUIRED)
 
 add_executable(NIDS
         src/main.cpp
-        src/utils/NetworkInterfaceSelector.cpp
-        include/utils/NetworkInterfaceSelector.h
         src/packet/PacketCapture.cpp
         include/packet/PacketCapture.h
-        src/packet/PacketProcessor.cpp
-        include/packet/PacketProcessor.h
         src/packet/PacketInfo.cpp
         include/packet/PacketInfo.h
-        include/packet/PacketType.h
-        src/packet/PacketType.cpp
-        src/utils/Buffer.cpp
-        include/utils/Buffer.h
         src/utils/ListNetworkInterfaces.cpp
         include/utils/ListNetworkInterfaces.h
         src/ui/ui.cpp
         include/ui/ui.h
-        src/packet/PacketSignalEmitter.cpp
-        include/packet/PacketSignalEmitter.h
         src/packet/PacketCaptureNotifier.cpp
         include/packet/PacketCaptureNotifier.h
         src/ui/FullListDialog.cpp
