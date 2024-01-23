@@ -2,6 +2,7 @@
 // Created by sim on 22/01/24.
 //
 
+#include <limits>
 #include "../../include/packet/packetToCsv.h"
 
 void pcapToCsv() {
@@ -9,10 +10,8 @@ void pcapToCsv() {
 #ifdef __linux__
     system("./../pcaptocsv/convert_pcap_csv.sh dump.pcap");
     process_csv();
-    system("rm ../pcaptocsv/csv/dump_ISCX.csv");
     process_csv_scientific();
     read_and_process_csv();
-    //system("rm ../pcaptocsv/csv/dump_ISCX.csv");
 #endif
 
 }
