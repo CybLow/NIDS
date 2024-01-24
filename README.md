@@ -10,9 +10,9 @@ Ensure you have the following prerequisites installed:
 - **CMake** [Version 3.15 or higher](https://gitlab.kitware.com/cmake/cmake)
 - **Qt5** - [Qt5 GitHub Repository](https://github.com/qt/qt5)
 - **libpcap** - [libpcap GitHub Repository](https://github.com/the-tcpdump-group/libpcap)
-- **frugally-deep** - [frugally-deep GitHub Repository](https://github.com/Dobiasd/frugally-deep/blob/master/INSTALL.md)
+- **frugally-deep** - [frugally-deep GitHub Repository](https://github.com/Dobiasd/frugally-deep/)
 
-For more info check [INSTALL.md](https://github.com/CybLow/NIDS/blob/main/INSTALL.md))
+For more info check [INSTALL.md](https://github.com/CybLow/NIDS/blob/main/INSTALL.md)
 
 ## Features
 - **AI-Powered Attack Identification**: Utilizes AI to detect and classify network attacks.
@@ -45,3 +45,4 @@ Known issues include crashes during report generation/computing due to memory al
 - **Security Menu Development**: Make the Security menu functional.
 - **Deep Packet Inspection (DPI)**: Implement DPI for thorough packet analysis.
 - **CICFlowMeter**: Implement in CPP for better execution without do some garbage (like the actual solution).
+
