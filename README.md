@@ -12,16 +12,18 @@ Ensure you have the following prerequisites installed:
 
 ## Features
 - **AI-Powered Attack Identification**: Utilizes AI to detect and classify network attacks.
+- **Summary Report**: After packet capture a report are created for a summary analysis.
 - **Application Detection**: Identifies applications generating network traffic.
 - **BPF/Standard Filters**: Supports BPF and standard filters, with GUI for standard filters.
 - **Raw Data Inspection**: View raw data of network requests.
 - **Notification Controls**: Enable/disable notifications for report generation.
 
-## Installation
+## Build && Installation
 ```bash
 mkdir build && cd build
 cmake ..
 make
+sudo ./NIDS
 ```
 
 ## Bug Reporting
