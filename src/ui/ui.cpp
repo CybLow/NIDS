@@ -513,7 +513,6 @@ void PacketCaptureUI::generateReport() {
             out << "\n";
         }
         // HERE PUT THE CONTENT FOR REPORT GENERATION
-        out << "Test Rapport\n";
 
         reportFile.close();
 

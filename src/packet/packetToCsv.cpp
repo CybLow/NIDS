@@ -118,10 +118,23 @@ std::vector<float> process_line_to_vector(const std::string& line) {
     std::string cell;
 
     while (std::getline(ss, cell, ',')) {
-        result.push_back(std::stof(cell));
+        try {
+            // Check if the cell can be converted to float
+            if (cell.empty() || !std::all_of(cell.begin(), cell.end(), [](unsigned char c) { return std::isdigit(c) || c == '.'; })) {
+                throw std::invalid_argument("Non-numeric value found");
+            }
+
+            float value = std::stof(cell);
+            result.push_back(value);
+        } catch (const std::invalid_argument& e) {
+            std::cerr << "Warning: Invalid argument encountered in CSV data: " << e.what() << " - Value: " << cell << std::endl;
+            result.push_back(0.0f); // You can decide how to handle non-convertible values
+        }
     }
-    result.push_back(0);
-    result.push_back(0);
+
+    // Add any additional elements if needed
+    result.push_back(0.0f);
+    result.push_back(0.0f);
     return result;
 }
 
@@ -146,34 +159,37 @@ void read_and_process_csv() {
     };
     std::ifstream file("finaldump.csv");
     std::string line;
-    const auto model = fdeep::load_model("../src/model/model.json");
+
+    // Check if the file is open
+    if (!file.is_open()) {
+        std::cerr << "Error: Unable to open file finaldump.csv" << std::endl;
+        return;
+    }
+
     // Skip the first line (header)
     std::getline(file, line);
 
+    // Load the model
+    const auto model = fdeep::load_model("../src/model/model.json");
+
     while (std::getline(file, line)) {
         std::vector<float> line_vector = process_line_to_vector(line);
-        const auto result = model.predict(
-    {fdeep::tensor(fdeep::tensor_shape(79),
-            line_vector)});
-        for (const auto& value : line_vector) {
-            std::cout << value << " ";
-        }
+        const auto result = model.predict({fdeep::tensor(fdeep::tensor_shape(79), line_vector)});
 
+        // Process the model's result
         int maxPosition = findMaxPositionInTensors(result);
         auto it = statusMap.find(maxPosition);
 
         if (it != statusMap.end()) {
             sharedVector.push_back(it->second);
+            std::cout << it->second << std::endl;
         } else {
-            // Handle the case where the position is not found in the map
             sharedVector.push_back("Unknown Status");
+            std::cout << "Unknown Status" << std::endl;
         }
+    }
 
-        std::cout << std::endl;
-    }
-    for (const auto& str : sharedVector) {
-        std::cout << str << std::endl;
-    }
+    file.close();
 }
 
 int findMaxPositionInTensors(const fdeep::tensors& tensors) {
