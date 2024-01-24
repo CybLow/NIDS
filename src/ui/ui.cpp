@@ -500,7 +500,18 @@ void PacketCaptureUI::generateReport() {
 
     if (reportFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QTextStream out(&reportFile);
-
+        for (size_t i = 0; i < packetInfoList.size(); ++i) {
+            // Write four elements from packetInfoList
+            out << "Paquet numero " << i << " ;" << Qt::endl;
+            out << "Application : "<< QString::fromStdString(packetInfoList.at(i).application) << Qt::endl;
+            out << "Protocole : "<< QString::fromStdString(packetInfoList.at(i).protocol) << Qt::endl;
+            out << "IP destination : "<< QString::fromStdString(packetInfoList.at(i).ipDestination) << Qt::endl;
+            out << "IP source : "<< QString::fromStdString(packetInfoList.at(i).ipSource) << Qt::endl;
+            out << "Port de destination : "<< QString::fromStdString(packetInfoList.at(i).portDestination) << Qt::endl;
+            out << "Port source : "<< QString::fromStdString(packetInfoList.at(i).portSource) << Qt::endl;
+            out << "Statut du Paquet : " << QString::fromStdString(sharedVector.at(1)) << "\n";
+            out << "\n";
+        }
         // HERE PUT THE CONTENT FOR REPORT GENERATION
         out << "Test Rapport\n";
 
@@ -517,11 +528,6 @@ void PacketCaptureUI::generateReport() {
         QString timeString = QString::number(hours) + "h "
                              + QString::number(minutes) + "min "
                              + QString::number(seconds) + "s ";
-
-        /*QMessageBox::information(this, "Report",
-                                 "Le rapport a été généré avec succès à l'emplacement suivant : "
-                                 + filePath + "\nTemps de génération : "
-                                 + timeString);*/
 
         QString notificationMessage = "Le rapport a été généré avec succès à l'emplacement suivant : "
                                       + filePath + "\nTemps de génération : "

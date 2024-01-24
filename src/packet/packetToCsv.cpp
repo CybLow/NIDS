@@ -5,13 +5,19 @@
 #include <limits>
 #include "../../include/packet/packetToCsv.h"
 
+
+std::vector<std::string> sharedVector;
+
 void pcapToCsv() {
 
 #ifdef __linux__
     system("./../pcaptocsv/convert_pcap_csv.sh dump.pcap");
     process_csv();
+    system("rm ./../pcaptocsv/csv/dump_ISCX.csv");
     process_csv_scientific();
+    system("rm tmpdump.csv");
     read_and_process_csv();
+    system("rm finaldump.csv");
 #endif
 
 }
@@ -106,30 +112,80 @@ void process_csv_scientific() {
     output_file.close();
 }
 
-std::vector<std::string> process_line_to_vector(const std::string& line) {
-    std::vector<std::string> result;
+std::vector<float> process_line_to_vector(const std::string& line) {
+    std::vector<float> result;
     std::stringstream ss(line);
     std::string cell;
 
     while (std::getline(ss, cell, ',')) {
-        result.push_back(cell);
+        result.push_back(std::stof(cell));
     }
-
+    result.push_back(0);
+    result.push_back(0);
     return result;
 }
 
 void read_and_process_csv() {
+    std::map<int, std::string> statusMap = {
+        {0, "BENIGN"},
+        {1, "Portscan"},
+        {2, "DoS Hulk"},
+        {3, "DDos"},
+        {4, "Infiltration - Portscan"},
+        {5, "DoS GoldenEye"},
+        {6, "FTP-Patator"},
+        {7, "DoS Slowloris"},
+        {8, "SSH-Patator"},
+        {9, "DoS Slowhttptest"},
+        {10, "Botnet"},
+        {11, "Brute Force"},
+        {12, "Infiltration"},
+        {13, "XSS"},
+        {14, "SQL Injection"},
+        {15, "Heartbleed"}
+    };
     std::ifstream file("finaldump.csv");
     std::string line;
-
+    const auto model = fdeep::load_model("../src/model/model.json");
     // Skip the first line (header)
     std::getline(file, line);
 
     while (std::getline(file, line)) {
-        std::vector<std::string> line_vector = process_line_to_vector(line);
+        std::vector<float> line_vector = process_line_to_vector(line);
+        const auto result = model.predict(
+    {fdeep::tensor(fdeep::tensor_shape(79),
+            line_vector)});
         for (const auto& value : line_vector) {
             std::cout << value << " ";
         }
+
+        int maxPosition = findMaxPositionInTensors(result);
+        auto it = statusMap.find(maxPosition);
+
+        if (it != statusMap.end()) {
+            sharedVector.push_back(it->second);
+        } else {
+            // Handle the case where the position is not found in the map
+            sharedVector.push_back("Unknown Status");
+        }
+
         std::cout << std::endl;
     }
+    for (const auto& str : sharedVector) {
+        std::cout << str << std::endl;
+    }
 }
+
+int findMaxPositionInTensors(const fdeep::tensors& tensors) {
+    int maxPosition = 0;
+    float max = tensors[0].as_vector()->at(0);
+    for (int i = 1; i < tensors[0].as_vector()->size(); ++i) {
+        if (tensors[0].as_vector()->at(i) > max) {
+            max = tensors[0].as_vector()->at(i);
+            maxPosition = i;
+        }
+    }
+    return maxPosition;
+}
+
+//std::string

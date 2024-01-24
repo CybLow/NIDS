@@ -13,6 +13,8 @@
 #include <iostream>
 #include <cmath>
 #include <iomanip>
+#include <fdeep/fdeep.hpp>
+#include "../include/globals.h"
 
 void pcapToCsv();
 
@@ -24,8 +26,10 @@ std::string process_scientific_notation(const std::string& s);
 
 void process_csv_scientific();
 
-std::vector<std::string> process_line_to_vector(const std::string& line);
+std::vector<float> process_line_to_vector(const std::string& line);
 
 void read_and_process_csv();
+
+int findMaxPositionInTensors(const fdeep::tensors& tensors);
 
 #endif //PACKETTOCSV_H

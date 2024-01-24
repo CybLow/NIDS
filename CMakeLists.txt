@@ -29,7 +29,8 @@ add_executable(NIDS
         include/packet/packetToCsv.h
         include/packet/PacketFilter.h
         src/ui/HexAsciiDisplay.cpp
-        include/ui/HexAsciiDisplay.h)
+        include/ui/HexAsciiDisplay.h
+        include/globals.h)
 
 target_link_libraries(NIDS ${PCAP_LIBRARY})
 

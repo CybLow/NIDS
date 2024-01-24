@@ -24,6 +24,7 @@
 #include <string>
 #include <QScrollArea>
 
+#include "../include/globals.h"
 #include "../packet/PacketCapture.h"
 #include "../packet/PacketInfo.h"
 #include "../packet/PacketFilter.h"

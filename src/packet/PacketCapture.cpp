@@ -1,11 +1,11 @@
 #include "../../include/packet/PacketCapture.h"
 
 #include <iostream>
-#include <netinet/ip.h>        // For IP header
-#include <netinet/tcp.h>       // For TCP header
-#include <netinet/udp.h>       // For UDP header
-#include <arpa/inet.h>         // For inet_ntoa
-#include <netinet/if_ether.h>  // For ether_header and ETHERTYPE_IP
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
+#include <arpa/inet.h>
+#include <netinet/if_ether.h>
 #include "../../include/packet/packetToCsv.h"
 
 PacketCapture::PacketCapture(const string& interface, const string& filterStr, QObject *parent)
@@ -97,7 +97,6 @@ void PacketCapture::ProcessPacket(const struct pcap_pkthdr* pkthdr, const u_char
             packetInfo.protocol = "Unknown";
             // Other protocols such as IGMP and others
         }
-        // Additional protocol parsing as necessary
     }
 
     packetInfo.rawData.assign(packet, packet + pkthdr->len);
@@ -146,8 +145,6 @@ void PacketCapture::startPcapDump(const string& filename) {
         cerr << "Error opening dump file: " << pcap_geterr(handle_) << endl;
         return;
     }
-
-    // Other initializations if necessary
 }
 
 // This function should be called every time a packet is captured
@@ -164,6 +161,7 @@ void PacketCapture::stopPcapDump() {
         dumper_ = nullptr;
     }
     pcapToCsv();
+
 }
 
 #include "../../include/packet/PacketCapture.moc"
