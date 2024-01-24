@@ -11,6 +11,7 @@ Ensure you have the following prerequisites installed:
 - **Qt5** - [Qt5 GitHub Repository](https://github.com/qt/qt5)
 - **libpcap** - [libpcap GitHub Repository](https://github.com/the-tcpdump-group/libpcap)
 - **frugally-deep** - [frugally-deep GitHub Repository](https://github.com/Dobiasd/frugally-deep/blob/master/INSTALL.md)
+
 For more info check [INSTALL.md](https://github.com/CybLow/NIDS/blob/main/INSTALL.md))
 
 ## Features
@@ -33,6 +34,7 @@ sudo ./NIDS
 Known issues include crashes during report generation/computing due to memory allocation errors. Report bugs with detailed information about the circumstances.
 
 ## To-Do
+- **Restructuration**: Do some change in code structure to improve the code clarity. 
 - **Windows Portability**: Adapt code for Windows compatibility.
 - **Code Refactoring**: Improve code clarity and consistency.
 - **YARA Rules and AI Integration**: Enhance detection with YARA rules and AI.
