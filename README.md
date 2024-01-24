@@ -1,14 +1,17 @@
 # NIDS - Network Intrusion Detection System
 
+## WARNING : AT THE MOMENT ONLY LINUX SYSTEM ARE SUPPORTED (due to CICFlowMeter and some library of pcap data extraction)
+
 ## Introduction
 NIDS is an advanced Network Intrusion Detection System leveraging AI to monitor and analyze network traffic for potential threats. It integrates CICFlowMeter for packet data extraction and uses an AI model to detect and classify network attacks.
 
 ## Prerequisites
 Ensure you have the following prerequisites installed:
-- **CMake** (Version 3.15 or higher)
-- **Qt5**
+- **CMake** [Version 3.15 or higher](https://gitlab.kitware.com/cmake/cmake)
+- **Qt5** - [Qt5 GitHub Repository](https://github.com/qt/qt5)
 - **libpcap** - [libpcap GitHub Repository](https://github.com/the-tcpdump-group/libpcap)
 - **frugally-deep** - [frugally-deep GitHub Repository](https://github.com/Dobiasd/frugally-deep/blob/master/INSTALL.md)
+For more info check [INSTALL.md](https://github.com/CybLow/NIDS/blob/main/INSTALL.md))
 
 ## Features
 - **AI-Powered Attack Identification**: Utilizes AI to detect and classify network attacks.
