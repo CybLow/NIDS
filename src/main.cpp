@@ -1,7 +1,7 @@
 #include "infra/platform/SocketInit.h"
 #include "infra/capture/PcapCapture.h"
 #include "infra/analysis/FdeepAnalyzer.h"
-#include "infra/flow/CsvFlowProcessor.h"
+#include "infra/flow/NativeFlowExtractor.h"
 #include "app/CaptureController.h"
 #include "app/AnalysisService.h"
 #include "ui/MainWindow.h"
@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
     auto controller = std::make_unique<nids::app::CaptureController>(std::move(capture));
 
     auto analyzer = std::make_unique<nids::infra::FdeepAnalyzer>();
-    auto flowExtractor = std::make_unique<nids::infra::CsvFlowProcessor>();
+    auto flowExtractor = std::make_unique<nids::infra::NativeFlowExtractor>();
     auto analysisService = std::make_unique<nids::app::AnalysisService>(
         std::move(analyzer), std::move(flowExtractor));
 

@@ -134,6 +134,22 @@ inline std::uint8_t getIpProtocol(const IPv4Header* h) noexcept {
 #endif
 }
 
+inline std::uint8_t getIpIhl(const IPv4Header* h) noexcept {
+#ifdef _WIN32
+    return (h->versionIhl & 0x0F) * 4;
+#else
+    return static_cast<std::uint8_t>(h->ip_hl * 4);
+#endif
+}
+
+inline std::uint16_t getIpTotalLength(const IPv4Header* h) noexcept {
+#ifdef _WIN32
+    return ntohs(h->totalLength);
+#else
+    return ntohs(h->ip_len);
+#endif
+}
+
 inline const char* getIpSrcStr(const IPv4Header* h) noexcept {
 #ifdef _WIN32
     static thread_local char buf[INET_ADDRSTRLEN];
@@ -155,6 +171,40 @@ inline const char* getIpDstStr(const IPv4Header* h) noexcept {
     return buf;
 #else
     return inet_ntoa(h->ip_dst);
+#endif
+}
+
+// TCP flag bits (RFC 793 + RFC 3168 ECN)
+constexpr std::uint8_t kTcpFin = 0x01;
+constexpr std::uint8_t kTcpSyn = 0x02;
+constexpr std::uint8_t kTcpRst = 0x04;
+constexpr std::uint8_t kTcpPsh = 0x08;
+constexpr std::uint8_t kTcpAck = 0x10;
+constexpr std::uint8_t kTcpUrg = 0x20;
+constexpr std::uint8_t kTcpEce = 0x40;
+constexpr std::uint8_t kTcpCwr = 0x80;
+
+inline std::uint8_t getTcpFlags(const TcpHeader* h) noexcept {
+#ifdef _WIN32
+    return h->flags;
+#else
+    return static_cast<std::uint8_t>(h->th_flags);
+#endif
+}
+
+inline std::uint16_t getTcpWindow(const TcpHeader* h) noexcept {
+#ifdef _WIN32
+    return ntohs(h->window);
+#else
+    return ntohs(h->th_win);
+#endif
+}
+
+inline std::uint8_t getTcpDataOffset(const TcpHeader* h) noexcept {
+#ifdef _WIN32
+    return (h->dataOffset >> 4) * 4;
+#else
+    return h->th_off * 4;
 #endif
 }
 

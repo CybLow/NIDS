@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+# Build directories
+build/
+cmake-build-*/
+
+# Test artifacts
+*.pcap
+*.csv

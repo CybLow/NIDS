@@ -98,7 +98,7 @@ NIDS/
     infra/                Infrastructure
       capture/            PcapCapture, RAII handles
       analysis/           FdeepAnalyzer, OnnxAnalyzer
-      flow/               CsvFlowProcessor, NativeFlowExtractor
+      flow/               NativeFlowExtractor (native C++ flow feature extraction)
       platform/           NetworkHeaders, SocketInit
     app/                  Application layer
       CaptureController   Capture lifecycle management
@@ -114,12 +114,11 @@ NIDS/
   tests/
     unit/                 Unit tests (GoogleTest)
     integration/          Integration tests
-  pcaptocsv/              CICFlowMeter scripts (legacy)
 ```
 
 ## Roadmap
 
-- [ ] Complete native C++ flow feature extraction (replace CICFlowMeter)
+- [x] Native C++ flow feature extraction (replaces CICFlowMeter)
 - [ ] ONNX Runtime integration for GPU-accelerated inference
 - [ ] gRPC client/server for remote capture
 - [ ] Real-time per-flow AI detection

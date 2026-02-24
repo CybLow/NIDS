@@ -13,9 +13,7 @@
 // - Header length, packet/byte rate
 // - Subflow metrics, active/idle time stats
 //
-// Implementation status: SCAFFOLD (not yet implemented)
-// The interface is ready; implement compute logic based on CICFlowMeter's
-// Java source: https://github.com/ahlashkari/CICFlowMeter
+// Implements CIC-IDS2017 compatible flow features; no Java dependency.
 
 #include "core/services/IFlowExtractor.h"
 
@@ -45,8 +43,12 @@ struct FlowStats {
     std::uint64_t totalBwdBytes = 0;
     std::vector<std::uint32_t> fwdPacketLengths;
     std::vector<std::uint32_t> bwdPacketLengths;
+    std::vector<std::uint32_t> allPacketLengths;
+    std::vector<std::int64_t> flowIatUs;
     std::vector<std::int64_t> fwdIatUs;
     std::vector<std::int64_t> bwdIatUs;
+    std::int64_t lastFwdTimeUs = -1;
+    std::int64_t lastBwdTimeUs = -1;
     std::uint32_t fwdPshFlags = 0;
     std::uint32_t bwdPshFlags = 0;
     std::uint32_t fwdUrgFlags = 0;
@@ -54,13 +56,41 @@ struct FlowStats {
     std::uint32_t finCount = 0;
     std::uint32_t synCount = 0;
     std::uint32_t rstCount = 0;
+    std::uint32_t pshCount = 0;
     std::uint32_t ackCount = 0;
+    std::uint32_t urgCount = 0;
+    std::uint32_t cwrCount = 0;
+    std::uint32_t eceCount = 0;
+    std::uint32_t fwdHeaderBytes = 0;
+    std::uint32_t bwdHeaderBytes = 0;
+    std::uint32_t fwdInitWinBytes = 0;
+    std::uint32_t bwdInitWinBytes = 0;
+    std::uint32_t actDataPktFwd = 0;
+    std::uint32_t minSegSizeForward = 0;
+    std::vector<std::int64_t> activePeriodsUs;
+    std::vector<std::int64_t> idlePeriodsUs;
+    std::int64_t lastActiveTimeUs = -1;
+    std::int64_t lastIdleTimeUs = -1;
+    std::vector<std::uint32_t> fwdBulkBytes;
+    std::vector<std::uint32_t> bwdBulkBytes;
+    std::vector<std::uint32_t> fwdBulkPackets;
+    std::vector<std::uint32_t> bwdBulkPackets;
 
-    [[nodiscard]] std::vector<float> toFeatureVector() const;
+    std::uint32_t curFwdBulkPkts = 0;
+    std::uint32_t curFwdBulkBytes = 0;
+    std::uint32_t curBwdBulkPkts = 0;
+    std::uint32_t curBwdBulkBytes = 0;
+    bool lastPacketWasFwd = false;
+
+    [[nodiscard]] std::vector<float> toFeatureVector(std::uint16_t dstPort) const;
 };
 
 class NativeFlowExtractor : public nids::core::IFlowExtractor {
 public:
+    NativeFlowExtractor();
+
+    void setFlowTimeout(std::int64_t timeoutUs);
+
     [[nodiscard]] bool extractFlows(const std::string& pcapPath,
                                     const std::string& outputCsvPath) override;
 
@@ -69,9 +99,12 @@ public:
 
 private:
     std::map<FlowKey, FlowStats> flows_;
+    std::vector<std::pair<FlowKey, FlowStats>> completedFlows_;
+    std::int64_t flowTimeoutUs_ = 600'000'000;  // 600 seconds default
 
     void processPacket(const std::uint8_t* data, std::uint32_t len,
                        std::int64_t timestampUs);
+    void finalizeBulks();
     void writeCsv(const std::string& outputPath) const;
 };
 

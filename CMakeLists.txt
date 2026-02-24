@@ -34,7 +34,7 @@ set(NIDS_CORE_SOURCES
 set(NIDS_INFRA_SOURCES
     src/infra/capture/PcapCapture.cpp
     src/infra/analysis/FdeepAnalyzer.cpp
-    src/infra/flow/CsvFlowProcessor.cpp
+    src/infra/flow/NativeFlowExtractor.cpp
     src/infra/platform/SocketInit.cpp
 )
 

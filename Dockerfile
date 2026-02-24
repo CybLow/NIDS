@@ -55,7 +55,6 @@ WORKDIR /app
 
 COPY --from=builder /app/build/NIDS /app/NIDS
 COPY --from=builder /app/src/model/model.json /app/model/model.json
-COPY --from=builder /app/pcaptocsv /app/pcaptocsv
 
 RUN useradd -m -s /bin/bash nids
 USER nids
