@@ -509,7 +509,11 @@ void PacketCaptureUI::generateReport() {
             out << "IP source : "<< QString::fromStdString(packetInfoList.at(i).ipSource) << Qt::endl;
             out << "Port de destination : "<< QString::fromStdString(packetInfoList.at(i).portDestination) << Qt::endl;
             out << "Port source : "<< QString::fromStdString(packetInfoList.at(i).portSource) << Qt::endl;
-            out << "Statut du Paquet : " << QString::fromStdString(sharedVector.at(1)) << "\n";
+            if (i < sharedVector.size()) {
+                out << "Packet Status: " << QString::fromStdString(sharedVector.at(i)) << "\n";
+            } else {
+                out << "Packet Status: N/A\n";
+            }
             out << "\n";
         }
         // HERE PUT THE CONTENT FOR REPORT GENERATION

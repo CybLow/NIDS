@@ -1,44 +1,102 @@
-cmake_minimum_required(VERSION ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION})
+cmake_minimum_required(VERSION 3.20)
 
-project(NIDS)
+project(NIDS
+    VERSION 0.2.0
+    DESCRIPTION "Network Intrusion Detection System"
+    LANGUAGES CXX
+)
 
-set(CMAKE_CXX_STANDARD ${CMAKE_LANGUAGE_VERSION})
-include(FindPCAP.cmake)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(frugally-deep CONFIG REQUIRED)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-add_executable(NIDS
-        src/main.cpp
-        src/packet/PacketCapture.cpp
-        include/packet/PacketCapture.h
-        src/packet/PacketInfo.cpp
-        include/packet/PacketInfo.h
-        src/utils/ListNetworkInterfaces.cpp
-        include/utils/ListNetworkInterfaces.h
-        src/ui/ui.cpp
-        include/ui/ui.h
-        src/packet/PacketCaptureNotifier.cpp
-        include/packet/PacketCaptureNotifier.h
-        src/ui/FullListDialog.cpp
-        include/ui/FullListDialog.h
-        src/packet/PacketFilter.cpp
-        include/packet/PacketFilter.h
-        src/packet/packetToCsv.cpp
-        include/packet/packetToCsv.h
-        src/packet/packetToCsv.cpp
-        include/packet/packetToCsv.h
-        include/packet/PacketFilter.h
-        src/ui/HexAsciiDisplay.cpp
-        include/ui/HexAsciiDisplay.h
-        include/globals.h)
+option(NIDS_BUILD_TESTS "Build unit tests" OFF)
+option(NIDS_BUILD_SERVER "Build headless server" OFF)
 
-target_link_libraries(NIDS ${PCAP_LIBRARY})
-
+include(${CMAKE_SOURCE_DIR}/cmake/FindPCAP.cmake)
 
 find_package(Threads REQUIRED)
-target_link_libraries(NIDS ${CMAKE_THREAD_LIBS_INIT})
-
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
 find_package(Qt5 COMPONENTS Core Gui Widgets REQUIRED)
-set(CMAKE_AUTOMOC ON)
-target_link_libraries(NIDS Qt5::Widgets Qt5::Core Qt5::Gui frugally-deep::fdeep)
+find_package(frugally-deep CONFIG REQUIRED)
+find_package(spdlog CONFIG QUIET)
+
+set(NIDS_CORE_SOURCES
+    src/core/model/PacketInfo.cpp
+    src/core/model/CaptureSession.cpp
+    src/core/services/PacketFilter.cpp
+    src/core/services/ServiceRegistry.cpp
+)
+
+set(NIDS_INFRA_SOURCES
+    src/infra/capture/PcapCapture.cpp
+    src/infra/analysis/FdeepAnalyzer.cpp
+    src/infra/flow/CsvFlowProcessor.cpp
+    src/infra/platform/SocketInit.cpp
+)
+
+set(NIDS_APP_SOURCES
+    src/app/CaptureController.cpp
+    src/app/AnalysisService.cpp
+    src/app/ReportGenerator.cpp
+)
+
+set(NIDS_UI_SOURCES
+    src/ui/MainWindow.cpp
+    src/ui/PacketTableModel.cpp
+    src/ui/HexView.cpp
+    src/ui/FilterPanel.cpp
+    src/ui/dialogs/ServiceDialog.cpp
+)
+
+add_executable(NIDS
+    src/main.cpp
+    ${NIDS_CORE_SOURCES}
+    ${NIDS_INFRA_SOURCES}
+    ${NIDS_APP_SOURCES}
+    ${NIDS_UI_SOURCES}
+)
+
+target_include_directories(NIDS PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${PCAP_INCLUDE_DIR}
+)
+
+target_link_libraries(NIDS PRIVATE
+    ${PCAP_LIBRARY}
+    Threads::Threads
+    Qt5::Widgets
+    Qt5::Core
+    Qt5::Gui
+    frugally-deep::fdeep
+)
+
+if(spdlog_FOUND)
+    target_link_libraries(NIDS PRIVATE spdlog::spdlog)
+    target_compile_definitions(NIDS PRIVATE NIDS_HAS_SPDLOG)
+endif()
+
+target_compile_definitions(NIDS PRIVATE
+    $<$<CONFIG:Debug>:NIDS_DEBUG>
+)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(NIDS PRIVATE
+        -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+    )
+    target_link_options(NIDS PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+    )
+endif()
+
+install(TARGETS NIDS RUNTIME DESTINATION bin)
+install(FILES src/model/model.json DESTINATION share/nids/model)
+
+if(NIDS_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

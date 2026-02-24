@@ -1,48 +1,133 @@
 # NIDS - Network Intrusion Detection System
 
-## WARNING : AT THE MOMENT ONLY LINUX SYSTEM ARE SUPPORTED (due to CICFlowMeter and some library of pcap data extraction)
+An advanced Network Intrusion Detection System leveraging AI to monitor and analyze
+network traffic for potential threats. NIDS captures packets, extracts flow features,
+and classifies traffic using a neural network model.
 
-## Introduction
-NIDS is an advanced Network Intrusion Detection System leveraging AI to monitor and analyze network traffic for potential threats. It integrates CICFlowMeter for packet data extraction and uses an AI model to detect and classify network attacks.
+## Architecture
 
-## Prerequisites
-Ensure you have the following prerequisites installed:
-- **CMake** [Version 3.15 or higher](https://gitlab.kitware.com/cmake/cmake)
-- **Qt5** - [Qt5 GitHub Repository](https://github.com/qt/qt5)
-- **libpcap** - [libpcap GitHub Repository](https://github.com/the-tcpdump-group/libpcap)
-- **frugally-deep** - [frugally-deep GitHub Repository](https://github.com/Dobiasd/frugally-deep/)
+The project follows Clean Architecture with four layers:
 
-For more info check [INSTALL.md](https://github.com/CybLow/NIDS/blob/main/INSTALL.md)
+```
+src/
+  core/       Pure C++ domain logic (no platform dependencies)
+  infra/      Platform-specific implementations (pcap, ML backends)
+  app/        Application orchestration (controllers, services)
+  ui/         Qt5 presentation layer
+  server/     gRPC headless daemon (planned)
+  client/     CLI/GUI client (planned)
+```
+
+See [AGENTS.md](AGENTS.md) for coding standards and design patterns.
 
 ## Features
-- **AI-Powered Attack Identification**: Utilizes AI to detect and classify network attacks.
-- **Summary Report**: After packet capture a report are created for a summary analysis.
-- **Application Detection**: Identifies applications generating network traffic.
-- **BPF/Standard Filters**: Supports BPF and standard filters, with GUI for standard filters.
-- **Raw Data Inspection**: View raw data of network requests.
-- **Notification Controls**: Enable/disable notifications for report generation.
 
-## Build && Installation
+- **AI-Powered Attack Detection**: Neural network classifies 16 attack types
+  (DDoS, Portscan, SQL Injection, XSS, Brute Force, etc.)
+- **Real-time Packet Capture**: Live capture with BPF filtering
+- **Application Detection**: Port-to-service mapping for 100+ protocols
+- **Hex/ASCII Inspector**: Raw packet data viewer
+- **Report Generation**: Post-capture analysis reports
+- **Cross-Platform**: Linux and Windows (via Npcap)
+
+## Prerequisites
+
+- **CMake** >= 3.20
+- **C++17** compiler (GCC 9+, Clang 10+, MSVC 2019+)
+- **Qt5** (Core, Gui, Widgets)
+- **libpcap** (Linux/macOS) or **Npcap SDK** (Windows)
+- **frugally-deep** (or ONNX Runtime as alternative)
+
+### Quick Install (Ubuntu/Debian)
+
+```bash
+sudo apt update
+sudo apt install -y cmake g++ qtbase5-dev libpcap-dev libeigen3-dev nlohmann-json3-dev
+```
+
+For frugally-deep, see [INSTALL.md](INSTALL.md).
+
+## Build
+
 ```bash
 mkdir build && cd build
-cmake ..
-make
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
 sudo ./NIDS
 ```
 
-## Bug Reporting
-Known issues include crashes during report generation/computing due to memory allocation errors. Report bugs with detailed information about the circumstances.
+### Build Options
 
-## To-Do
-- **Restructuration**: Do some change in code structure to improve the code clarity. 
-- **Windows Portability**: Adapt code for Windows compatibility.
-- **Code Refactoring**: Improve code clarity and consistency.
-- **YARA Rules and AI Integration**: Enhance detection with YARA rules and AI.
-- **Email Notifications**: Implement email notifications for reports.
-- **Live AI Detection**: Develop real-time AI detection.
-- **Endpoint Network Isolation**: Implement real filtering for network endpoints.
-- **Enhanced Raw Data Information**: Provide more details in Raw Data menu.
-- **Security Menu Development**: Make the Security menu functional.
-- **Deep Packet Inspection (DPI)**: Implement DPI for thorough packet analysis.
-- **CICFlowMeter**: Implement in CPP for better execution without do some garbage (like the actual solution).
+| Option | Default | Description |
+|--------|---------|-------------|
+| `NIDS_BUILD_TESTS` | OFF | Build unit tests |
+| `NIDS_BUILD_SERVER` | OFF | Build headless gRPC server |
 
+### Run Tests
+
+```bash
+cmake .. -DNIDS_BUILD_TESTS=ON
+make -j$(nproc)
+ctest --output-on-failure
+```
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Requires `--net=host` and `NET_RAW` capability for packet capture.
+
+## Project Structure
+
+```
+NIDS/
+  CMakeLists.txt          Root build configuration
+  vcpkg.json              Dependency manifest
+  Dockerfile              Multi-stage Docker build
+  docker-compose.yml      Container orchestration
+  AGENTS.md               Coding standards and architecture guide
+  proto/nids.proto        gRPC service definition
+  cmake/FindPCAP.cmake    Cross-platform PCAP finder
+  src/
+    main.cpp              Application entry point
+    core/                 Domain layer
+      model/              Data structures (PacketInfo, AttackType, CaptureSession)
+      services/           Interfaces and pure logic (IPacketCapture, PacketFilter)
+    infra/                Infrastructure
+      capture/            PcapCapture, RAII handles
+      analysis/           FdeepAnalyzer, OnnxAnalyzer
+      flow/               CsvFlowProcessor, NativeFlowExtractor
+      platform/           NetworkHeaders, SocketInit
+    app/                  Application layer
+      CaptureController   Capture lifecycle management
+      AnalysisService     ML pipeline orchestration
+      ReportGenerator     Report output
+    ui/                   Qt5 presentation
+      MainWindow          Main application window
+      PacketTableModel    MVC table model
+      HexView             Hex/ASCII display
+      FilterPanel         Capture filter controls
+    server/               gRPC server daemon (scaffold)
+    client/               gRPC client (scaffold)
+  tests/
+    unit/                 Unit tests (GoogleTest)
+    integration/          Integration tests
+  pcaptocsv/              CICFlowMeter scripts (legacy)
+```
+
+## Roadmap
+
+- [ ] Complete native C++ flow feature extraction (replace CICFlowMeter)
+- [ ] ONNX Runtime integration for GPU-accelerated inference
+- [ ] gRPC client/server for remote capture
+- [ ] Real-time per-flow AI detection
+- [ ] YARA rules integration
+- [ ] Deep Packet Inspection (DPI)
+- [ ] Email notifications
+- [ ] Web dashboard
+
+## License
+
+See repository for license information.

@@ -1,0 +1,14 @@
+{
+  "name": "nids",
+  "version": "0.2.0",
+  "description": "Network Intrusion Detection System with AI-powered attack classification",
+  "dependencies": [
+    "frugally-deep",
+    "nlohmann-json",
+    "spdlog",
+    {
+      "name": "gtest",
+      "platform": "!emscripten"
+    }
+  ]
+}

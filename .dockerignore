@@ -1,0 +1,11 @@
+cmake-build-*
+build/
+.idea/
+.git/
+.gitignore
+*.o
+*.so
+*.a
+*.exe
+data/
+.cursor/

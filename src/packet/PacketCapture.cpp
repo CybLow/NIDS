@@ -9,7 +9,7 @@
 #include "../../include/packet/packetToCsv.h"
 
 PacketCapture::PacketCapture(const string& interface, const string& filterStr, QObject *parent)
-        : QThread(parent), interface_(interface), filterString_(filterStr), handle_(nullptr), capturing(false) {}
+        : QThread(parent), interface_(interface), filterString_(filterStr), handle_(nullptr), dumper_(nullptr), capturing(false) {}
 
 
 PacketCapture::~PacketCapture() {
@@ -42,9 +42,9 @@ void PacketCapture::StopCapture() {
     if (!capturing.load()) return;
 
     capturing.store(false);
-    pcap_breakloop(handle_);
 
     if (handle_) {
+        pcap_breakloop(handle_);
         pcap_close(handle_);
         handle_ = nullptr;
     }

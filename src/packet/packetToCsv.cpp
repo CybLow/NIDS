@@ -40,13 +40,14 @@ void process_csv() {
             tokens.push_back(token);
         }
 
-        // Assuming the order of the columns is known and fixed
-        for (int i = 0; i < tokens.size(); ++i) {
+        bool firstWritten = false;
+        for (size_t i = 0; i < tokens.size(); ++i) {
             if (i != 0 && i != 1 && i != 2 && i != 3 && i != 4 && i != 6 && i != tokens.size() - 1) {
-                output_file << tokens[i];
-                if (i < tokens.size() - 1) {
+                if (firstWritten) {
                     output_file << ",";
                 }
+                output_file << tokens[i];
+                firstWritten = true;
             }
         }
         output_file << "\n";

@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package nids;
+
+option cc_enable_arenas = true;
+
+// Service definition for the NIDS capture daemon
+service NidsService {
+    // List available network interfaces
+    rpc ListInterfaces(ListInterfacesRequest) returns (ListInterfacesResponse);
+
+    // Start a capture session
+    rpc StartCapture(StartCaptureRequest) returns (StartCaptureResponse);
+
+    // Stop the current capture session
+    rpc StopCapture(StopCaptureRequest) returns (StopCaptureResponse);
+
+    // Stream captured packets in real-time
+    rpc StreamPackets(StreamPacketsRequest) returns (stream PacketEvent);
+
+    // Run ML analysis on the captured data
+    rpc AnalyzeCapture(AnalyzeCaptureRequest) returns (AnalyzeCaptureResponse);
+
+    // Get the current capture status
+    rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+
+    // Generate a report
+    rpc GenerateReport(GenerateReportRequest) returns (GenerateReportResponse);
+}
+
+// --- Request/Response messages ---
+
+message ListInterfacesRequest {}
+
+message ListInterfacesResponse {
+    repeated string interfaces = 1;
+}
+
+message CaptureFilter {
+    string protocol = 1;
+    string source_ip = 2;
+    string destination_ip = 3;
+    string source_port = 4;
+    string destination_port = 5;
+    string custom_bpf = 6;
+}
+
+message StartCaptureRequest {
+    string interface = 1;
+    CaptureFilter filter = 2;
+    string dump_file = 3;
+}
+
+message StartCaptureResponse {
+    bool success = 1;
+    string message = 2;
+    string session_id = 3;
+}
+
+message StopCaptureRequest {
+    string session_id = 1;
+}
+
+message StopCaptureResponse {
+    bool success = 1;
+    uint64 total_packets = 2;
+}
+
+message StreamPacketsRequest {
+    string session_id = 1;
+}
+
+message PacketEvent {
+    uint64 index = 1;
+    string protocol = 2;
+    string application = 3;
+    string ip_source = 4;
+    string port_source = 5;
+    string ip_destination = 6;
+    string port_destination = 7;
+    bytes raw_data = 8;
+}
+
+message AnalyzeCaptureRequest {
+    string session_id = 1;
+    string model_path = 2;
+}
+
+message AnalyzeCaptureResponse {
+    bool success = 1;
+    uint32 total_analyzed = 2;
+    map<string, uint32> attack_counts = 3;
+}
+
+message GetStatusRequest {}
+
+message GetStatusResponse {
+    bool capturing = 1;
+    string current_interface = 2;
+    uint64 packets_captured = 3;
+    string session_id = 4;
+}
+
+message GenerateReportRequest {
+    string session_id = 1;
+    string output_path = 2;
+}
+
+message GenerateReportResponse {
+    bool success = 1;
+    string file_path = 2;
+    int64 generation_time_ms = 3;
+}
