@@ -1,6 +1,7 @@
+#include "core/services/Configuration.h"
 #include "infra/platform/SocketInit.h"
 #include "infra/capture/PcapCapture.h"
-#include "infra/analysis/FdeepAnalyzer.h"
+#include "infra/analysis/AnalyzerFactory.h"
 #include "infra/flow/NativeFlowExtractor.h"
 #include "app/CaptureController.h"
 #include "app/AnalysisService.h"
@@ -8,17 +9,21 @@
 
 #include <QApplication>
 
+#include <spdlog/spdlog.h>
+
 #include <memory>
-#include <iostream>
 
 int main(int argc, char* argv[]) {
+    spdlog::set_level(spdlog::level::info);
+
     nids::platform::NetworkInitGuard networkGuard;
     if (!networkGuard.isInitialized()) {
-        std::cerr << "Failed to initialize networking" << std::endl;
+        spdlog::critical("Failed to initialize networking");
         return 1;
     }
 
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    auto& config = nids::core::Configuration::instance();
+
     QApplication app(argc, argv);
 
     qRegisterMetaType<nids::core::PacketInfo>("nids::core::PacketInfo");
@@ -26,7 +31,12 @@ int main(int argc, char* argv[]) {
     auto capture = std::make_unique<nids::infra::PcapCapture>();
     auto controller = std::make_unique<nids::app::CaptureController>(std::move(capture));
 
-    auto analyzer = std::make_unique<nids::infra::FdeepAnalyzer>();
+    auto analyzer = nids::infra::createAnalyzer();
+    if (!analyzer->loadModel(config.modelPath().string())) {
+        spdlog::warn("ML model not loaded from '{}' -- analysis will be unavailable",
+                     config.modelPath().string());
+    }
+
     auto flowExtractor = std::make_unique<nids::infra::NativeFlowExtractor>();
     auto analysisService = std::make_unique<nids::app::AnalysisService>(
         std::move(analyzer), std::move(flowExtractor));

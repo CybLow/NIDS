@@ -15,10 +15,10 @@ UI -> App -> Core, and Infra -> Core.
 
 ```
 src/
-  core/       # Domain layer -- pure C++17, zero platform / framework deps
-  infra/      # Infrastructure -- platform-specific implementations
+  core/       # Domain layer -- pure C++20, zero platform / framework deps
+  infra/      # Infrastructure -- platform-specific implementations (ONNX Runtime, pcap)
   app/        # Application / use-case layer -- orchestration logic
-  ui/         # Presentation layer -- Qt-specific code
+  ui/         # Presentation layer -- Qt6-specific code
   server/     # (Future) gRPC/REST headless daemon
   client/     # (Future) CLI client
 ```
@@ -52,11 +52,31 @@ public:
     virtual void startCapture() = 0;
     virtual void stopCapture() = 0;
     using PacketCallback = std::function<void(const PacketInfo&)>;
+    using ErrorCallback = std::function<void(const std::string&)>;
     virtual void setCallback(PacketCallback cb) = 0;
+    virtual void setErrorCallback(ErrorCallback cb) = 0;
 };
 ```
 
-Concrete implementations live in `infra/` and are injected into `app/` layer classes.
+```cpp
+// core/services/IPacketAnalyzer.h
+class IPacketAnalyzer {
+public:
+    virtual ~IPacketAnalyzer() = default;
+    [[nodiscard]] virtual bool loadModel(const std::string& modelPath) = 0;
+    [[nodiscard]] virtual AttackType predict(std::span<const float> features) = 0;
+};
+```
+
+Concrete implementations live in `infra/` and are injected into `app/` layer classes
+via factory methods (see Section 5.3).
+
+### 1.4 Configuration
+
+The `Configuration` singleton (`core/services/Configuration.h`) centralizes all
+runtime settings (model path, ONNX thread count, flow timeouts, UI defaults).
+Access via `Configuration::instance()`. Never scatter magic numbers or hardcoded
+paths across the codebase.
 
 ---
 
@@ -64,10 +84,26 @@ Concrete implementations live in `infra/` and are injected into `app/` layer cla
 
 ### 2.1 Language Version
 
-- **Minimum**: C++17 (`-std=c++17`).
-- **Target**: C++20 when all target compilers support it.
+- **Standard**: C++20 (`-std=c++20`). All code must compile under C++20.
 - Use `std::filesystem`, `std::optional`, `std::variant`, structured bindings,
   `if constexpr`, `[[nodiscard]]`, `[[maybe_unused]]` freely.
+
+### 2.1.1 C++20 Features in Use
+
+The following C++20 features are actively used in the codebase:
+
+- **`std::span`**: Use for non-owning views over contiguous data (e.g., feature vectors
+  in `IPacketAnalyzer::predict(std::span<const float>)`).
+- **`std::ranges`**: Prefer `std::ranges::find`, `std::ranges::transform`, etc. over
+  `std::find`, `std::transform` when operating on whole containers.
+- **`constexpr std::string_view`**: Use for compile-time string constants (e.g.,
+  `attackTypeToString()` returns `constexpr std::string_view`).
+- **`[[likely]]` / `[[unlikely]]`**: Use on hot-path branches where performance matters
+  (e.g., packet parsing, benign classification in ML inference).
+- **Concepts**: Use to constrain template parameters where it improves readability.
+- **Designated initializers**: Use for struct initialization when it improves clarity.
+- **`std::jthread`**: Prefer over `std::thread` for non-Qt threads (RAII-based joining).
+- **`std::scoped_lock`**: Prefer over `std::lock_guard` for locking one or more mutexes.
 
 ### 2.2 Naming Conventions
 
@@ -204,6 +240,16 @@ Use to create platform-specific implementations without exposing concrete types.
 ```cpp
 std::unique_ptr<IPacketCapture> createCaptureBackend();
 // Returns PcapCapture on Linux/macOS, NpcapCapture on Windows.
+```
+
+For ML analyzers, use `AnalyzerFactory` instead of constructing `OnnxAnalyzer` directly:
+
+```cpp
+// infra/analysis/AnalyzerFactory.h
+class AnalyzerFactory {
+public:
+    [[nodiscard]] static std::unique_ptr<IPacketAnalyzer> create();
+};
 ```
 
 ### 5.4 RAII Wrapper
@@ -346,7 +392,7 @@ All OS-specific network includes are centralized in a single header:
 cmake_minimum_required(VERSION 3.20)
 project(NIDS VERSION 0.2.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
@@ -457,3 +503,11 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `build`, `ci`, `chore`.
 | Magic numbers / strings | Named constants, config files |
 | `u_char` | `std::uint8_t` |
 | Mixed language comments | English only |
+| `Qt5::` prefixed targets | Versionless `Qt::Core`, `Qt::Widgets`, `Qt::Gui` |
+| `std::lock_guard` (single mutex) | `std::scoped_lock` (works with one or more mutexes) |
+| `std::thread` without join guard | `std::jthread` (C++20, RAII-based) |
+| `std::find` / `std::transform` on full containers | `std::ranges::find` / `std::ranges::transform` |
+| `std::string` return for fixed labels | `constexpr std::string_view` |
+| `frugally-deep` / `fdeep` | ONNX Runtime via `OnnxAnalyzer` |
+| Direct `OnnxAnalyzer` construction | `AnalyzerFactory::create()` factory method |
+| Hardcoded model paths / thread counts | `Configuration::instance()` singleton |

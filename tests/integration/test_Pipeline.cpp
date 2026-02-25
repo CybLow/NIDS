@@ -1,0 +1,187 @@
+#include <gtest/gtest.h>
+#include <gmock/gmock.h>
+
+#include "app/AnalysisService.h"
+#include "app/CaptureController.h"
+#include "core/services/IPacketCapture.h"
+#include "core/services/IPacketAnalyzer.h"
+#include "core/services/IFlowExtractor.h"
+#include "core/model/CaptureSession.h"
+#include "core/model/AttackType.h"
+
+#include <QCoreApplication>
+#include <QSignalSpy>
+
+using namespace nids::core;
+using namespace nids::app;
+using ::testing::_;
+using ::testing::Return;
+using ::testing::Invoke;
+
+// ── Mocks ────────────────────────────────────────────────────────────
+
+class MockCapture : public IPacketCapture {
+public:
+    MOCK_METHOD(bool, initialize, (const std::string&, const std::string&), (override));
+    MOCK_METHOD(void, startCapture, (const std::string&), (override));
+    MOCK_METHOD(void, stopCapture, (), (override));
+    MOCK_METHOD(bool, isCapturing, (), (const, override));
+    MOCK_METHOD(void, setPacketCallback, (PacketCallback), (override));
+    MOCK_METHOD(void, setErrorCallback, (ErrorCallback), (override));
+    MOCK_METHOD(std::vector<std::string>, listInterfaces, (), (override));
+};
+
+class MockAnalyzer : public IPacketAnalyzer {
+public:
+    MOCK_METHOD(bool, loadModel, (const std::string&), (override));
+    MOCK_METHOD(AttackType, predict, (const std::vector<float>&), (override));
+};
+
+class MockExtractor : public IFlowExtractor {
+public:
+    MOCK_METHOD(bool, extractFlows, (const std::string&, const std::string&), (override));
+    MOCK_METHOD(std::vector<std::vector<float>>, loadFeatures, (const std::string&), (override));
+};
+
+// ── Fixture ──────────────────────────────────────────────────────────
+
+class PipelineTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!QCoreApplication::instance()) {
+            static int argc = 1;
+            static char appName[] = "test";
+            static char* argv[] = {appName, nullptr};
+            app_ = std::make_unique<QCoreApplication>(argc, argv);
+        }
+    }
+
+    std::unique_ptr<QCoreApplication> app_;
+};
+
+// ── Integration: Capture -> Analysis Pipeline ────────────────────────
+
+TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
+    // Set up capture mock
+    auto capture = std::make_unique<MockCapture>();
+    auto* capturePtr = capture.get();
+    IPacketCapture::PacketCallback packetCb;
+
+    EXPECT_CALL(*capturePtr, setPacketCallback(_))
+        .WillOnce(Invoke([&](IPacketCapture::PacketCallback cb) {
+            packetCb = std::move(cb);
+        }));
+    EXPECT_CALL(*capturePtr, setErrorCallback(_));
+    EXPECT_CALL(*capturePtr, isCapturing())
+        .WillOnce(Return(false))  // startCapture guard
+        .WillOnce(Return(true))   // stopCapture guard
+        .WillRepeatedly(Return(false));
+    EXPECT_CALL(*capturePtr, initialize(_, _)).WillOnce(Return(true));
+    EXPECT_CALL(*capturePtr, startCapture(_));
+    EXPECT_CALL(*capturePtr, stopCapture());
+
+    CaptureController controller(std::move(capture));
+
+    // Start capture
+    PacketFilter filter;
+    filter.networkCard = "eth0";
+    controller.startCapture(filter);
+
+    // Simulate packets arriving
+    for (int i = 0; i < 5; ++i) {
+        PacketInfo pkt;
+        pkt.protocol = "TCP";
+        pkt.ipSource = "192.168.1." + std::to_string(i + 1);
+        pkt.ipDestination = "10.0.0.1";
+        pkt.portSource = std::to_string(10000 + i);
+        pkt.portDestination = "443";
+        packetCb(pkt);
+    }
+
+    EXPECT_EQ(controller.session().packetCount(), 5u);
+
+    // Stop capture
+    controller.stopCapture();
+
+    // Set up analysis mocks
+    auto analyzer = std::make_unique<MockAnalyzer>();
+    auto extractor = std::make_unique<MockExtractor>();
+
+    std::vector<std::vector<float>> flows = {
+        std::vector<float>(77, 0.1f),
+        std::vector<float>(77, 0.9f),
+    };
+
+    EXPECT_CALL(*extractor, extractFlows(_, _)).WillOnce(Return(true));
+    EXPECT_CALL(*extractor, loadFeatures(_)).WillOnce(Return(flows));
+    EXPECT_CALL(*analyzer, predict(_))
+        .WillOnce(Return(AttackType::Benign))
+        .WillOnce(Return(AttackType::SynFlood));
+
+    AnalysisService analysisService(std::move(analyzer), std::move(extractor));
+
+    QSignalSpy startedSpy(&analysisService, &AnalysisService::analysisStarted);
+    QSignalSpy finishedSpy(&analysisService, &AnalysisService::analysisFinished);
+
+    // Run analysis on the captured session
+    analysisService.analyzeCapture("dump.pcap", controller.session());
+
+    EXPECT_EQ(startedSpy.count(), 1);
+    EXPECT_EQ(finishedSpy.count(), 1);
+
+    // Verify analysis results are stored in session
+    EXPECT_EQ(controller.session().getAnalysisResult(0), AttackType::Benign);
+    EXPECT_EQ(controller.session().getAnalysisResult(1), AttackType::SynFlood);
+}
+
+TEST_F(PipelineTest, captureFailure_doesNotProceedToAnalysis) {
+    auto capture = std::make_unique<MockCapture>();
+    auto* capturePtr = capture.get();
+
+    EXPECT_CALL(*capturePtr, setPacketCallback(_));
+    EXPECT_CALL(*capturePtr, setErrorCallback(_));
+    EXPECT_CALL(*capturePtr, isCapturing()).WillRepeatedly(Return(false));
+    EXPECT_CALL(*capturePtr, initialize(_, _)).WillOnce(Return(false));
+
+    CaptureController controller(std::move(capture));
+    QSignalSpy errorSpy(&controller, &CaptureController::captureError);
+
+    PacketFilter filter;
+    filter.networkCard = "bad_iface";
+    controller.startCapture(filter);
+
+    EXPECT_EQ(errorSpy.count(), 1);
+    EXPECT_EQ(controller.session().packetCount(), 0u);
+}
+
+TEST_F(PipelineTest, analysisWithAllAttackTypes) {
+    auto analyzer = std::make_unique<MockAnalyzer>();
+    auto extractor = std::make_unique<MockExtractor>();
+
+    // Create one flow per attack type
+    std::vector<std::vector<float>> flows;
+    for (int i = 0; i < kAttackTypeCount; ++i) {
+        flows.emplace_back(77, static_cast<float>(i) / kAttackTypeCount);
+    }
+
+    int callIndex = 0;
+    EXPECT_CALL(*extractor, extractFlows(_, _)).WillOnce(Return(true));
+    EXPECT_CALL(*extractor, loadFeatures(_)).WillOnce(Return(flows));
+    EXPECT_CALL(*analyzer, predict(_))
+        .Times(kAttackTypeCount)
+        .WillRepeatedly(Invoke([&](const std::vector<float>&) -> AttackType {
+            return attackTypeFromIndex(callIndex++);
+        }));
+
+    AnalysisService service(std::move(analyzer), std::move(extractor));
+
+    CaptureSession session;
+    service.analyzeCapture("all_types.pcap", session);
+
+    // Verify each attack type is correctly stored
+    for (int i = 0; i < kAttackTypeCount; ++i) {
+        EXPECT_EQ(session.getAnalysisResult(static_cast<std::size_t>(i)),
+                  attackTypeFromIndex(i))
+            << "Mismatch at index " << i;
+    }
+}

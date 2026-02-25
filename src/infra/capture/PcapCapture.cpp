@@ -2,7 +2,6 @@
 #include "infra/platform/NetworkHeaders.h"
 
 #include <pcap.h>
-#include <iostream>
 #include <cstring>
 
 namespace nids::infra {
@@ -84,27 +83,32 @@ void PcapCaptureWorker::processPacket(const struct pcap_pkthdr* pkthdr,
     nids::core::PacketInfo info;
 
     auto* ethHeader = reinterpret_cast<const EthernetHeader*>(packet);
-    if (getEtherType(ethHeader) == kEtherTypeIPv4) {
+    if (getEtherType(ethHeader) == kEtherTypeIPv4) [[likely]] {
         auto* ipHeader = reinterpret_cast<const IPv4Header*>(packet + kEthernetHeaderSize);
         info.ipSource = getIpSrcStr(ipHeader);
         info.ipDestination = getIpDstStr(ipHeader);
 
         auto proto = getIpProtocol(ipHeader);
-        if (proto == kIpProtoTcp) {
+        auto ipHeaderLen = getIpIhl(ipHeader);
+
+        // Validate IP header length (minimum 20 bytes, must fit in captured packet)
+        if (ipHeaderLen < 20 || (kEthernetHeaderSize + ipHeaderLen) > pkthdr->caplen) [[unlikely]] {
+            info.protocol = "Malformed";
+        } else if (proto == kIpProtoTcp) [[likely]] {
             auto* tcpHeader = reinterpret_cast<const TcpHeader*>(
-                reinterpret_cast<const std::uint8_t*>(ipHeader) + sizeof(IPv4Header));
+                reinterpret_cast<const std::uint8_t*>(ipHeader) + ipHeaderLen);
             info.protocol = "TCP";
             info.portSource = std::to_string(getTcpSrcPort(tcpHeader));
             info.portDestination = std::to_string(getTcpDstPort(tcpHeader));
             info.application = serviceRegistry_.resolveApplication("", "", info.portDestination);
         } else if (proto == kIpProtoUdp) {
             auto* udpHeader = reinterpret_cast<const UdpHeader*>(
-                reinterpret_cast<const std::uint8_t*>(ipHeader) + sizeof(IPv4Header));
+                reinterpret_cast<const std::uint8_t*>(ipHeader) + ipHeaderLen);
             info.protocol = "UDP";
             info.portSource = std::to_string(getUdpSrcPort(udpHeader));
             info.portDestination = std::to_string(getUdpDstPort(udpHeader));
             info.application = serviceRegistry_.resolveApplication("", "", info.portDestination);
-        } else if (proto == kIpProtoIcmp) {
+        } else if (proto == kIpProtoIcmp) [[unlikely]] {
             info.protocol = "ICMP";
         } else {
             info.protocol = "Unknown";
@@ -134,6 +138,9 @@ PcapCapture::PcapCapture(QObject* parent)
     }, Qt::QueuedConnection);
     connect(worker_, &PcapCaptureWorker::captureFinished, this, [this]() {
         capturing_.store(false);
+    }, Qt::QueuedConnection);
+    connect(worker_, &PcapCaptureWorker::captureError, this, [this](const QString& message) {
+        if (errorCallback_) errorCallback_(message.toStdString());
     }, Qt::QueuedConnection);
 
     workerThread_.start();
@@ -169,6 +176,10 @@ bool PcapCapture::isCapturing() const {
 
 void PcapCapture::setPacketCallback(PacketCallback callback) {
     callback_ = std::move(callback);
+}
+
+void PcapCapture::setErrorCallback(ErrorCallback callback) {
+    errorCallback_ = std::move(callback);
 }
 
 std::vector<std::string> PcapCapture::listInterfaces() {

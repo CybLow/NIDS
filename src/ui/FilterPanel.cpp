@@ -119,6 +119,10 @@ void FilterPanel::setInputsReadOnly(bool readOnly) {
     sourcePortEdit_->setReadOnly(readOnly);
     destIpEdit_->setReadOnly(readOnly);
     destPortEdit_->setReadOnly(readOnly);
+    customFilterEdit_->setReadOnly(readOnly);
+    networkCardCombo_->setEnabled(!readOnly);
+    protocolCombo_->setEnabled(!readOnly);
+    applicationCombo_->setEnabled(!readOnly);
 }
 
 void FilterPanel::setButtonText(const QString& text) {

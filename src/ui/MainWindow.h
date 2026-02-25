@@ -12,6 +12,7 @@
 #include <QScrollArea>
 #include <QSystemTrayIcon>
 #include <QAction>
+#include <QProgressBar>
 
 #include <memory>
 
@@ -30,9 +31,9 @@ private slots:
     void toggleCapture();
     void onPacketReceived(const nids::core::PacketInfo& info);
     void displaySelectedPacketRawData();
-    void securitySettings();
     void notificationSettings();
     void generateReport();
+    void runAnalysis();
 
 private:
     void setupUi();
@@ -48,12 +49,11 @@ private:
     HexView* hexView_ = nullptr;
     QScrollArea* scrollArea_ = nullptr;
     QSystemTrayIcon* trayIcon_ = nullptr;
+    QProgressBar* analysisProgress_ = nullptr;
 
-    QAction* securityAction_ = nullptr;
     QAction* notificationAction_ = nullptr;
 
     bool notificationEnabled_ = true;
-    bool securityEnabled_ = false;
 };
 
 } // namespace nids::ui

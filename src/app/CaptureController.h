@@ -21,7 +21,7 @@ public:
     ~CaptureController() override;
 
     void startCapture(const nids::core::PacketFilter& filter,
-                      const std::string& dumpFile = "dump.pcap");
+                      const std::string& dumpFile = "");
     void stopCapture();
 
     [[nodiscard]] bool isCapturing() const;
@@ -33,6 +33,7 @@ signals:
     void packetReceived(const nids::core::PacketInfo& info);
     void captureStarted();
     void captureStopped();
+    void captureError(const QString& message);
 
 private:
     std::unique_ptr<nids::core::IPacketCapture> capture_;

@@ -63,6 +63,7 @@ public:
     [[nodiscard]] bool isCapturing() const override;
 
     void setPacketCallback(PacketCallback callback) override;
+    void setErrorCallback(ErrorCallback callback) override;
     [[nodiscard]] std::vector<std::string> listInterfaces() override;
 
 signals:
@@ -72,6 +73,7 @@ private:
     QThread workerThread_;
     PcapCaptureWorker* worker_ = nullptr;
     PacketCallback callback_;
+    ErrorCallback errorCallback_;
     std::string interface_;
     std::string bpfFilter_;
     std::atomic<bool> capturing_{false};

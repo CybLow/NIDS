@@ -1,6 +1,6 @@
 #include "client/NidsClient.h"
 
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace nids::client {
 
@@ -12,8 +12,8 @@ NidsClient::~NidsClient() {
 }
 
 bool NidsClient::connect() {
-    std::cout << "Connecting to NIDS server at " << config_.serverAddress << std::endl;
-    std::cout << "NOTE: gRPC integration pending. Add grpc dependency to complete." << std::endl;
+    spdlog::info("Connecting to NIDS server at {}", config_.serverAddress);
+    spdlog::warn("gRPC integration pending. Add grpc dependency to complete.");
 
     // auto channel = grpc::CreateChannel(config_.serverAddress,
     //                                     grpc::InsecureChannelCredentials());

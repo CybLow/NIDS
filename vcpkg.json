@@ -3,9 +3,14 @@
   "version": "0.2.0",
   "description": "Network Intrusion Detection System with AI-powered attack classification",
   "dependencies": [
-    "frugally-deep",
+    "onnxruntime",
     "nlohmann-json",
     "spdlog",
+    {
+      "name": "qtbase",
+      "default-features": false,
+      "features": ["widgets", "gui"]
+    },
     {
       "name": "gtest",
       "platform": "!emscripten"

@@ -13,6 +13,7 @@ public:
     virtual ~IPacketCapture() = default;
 
     using PacketCallback = std::function<void(const PacketInfo&)>;
+    using ErrorCallback = std::function<void(const std::string&)>;
 
     [[nodiscard]] virtual bool initialize(const std::string& interface,
                                           const std::string& bpfFilter) = 0;
@@ -21,6 +22,7 @@ public:
     [[nodiscard]] virtual bool isCapturing() const = 0;
 
     virtual void setPacketCallback(PacketCallback callback) = 0;
+    virtual void setErrorCallback(ErrorCallback callback) = 0;
 
     [[nodiscard]] virtual std::vector<std::string> listInterfaces() = 0;
 };

@@ -1,28 +1,36 @@
 #pragma once
 
-// Native C++ flow feature extractor to replace CICFlowMeter (Java).
+// Native C++ flow feature extractor for LSNM2024-compatible flow analysis.
 //
-// This implements the CIC flow feature extraction algorithm directly in C++,
-// eliminating the dependency on the Java-based CICFlowMeter tool.
+// Extracts CICFlowMeter-compatible bidirectional flow features directly from
+// pcap files, eliminating the Java dependency. Features are computed per-flow
+// and output as named columns matching the CICFlowMeter convention.
 //
-// Features computed per flow (79 features matching CIC-IDS2017 dataset):
-// - Flow duration, total/fwd/bwd packets, total/fwd/bwd bytes
-// - Packet length stats (min, max, mean, std) per direction
-// - Inter-arrival time stats per direction
-// - Flow flags (PSH, URG, FIN, SYN, RST, ACK counts)
-// - Header length, packet/byte rate
-// - Subflow metrics, active/idle time stats
-//
-// Implements CIC-IDS2017 compatible flow features; no Java dependency.
+// The feature set covers:
+// - Flow duration, packet counts, byte counts (per direction)
+// - Packet length statistics (min, max, mean, std) per direction
+// - Inter-arrival time statistics per direction
+// - TCP flag counts (FIN, SYN, RST, PSH, ACK, URG, CWR, ECE)
+// - Header length, packet/byte rates
+// - Bulk transfer metrics
+// - Subflow metrics, active/idle time statistics
+// - Initial TCP window sizes
 
 #include "core/services/IFlowExtractor.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <map>
 #include <cstdint>
 
 namespace nids::infra {
+
+/// Number of flow features produced by toFeatureVector().
+inline constexpr int kFlowFeatureCount = 77;
+
+/// Returns the ordered list of feature column names matching toFeatureVector() output.
+[[nodiscard]] const std::vector<std::string>& flowFeatureNames();
 
 struct FlowKey {
     std::string srcIp;
@@ -82,6 +90,7 @@ struct FlowStats {
     std::uint32_t curBwdBulkBytes = 0;
     bool lastPacketWasFwd = false;
 
+    /// Convert accumulated stats to a flat feature vector of kFlowFeatureCount floats.
     [[nodiscard]] std::vector<float> toFeatureVector(std::uint16_t dstPort) const;
 };
 

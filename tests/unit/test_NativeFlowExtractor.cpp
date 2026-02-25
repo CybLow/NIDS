@@ -32,7 +32,7 @@ TEST(FlowStats, ToFeatureVectorSizeAndOrder) {
     stats.totalBwdBytes = 300;
 
     auto features = stats.toFeatureVector(443);
-    EXPECT_EQ(features.size(), 79u);
+    EXPECT_EQ(features.size(), static_cast<std::size_t>(nids::infra::kFlowFeatureCount));
     EXPECT_FLOAT_EQ(features[0], 443.0f);   // Destination Port
     EXPECT_FLOAT_EQ(features[1], 1000000.0f);  // Flow Duration
     EXPECT_FLOAT_EQ(features[2], 5.0f);     // Total Fwd Packets
@@ -82,7 +82,7 @@ TEST(NativeFlowExtractor, ExtractFlowsWithMinimalPcap) {
         fs::remove(csvPath);
         EXPECT_EQ(features.size(), 1u);
         if (!features.empty()) {
-            EXPECT_EQ(features[0].size(), 79u);
+            EXPECT_EQ(features[0].size(), static_cast<std::size_t>(nids::infra::kFlowFeatureCount));
             EXPECT_FLOAT_EQ(features[0][0], 443.0f);  // Destination port
         }
     } else {

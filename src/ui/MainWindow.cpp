@@ -1,18 +1,25 @@
 #include "ui/MainWindow.h"
 #include "app/ReportGenerator.h"
+#include "core/services/Configuration.h"
 
 #include <QVBoxLayout>
-#include <QGridLayout>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
-#include <QInputDialog>
-#include <QCursor>
-#include <QApplication>
-#include <QDir>
 #include <QHeaderView>
+#include <QCursor>
 
 namespace nids::ui {
+
+namespace {
+    constexpr int kDefaultWindowWidth = 1500;
+    constexpr int kDefaultWindowHeight = 600;
+    constexpr int kHexViewMinWidth = 200;
+    constexpr int kHexViewMinHeight = 100;
+    constexpr int kMsPerSecond = 1000;
+    constexpr int kMsPerMinute = 60'000;
+    constexpr int kMsPerHour = 3'600'000;
+} // namespace
 
 MainWindow::MainWindow(std::unique_ptr<nids::app::CaptureController> controller,
                        std::unique_ptr<nids::app::AnalysisService> analysisService,
@@ -31,6 +38,8 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::setupUi() {
+    const auto& config = nids::core::Configuration::instance();
+
     filterPanel_ = new FilterPanel(serviceRegistry_, this);
     filterPanel_->setInterfaces(controller_->listInterfaces());
 
@@ -43,43 +52,73 @@ void MainWindow::setupUi() {
     packetTable_->verticalHeader()->setVisible(false);
 
     hexView_ = new HexView(this);
-    hexView_->setMinimumSize(200, 100);
+    hexView_->setMinimumSize(kHexViewMinWidth, kHexViewMinHeight);
 
     scrollArea_ = new QScrollArea(this);
     scrollArea_->setWidgetResizable(true);
     scrollArea_->setWidget(hexView_);
 
+    analysisProgress_ = new QProgressBar(this);
+    analysisProgress_->setVisible(false);
+    analysisProgress_->setTextVisible(true);
+
     auto* layout = new QVBoxLayout();
     layout->addWidget(filterPanel_);
     layout->addWidget(packetTable_, 1);
+    layout->addWidget(analysisProgress_);
     layout->addWidget(scrollArea_);
 
     auto* central = new QWidget(this);
     central->setLayout(layout);
     setCentralWidget(central);
 
-    securityAction_ = new QAction("Security", this);
     notificationAction_ = new QAction("Notification", this);
-    menuBar()->addAction(securityAction_);
     menuBar()->addAction(notificationAction_);
 
     trayIcon_ = new QSystemTrayIcon(this);
-    trayIcon_->setIcon(QIcon("logo.png"));
+    trayIcon_->setIcon(QIcon(":/icons/logo.png"));
     trayIcon_->setVisible(true);
 
-    setWindowTitle("NIDS - Network Intrusion Detection System");
-    resize(1500, 600);
+    setWindowTitle(QString::fromStdString(config.windowTitle()));
+    resize(kDefaultWindowWidth, kDefaultWindowHeight);
 }
 
 void MainWindow::connectSignals() {
     connect(filterPanel_, &FilterPanel::startStopClicked, this, &MainWindow::toggleCapture);
-    connect(securityAction_, &QAction::triggered, this, &MainWindow::securitySettings);
     connect(notificationAction_, &QAction::triggered, this, &MainWindow::notificationSettings);
     connect(packetTable_->selectionModel(), &QItemSelectionModel::selectionChanged,
             this, &MainWindow::displaySelectedPacketRawData);
 
     connect(controller_.get(), &nids::app::CaptureController::packetReceived,
             this, &MainWindow::onPacketReceived, Qt::QueuedConnection);
+
+    connect(controller_.get(), &nids::app::CaptureController::captureError,
+            this, [this](const QString& message) {
+                QMessageBox::warning(this, "Capture Error", message);
+            }, Qt::QueuedConnection);
+
+    // Analysis service signals
+    connect(analysisService_.get(), &nids::app::AnalysisService::analysisStarted,
+            this, [this]() {
+                analysisProgress_->setVisible(true);
+                analysisProgress_->setValue(0);
+            }, Qt::QueuedConnection);
+
+    connect(analysisService_.get(), &nids::app::AnalysisService::analysisProgress,
+            this, [this](int current, int total) {
+                analysisProgress_->setMaximum(total);
+                analysisProgress_->setValue(current);
+            }, Qt::QueuedConnection);
+
+    connect(analysisService_.get(), &nids::app::AnalysisService::analysisFinished,
+            this, [this]() {
+                analysisProgress_->setVisible(false);
+            }, Qt::QueuedConnection);
+
+    connect(analysisService_.get(), &nids::app::AnalysisService::analysisError,
+            this, [this](const QString& message) {
+                QMessageBox::warning(this, "Analysis Error", message);
+            }, Qt::QueuedConnection);
 }
 
 void MainWindow::toggleCapture() {
@@ -88,9 +127,16 @@ void MainWindow::toggleCapture() {
         filterPanel_->setButtonText("Start");
         filterPanel_->setInputsReadOnly(false);
 
-        int ret = QMessageBox::question(this, "Analysis Report",
-                                        "Do you want to generate a report?",
+        int ret = QMessageBox::question(this, "Analysis",
+                                        "Do you want to run ML analysis on captured traffic?",
                                         QMessageBox::Yes | QMessageBox::No);
+        if (ret == QMessageBox::Yes) {
+            runAnalysis();
+        }
+
+        ret = QMessageBox::question(this, "Report",
+                                    "Do you want to generate a report?",
+                                    QMessageBox::Yes | QMessageBox::No);
         if (ret == QMessageBox::Yes) {
             generateReport();
         }
@@ -102,6 +148,11 @@ void MainWindow::toggleCapture() {
         filterPanel_->setButtonText("Stop");
         filterPanel_->setInputsReadOnly(true);
     }
+}
+
+void MainWindow::runAnalysis() {
+    auto dumpFile = nids::core::Configuration::instance().defaultDumpFile();
+    analysisService_->analyzeCapture(dumpFile, controller_->session());
 }
 
 void MainWindow::onPacketReceived(const nids::core::PacketInfo& info) {
@@ -122,27 +173,9 @@ void MainWindow::displaySelectedPacketRawData() {
     hexView_->setData(rawData);
 }
 
-void MainWindow::securitySettings() {
-    QMenu menu(this);
-    auto* enableAction = new QAction("Enable", this);
-    auto* disableAction = new QAction("Disable", this);
-
-    enableAction->setCheckable(true);
-    disableAction->setCheckable(true);
-    enableAction->setChecked(securityEnabled_);
-    disableAction->setChecked(!securityEnabled_);
-
-    connect(enableAction, &QAction::triggered, this, [this]() { securityEnabled_ = true; });
-    connect(disableAction, &QAction::triggered, this, [this]() { securityEnabled_ = false; });
-
-    menu.addAction(enableAction);
-    menu.addAction(disableAction);
-    menu.exec(QCursor::pos());
-}
-
 void MainWindow::notificationSettings() {
     auto* menu = new QMenu(this);
-    auto* desktopAction = new QAction("Desktop Notification", this);
+    auto* desktopAction = new QAction("Desktop Notification", menu);
 
     desktopAction->setCheckable(true);
     desktopAction->setChecked(notificationEnabled_);
@@ -166,9 +199,9 @@ void MainWindow::generateReport() {
         return;
     }
 
-    int hours = static_cast<int>(result.generationTimeMs / 3600000);
-    int minutes = static_cast<int>((result.generationTimeMs % 3600000) / 60000);
-    int seconds = static_cast<int>((result.generationTimeMs % 60000) / 1000);
+    int hours = static_cast<int>(result.generationTimeMs / kMsPerHour);
+    int minutes = static_cast<int>((result.generationTimeMs % kMsPerHour) / kMsPerMinute);
+    int seconds = static_cast<int>((result.generationTimeMs % kMsPerMinute) / kMsPerSecond);
 
     QString message = QString("Report generated at: %1\nGeneration time: %2h %3min %4s")
         .arg(QString::fromStdString(result.filePath))

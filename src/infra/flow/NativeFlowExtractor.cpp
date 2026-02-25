@@ -1,13 +1,17 @@
 #include "infra/flow/NativeFlowExtractor.h"
 #include "infra/platform/NetworkHeaders.h"
+#include "infra/capture/PcapHandle.h"
 
 #include <pcap.h>
+#include <spdlog/spdlog.h>
+
 #include <fstream>
 #include <sstream>
 #include <numeric>
 #include <cmath>
 #include <algorithm>
-#include <iostream>
+#include <concepts>
+#include <ranges>
 
 namespace nids::infra {
 
@@ -19,32 +23,31 @@ constexpr std::int64_t kIdleThresholdUs = 5'000'000;   // 5 seconds (CICFlowMete
 constexpr std::int64_t kDefaultFlowTimeoutUs = 600'000'000;  // 600 seconds
 constexpr std::uint16_t kEtherTypeVlan = 0x8100;
 
-template<typename Container>
+template<std::ranges::sized_range Container>
+    requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
 double mean(const Container& c) {
     if (c.empty()) return 0.0;
     double sum = std::accumulate(c.begin(), c.end(), 0.0);
     return sum / static_cast<double>(c.size());
 }
 
-template<typename Container>
+template<std::ranges::sized_range Container>
+    requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
 double stddev(const Container& c) {
     if (c.size() <= 1) return 0.0;
     double m = mean(c);
-    double accum = 0.0;
-    for (const auto& val : c) {
-        accum += (static_cast<double>(val) - m) * (static_cast<double>(val) - m);
-    }
+    double accum = std::transform_reduce(c.begin(), c.end(), 0.0, std::plus<>{},
+        [m](auto val) { double d = static_cast<double>(val) - m; return d * d; });
     return std::sqrt(accum / static_cast<double>(c.size() - 1));
 }
 
-template<typename Container>
+template<std::ranges::sized_range Container>
+    requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
 double variance(const Container& c) {
     if (c.size() <= 1) return 0.0;
     double m = mean(c);
-    double accum = 0.0;
-    for (const auto& val : c) {
-        accum += (static_cast<double>(val) - m) * (static_cast<double>(val) - m);
-    }
+    double accum = std::transform_reduce(c.begin(), c.end(), 0.0, std::plus<>{},
+        [m](auto val) { double d = static_cast<double>(val) - m; return d * d; });
     return accum / static_cast<double>(c.size());
 }
 
@@ -74,6 +77,115 @@ void pushIatStats(std::vector<float>& features, const std::vector<std::int64_t>&
 
 } // anonymous namespace
 
+const std::vector<std::string>& flowFeatureNames() {
+    // Feature names matching CICFlowMeter column convention and toFeatureVector() order.
+    // 77 features total (kFlowFeatureCount).
+    static const std::vector<std::string> names = {
+        // 0: Destination port
+        "Destination Port",
+        // 1: Flow duration
+        "Flow Duration",
+        // 2-5: Packet/byte counts
+        "Total Fwd Packets",
+        "Total Backward Packets",
+        "Total Length of Fwd Packets",
+        "Total Length of Bwd Packets",
+        // 6-9: Forward packet length stats
+        "Fwd Packet Length Max",
+        "Fwd Packet Length Min",
+        "Fwd Packet Length Mean",
+        "Fwd Packet Length Std",
+        // 10-13: Backward packet length stats
+        "Bwd Packet Length Max",
+        "Bwd Packet Length Min",
+        "Bwd Packet Length Mean",
+        "Bwd Packet Length Std",
+        // 14-15: Flow rates
+        "Flow Bytes/s",
+        "Flow Packets/s",
+        // 16-19: Flow IAT stats
+        "Flow IAT Mean",
+        "Flow IAT Std",
+        "Flow IAT Max",
+        "Flow IAT Min",
+        // 20-24: Forward IAT stats
+        "Fwd IAT Total",
+        "Fwd IAT Mean",
+        "Fwd IAT Std",
+        "Fwd IAT Max",
+        "Fwd IAT Min",
+        // 25-29: Backward IAT stats
+        "Bwd IAT Total",
+        "Bwd IAT Mean",
+        "Bwd IAT Std",
+        "Bwd IAT Max",
+        "Bwd IAT Min",
+        // 30-33: PSH/URG flags per direction
+        "Fwd PSH Flags",
+        "Bwd PSH Flags",
+        "Fwd URG Flags",
+        "Bwd URG Flags",
+        // 34-35: Header lengths
+        "Fwd Header Length",
+        "Bwd Header Length",
+        // 36-37: Per-direction packet rates
+        "Fwd Packets/s",
+        "Bwd Packets/s",
+        // 38-42: All-packet length stats
+        "Min Packet Length",
+        "Max Packet Length",
+        "Packet Length Mean",
+        "Packet Length Std",
+        "Packet Length Variance",
+        // 43-50: TCP flag counts
+        "FIN Flag Count",
+        "SYN Flag Count",
+        "RST Flag Count",
+        "PSH Flag Count",
+        "ACK Flag Count",
+        "URG Flag Count",
+        "CWE Flag Count",
+        "ECE Flag Count",
+        // 51: Down/Up ratio
+        "Down/Up Ratio",
+        // 52: Average packet size
+        "Average Packet Size",
+        // 53-54: Average segment sizes
+        "Avg Fwd Segment Size",
+        "Avg Bwd Segment Size",
+        // 55-57: Forward bulk metrics
+        "Fwd Avg Bytes/Bulk",
+        "Fwd Avg Packets/Bulk",
+        "Fwd Avg Bulk Rate",
+        // 58-60: Backward bulk metrics
+        "Bwd Avg Bytes/Bulk",
+        "Bwd Avg Packets/Bulk",
+        "Bwd Avg Bulk Rate",
+        // 61-64: Subflow metrics
+        "Subflow Fwd Packets",
+        "Subflow Fwd Bytes",
+        "Subflow Bwd Packets",
+        "Subflow Bwd Bytes",
+        // 65-66: Initial TCP window sizes
+        "Init_Win_bytes_forward",
+        "Init_Win_bytes_backward",
+        // 67-68: Forward data packets and min segment
+        "act_data_pkt_fwd",
+        "min_seg_size_forward",
+        // 69-72: Active time stats
+        "Active Mean",
+        "Active Std",
+        "Active Max",
+        "Active Min",
+        // 73-76: Idle time stats
+        "Idle Mean",
+        "Idle Std",
+        "Idle Max",
+        "Idle Min",
+    };
+    return names;
+}
+
 NativeFlowExtractor::NativeFlowExtractor() : flowTimeoutUs_(kDefaultFlowTimeoutUs) {}
 
 void NativeFlowExtractor::setFlowTimeout(std::int64_t timeoutUs) {
@@ -90,25 +202,25 @@ bool FlowKey::operator<(const FlowKey& other) const {
 
 std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     std::vector<float> features;
-    features.reserve(79);
+    features.reserve(kFlowFeatureCount);
 
     double durationUs = static_cast<double>(lastTimeUs - startTimeUs);
     if (durationUs < 0) durationUs = 0;
 
-    // 0. Destination Port
+    // 0: Destination Port
     features.push_back(static_cast<float>(dstPort));
-    // 1. Flow Duration (in microseconds, convert to float)
+    // 1: Flow Duration (microseconds)
     features.push_back(static_cast<float>(durationUs));
-    // 2-5. Total Fwd/Bwd Packets and Bytes
+    // 2-5: Total Fwd/Bwd Packets and Bytes
     features.push_back(static_cast<float>(totalFwdPackets));
     features.push_back(static_cast<float>(totalBwdPackets));
     features.push_back(static_cast<float>(totalFwdBytes));
     features.push_back(static_cast<float>(totalBwdBytes));
-    // 6-9. Fwd Packet Length Max, Min, Mean, Std
+    // 6-9: Fwd Packet Length Max, Min, Mean, Std
     pushLengthStats(features, fwdPacketLengths);
-    // 10-13. Bwd Packet Length Max, Min, Mean, Std
+    // 10-13: Bwd Packet Length Max, Min, Mean, Std
     pushLengthStats(features, bwdPacketLengths);
-    // 14-15. Flow Bytes/s, Flow Packets/s
+    // 14-15: Flow Bytes/s, Flow Packets/s
     if (durationUs > 0) {
         double totalBytes = static_cast<double>(totalFwdBytes + totalBwdBytes);
         double totalPackets = static_cast<double>(totalFwdPackets + totalBwdPackets);
@@ -118,7 +230,7 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
         features.push_back(0.0f);
         features.push_back(0.0f);
     }
-    // 16-19. Flow IAT Mean, Std, Max, Min
+    // 16-19: Flow IAT Mean, Std, Max, Min
     if (flowIatUs.empty()) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
     } else {
@@ -127,19 +239,19 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
         features.push_back(static_cast<float>(*std::max_element(flowIatUs.begin(), flowIatUs.end())));
         features.push_back(static_cast<float>(*std::min_element(flowIatUs.begin(), flowIatUs.end())));
     }
-    // 20-24. Fwd IAT Total, Mean, Std, Max, Min
+    // 20-24: Fwd IAT Total, Mean, Std, Max, Min
     pushIatStats(features, fwdIatUs);
-    // 25-29. Bwd IAT Total, Mean, Std, Max, Min
+    // 25-29: Bwd IAT Total, Mean, Std, Max, Min
     pushIatStats(features, bwdIatUs);
-    // 30-33. Fwd PSH Flags, Bwd PSH Flags, Fwd URG Flags, Bwd URG Flags
+    // 30-33: Fwd PSH Flags, Bwd PSH Flags, Fwd URG Flags, Bwd URG Flags
     features.push_back(static_cast<float>(fwdPshFlags));
     features.push_back(static_cast<float>(bwdPshFlags));
     features.push_back(static_cast<float>(fwdUrgFlags));
     features.push_back(static_cast<float>(bwdUrgFlags));
-    // 34-35. Fwd Header Length, Bwd Header Length
+    // 34-35: Fwd Header Length, Bwd Header Length
     features.push_back(static_cast<float>(fwdHeaderBytes));
     features.push_back(static_cast<float>(bwdHeaderBytes));
-    // 36-37. Fwd Packets/s, Bwd Packets/s
+    // 36-37: Fwd Packets/s, Bwd Packets/s
     if (durationUs > 0) {
         features.push_back(static_cast<float>(totalFwdPackets) / static_cast<float>(durationUs / 1e6));
         features.push_back(static_cast<float>(totalBwdPackets) / static_cast<float>(durationUs / 1e6));
@@ -147,7 +259,7 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
         features.push_back(0.0f);
         features.push_back(0.0f);
     }
-    // 38-42. Packet Length Min, Max, Mean, Std, Variance (all packets)
+    // 38-42: Packet Length Min, Max, Mean, Std, Variance (all packets)
     if (allPacketLengths.empty()) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
     } else {
@@ -157,7 +269,7 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
         features.push_back(static_cast<float>(stddev(allPacketLengths)));
         features.push_back(static_cast<float>(variance(allPacketLengths)));
     }
-    // 43-50. FIN, SYN, RST, PSH, ACK, URG, CWR, ECE counts
+    // 43-50: FIN, SYN, RST, PSH, ACK, URG, CWR, ECE counts
     features.push_back(static_cast<float>(finCount));
     features.push_back(static_cast<float>(synCount));
     features.push_back(static_cast<float>(rstCount));
@@ -166,30 +278,29 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     features.push_back(static_cast<float>(urgCount));
     features.push_back(static_cast<float>(cwrCount));
     features.push_back(static_cast<float>(eceCount));
-    // 51. Down/Up Ratio (backward/forward packets)
+    // 51: Down/Up Ratio (backward/forward packets)
     if (totalFwdPackets > 0) {
         features.push_back(static_cast<float>(totalBwdPackets) / static_cast<float>(totalFwdPackets));
     } else {
         features.push_back(0.0f);
     }
-    // 52. Average Packet Size
+    // 52: Average Packet Size
     std::uint64_t totalPackets = totalFwdPackets + totalBwdPackets;
     std::uint64_t totalBytes = totalFwdBytes + totalBwdBytes;
     features.push_back(totalPackets > 0 ? static_cast<float>(totalBytes) / static_cast<float>(totalPackets) : 0.0f);
-    // 53-54. Fwd Segment Size Avg, Bwd Segment Size Avg (payload per packet excl headers - use total bytes/header / packets)
+    // 53-54: Fwd Segment Size Avg, Bwd Segment Size Avg
     features.push_back(totalFwdPackets > 0 ? static_cast<float>(totalFwdBytes - fwdHeaderBytes) / static_cast<float>(totalFwdPackets) : 0.0f);
     features.push_back(totalBwdPackets > 0 ? static_cast<float>(totalBwdBytes - bwdHeaderBytes) / static_cast<float>(totalBwdPackets) : 0.0f);
-    // 55-57. Fwd Bytes/Bulk Avg, Fwd Packet/Bulk Avg, Fwd Bulk Rate Avg
+    // 55-57: Fwd Bytes/Bulk Avg, Fwd Packet/Bulk Avg, Fwd Bulk Rate Avg
     if (fwdBulkBytes.empty()) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f});
     } else {
         features.push_back(static_cast<float>(mean(fwdBulkBytes)));
         features.push_back(static_cast<float>(mean(fwdBulkPackets)));
         double totalFwdBulkBytes = std::accumulate(fwdBulkBytes.begin(), fwdBulkBytes.end(), 0.0);
-        // Bulk rate: bytes per bulk / duration - approximate using flow duration
         features.push_back(durationUs > 0 ? static_cast<float>(totalFwdBulkBytes / (durationUs / 1e6)) : 0.0f);
     }
-    // 58-60. Bwd Bytes/Bulk Avg, Bwd Packet/Bulk Avg, Bwd Bulk Rate Avg
+    // 58-60: Bwd Bytes/Bulk Avg, Bwd Packet/Bulk Avg, Bwd Bulk Rate Avg
     if (bwdBulkBytes.empty()) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f});
     } else {
@@ -198,18 +309,18 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
         double totalBwdBulkBytes = std::accumulate(bwdBulkBytes.begin(), bwdBulkBytes.end(), 0.0);
         features.push_back(durationUs > 0 ? static_cast<float>(totalBwdBulkBytes / (durationUs / 1e6)) : 0.0f);
     }
-    // 61-64. Subflow Fwd Packets, Subflow Fwd Bytes, Subflow Bwd Packets, Subflow Bwd Bytes (no subflow split = whole flow)
+    // 61-64: Subflow Fwd Packets, Subflow Fwd Bytes, Subflow Bwd Packets, Subflow Bwd Bytes
     features.push_back(static_cast<float>(totalFwdPackets));
     features.push_back(static_cast<float>(totalFwdBytes));
     features.push_back(static_cast<float>(totalBwdPackets));
     features.push_back(static_cast<float>(totalBwdBytes));
-    // 65-66. Init_Win_bytes_forward, Init_Win_bytes_backward
+    // 65-66: Init_Win_bytes_forward, Init_Win_bytes_backward
     features.push_back(static_cast<float>(fwdInitWinBytes));
     features.push_back(static_cast<float>(bwdInitWinBytes));
-    // 67-68. act_data_pkt_fwd, min_seg_size_forward
+    // 67-68: act_data_pkt_fwd, min_seg_size_forward
     features.push_back(static_cast<float>(actDataPktFwd));
     features.push_back(static_cast<float>(minSegSizeForward));
-    // 69-72. Active Mean, Std, Max, Min
+    // 69-72: Active Mean, Std, Max, Min
     if (activePeriodsUs.empty()) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
     } else {
@@ -218,7 +329,7 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
         features.push_back(static_cast<float>(*std::max_element(activePeriodsUs.begin(), activePeriodsUs.end())));
         features.push_back(static_cast<float>(*std::min_element(activePeriodsUs.begin(), activePeriodsUs.end())));
     }
-    // 73-76. Idle Mean, Std, Max, Min
+    // 73-76: Idle Mean, Std, Max, Min
     if (idlePeriodsUs.empty()) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
     } else {
@@ -227,35 +338,16 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
         features.push_back(static_cast<float>(*std::max_element(idlePeriodsUs.begin(), idlePeriodsUs.end())));
         features.push_back(static_cast<float>(*std::min_element(idlePeriodsUs.begin(), idlePeriodsUs.end())));
     }
-    // 77. Padding to reach 78 features (0-indexed 0..77)
-    // Actually the plan says 78 features + 1 padding = 79 total. Let me count: 0..76 = 77 features. Destination Port through Idle Min.
-    // 0: dstPort, 1: duration, 2-5: packets/bytes, 6-9: fwd len, 10-13: bwd len, 14-15: rate, 16-19: flow IAT, 20-24: fwd IAT, 25-29: bwd IAT,
-    // 30-33: PSH/URG, 34-35: header len, 36-37: fwd/bwd rate, 38-42: pkt len all, 43-50: flags, 51: down/up, 52: avg pkt, 53-54: seg size,
-    // 55-57: fwd bulk, 58-60: bwd bulk, 61-64: subflow, 65-66: init win, 67-68: act/min, 69-72: active, 73-76: idle = 77 features (0-76).
-    // Need 79 total per plan. So we add 2 more as padding. Actually the plan says "78 features + 1 padding" = 79. So 78 real + 1 pad.
-    // 0-76 = 77. So we're one short. Let me recount from the plan:
-    // Destination Port(0), Flow Duration(1), Total Fwd Packets(2), Total Backward Packets(3), Total Length Fwd(4), Total Length Bwd(5),
-    // Fwd Packet Length Max(6), Min(7), Mean(8), Std(9), Bwd Packet Length Max(10), Min(11), Mean(12), Std(13),
-    // Flow Bytes/s(14), Flow Packets/s(15), Flow IAT Mean(16), Std(17), Max(18), Min(19),
-    // Fwd IAT Total(20), Mean(21), Std(22), Max(23), Min(24), Bwd IAT Total(25), Mean(26), Std(27), Max(28), Min(29),
-    // Fwd PSH(30), Bwd PSH(31), Fwd URG(32), Bwd URG(33), Fwd Header(34), Bwd Header(35), Fwd Pkts/s(36), Bwd Pkts/s(37),
-    // Packet Length Min(38), Max(39), Mean(40), Std(41), Variance(42), FIN(43), SYN(44), RST(45), PSH(46), ACK(47), URG(48), CWR(49), ECE(50),
-    // Down/Up(51), Avg Pkt Size(52), Fwd Seg(53), Bwd Seg(54), Fwd Bytes/Bulk(55), Fwd Pkt/Bulk(56), Fwd Bulk Rate(57),
-    // Bwd Bytes/Bulk(58), Bwd Pkt/Bulk(59), Bwd Bulk Rate(60), Subflow Fwd Pkts(61), Fwd Bytes(62), Bwd Pkts(63), Bwd Bytes(64),
-    // Init Win Fwd(65), Init Win Bwd(66), act_data_pkt_fwd(67), min_seg_forward(68), Active Mean(69), Std(70), Max(71), Min(72),
-    // Idle Mean(73), Std(74), Max(75), Min(76) = 77 features (indices 0-76). Model expects 79. So add 2 padding.
-    while (features.size() < 79) {
-        features.push_back(0.0f);
-    }
+
     return features;
 }
 
 bool NativeFlowExtractor::extractFlows(const std::string& pcapPath,
                                          const std::string& outputCsvPath) {
     char errbuf[PCAP_ERRBUF_SIZE];
-    auto* handle = pcap_open_offline(pcapPath.c_str(), errbuf);
+    auto handle = makePcapHandle(pcap_open_offline(pcapPath.c_str(), errbuf));
     if (!handle) {
-        std::cerr << "Cannot open pcap file: " << errbuf << std::endl;
+        spdlog::error("Cannot open pcap file: {}", errbuf);
         return false;
     }
 
@@ -264,13 +356,12 @@ bool NativeFlowExtractor::extractFlows(const std::string& pcapPath,
     struct pcap_pkthdr* header;
     const unsigned char* data;
 
-    while (pcap_next_ex(handle, &header, &data) > 0) {
+    while (pcap_next_ex(handle.get(), &header, &data) > 0) {
         std::int64_t tsUs = static_cast<std::int64_t>(header->ts.tv_sec) * 1000000
                             + header->ts.tv_usec;
         processPacket(data, header->caplen, tsUs);
     }
 
-    pcap_close(handle);
     finalizeBulks();
     writeCsv(outputCsvPath);
     return true;
@@ -292,20 +383,20 @@ void NativeFlowExtractor::finalizeBulks() {
 void NativeFlowExtractor::processPacket(const std::uint8_t* data,
                                           std::uint32_t len,
                                           std::int64_t timestampUs) {
-    if (len < kEthernetHeaderSize) return;
+    if (len < kEthernetHeaderSize) [[unlikely]] return;
 
     auto* eth = reinterpret_cast<const EthernetHeader*>(data);
     std::uint16_t etherType = getEtherType(eth);
     const std::uint8_t* payload = data + kEthernetHeaderSize;
     std::uint32_t payloadLen = len - kEthernetHeaderSize;
 
-    if (etherType == kEtherTypeVlan && payloadLen >= 4) {
+    if (etherType == kEtherTypeVlan && payloadLen >= 4) [[unlikely]] {
         etherType = (static_cast<std::uint16_t>(payload[2]) << 8) | payload[3];
         payload += 4;
         payloadLen -= 4;
     }
 
-    if (etherType != kEtherTypeIPv4 || payloadLen < 20) return;
+    if (etherType != kEtherTypeIPv4 || payloadLen < 20) [[unlikely]] return;
 
     auto* ip = reinterpret_cast<const IPv4Header*>(payload);
     std::uint8_t ipIhl = getIpIhl(ip);
@@ -321,15 +412,15 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
     std::uint32_t transportHeaderLen = 0;
     std::uint32_t totalPacketLen = ipTotalLen;
 
-    if (protocol == kIpProtoTcp) {
-        if (payloadLen < ipIhl + 20u) return;
+    if (protocol == kIpProtoTcp) [[likely]] {
+        if (payloadLen < ipIhl + 20u) [[unlikely]] return;
         auto* tcp = reinterpret_cast<const TcpHeader*>(payload + ipIhl);
         srcPort = getTcpSrcPort(tcp);
         dstPort = getTcpDstPort(tcp);
         transportHeaderLen = getTcpDataOffset(tcp);
         if (transportHeaderLen < 20) transportHeaderLen = 20;
     } else if (protocol == kIpProtoUdp) {
-        if (payloadLen < ipIhl + 8u) return;
+        if (payloadLen < ipIhl + 8u) [[unlikely]] return;
         auto* udp = reinterpret_cast<const UdpHeader*>(payload + ipIhl);
         srcPort = getUdpSrcPort(udp);
         dstPort = getUdpDstPort(udp);
@@ -341,8 +432,10 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
     std::uint32_t headerBytes = ipIhl + transportHeaderLen;
     std::uint32_t payloadSize = totalPacketLen > headerBytes ? totalPacketLen - headerBytes : 0;
 
-    FlowKey keyFwd{srcIp, dstIp, srcPort, dstPort, protocol};
-    FlowKey keyBwd{dstIp, srcIp, dstPort, srcPort, protocol};
+    FlowKey keyFwd{.srcIp = srcIp, .dstIp = dstIp, .srcPort = srcPort,
+                   .dstPort = dstPort, .protocol = protocol};
+    FlowKey keyBwd{.srcIp = dstIp, .dstIp = srcIp, .srcPort = dstPort,
+                   .dstPort = srcPort, .protocol = protocol};
 
     auto itFwd = flows_.find(keyFwd);
     auto itBwd = flows_.find(keyBwd);
@@ -442,7 +535,7 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
         if (flags & kTcpEce) stats.eceCount++;
     }
 
-    // Bulk tracking: bulk = 2+ packets in same direction. On direction switch, finalize previous bulk.
+    // Bulk tracking: bulk = 2+ packets in same direction
     if (isForward) {
         stats.curFwdBulkPkts++;
         stats.curFwdBulkBytes += packetLen;
@@ -483,7 +576,7 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
     }
     stats.lastActiveTimeUs = timestampUs;
 
-    if (tcpFinOrRst) {
+    if (tcpFinOrRst) [[unlikely]] {
         if (stats.curFwdBulkPkts >= 2) {
             stats.fwdBulkPackets.push_back(stats.curFwdBulkPkts);
             stats.fwdBulkBytes.push_back(stats.curFwdBulkBytes);
@@ -502,27 +595,28 @@ void NativeFlowExtractor::writeCsv(const std::string& outputPath) const {
     std::ofstream file(outputPath);
     if (!file.is_open()) return;
 
-    file << "feature_0";
-    for (int i = 1; i < 79; ++i) {
-        file << ",feature_" << i;
+    // Write named column headers
+    const auto& names = flowFeatureNames();
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) file << ",";
+        file << names[i];
     }
     file << "\n";
 
-    for (const auto& [key, stats] : completedFlows_) {
+    auto writeFlow = [&](const FlowKey& key, const FlowStats& stats) {
         auto features = stats.toFeatureVector(key.dstPort);
         for (std::size_t i = 0; i < features.size(); ++i) {
             if (i > 0) file << ",";
             file << features[i];
         }
         file << "\n";
+    };
+
+    for (const auto& [key, stats] : completedFlows_) {
+        writeFlow(key, stats);
     }
     for (const auto& [key, stats] : flows_) {
-        auto features = stats.toFeatureVector(key.dstPort);
-        for (std::size_t i = 0; i < features.size(); ++i) {
-            if (i > 0) file << ",";
-            file << features[i];
-        }
-        file << "\n";
+        writeFlow(key, stats);
     }
 }
 
@@ -546,7 +640,9 @@ std::vector<std::vector<float>> NativeFlowExtractor::loadFeatures(
                 row.push_back(0.0f);
             }
         }
-        while (row.size() < 79) row.push_back(0.0f);
+        while (row.size() < static_cast<std::size_t>(kFlowFeatureCount)) {
+            row.push_back(0.0f);
+        }
         result.push_back(std::move(row));
     }
 

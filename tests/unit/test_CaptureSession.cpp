@@ -45,8 +45,8 @@ TEST(CaptureSession, getPacketOutOfRangeThrows) {
 
 TEST(CaptureSession, setAndGetAnalysisResult) {
     CaptureSession session;
-    session.setAnalysisResult(0, AttackType::DDoS);
-    EXPECT_EQ(session.getAnalysisResult(0), AttackType::DDoS);
+    session.setAnalysisResult(0, AttackType::DdosIcmp);
+    EXPECT_EQ(session.getAnalysisResult(0), AttackType::DdosIcmp);
 }
 
 TEST(CaptureSession, getAnalysisResultOutOfRangeReturnsUnknown) {

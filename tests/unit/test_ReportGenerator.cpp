@@ -51,7 +51,7 @@ TEST_F(ReportGeneratorTest, reportContainsPacketData) {
     pkt.portDestination = "53";
     pkt.application = "DNS";
     session.addPacket(pkt);
-    session.setAnalysisResult(0, AttackType::DDoS);
+    session.setAnalysisResult(0, AttackType::DdosIcmp);
 
     auto result = ReportGenerator::generate(session, testReportPath);
     ASSERT_TRUE(result.success);
@@ -65,7 +65,7 @@ TEST_F(ReportGeneratorTest, reportContainsPacketData) {
     EXPECT_NE(content.find("8.8.8.8"), std::string::npos);
     EXPECT_NE(content.find("53"), std::string::npos);
     EXPECT_NE(content.find("DNS"), std::string::npos);
-    EXPECT_NE(content.find("DDoS"), std::string::npos);
+    EXPECT_NE(content.find("DDoS ICMP"), std::string::npos);
 }
 
 TEST_F(ReportGeneratorTest, emptySessionGeneratesHeader) {

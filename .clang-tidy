@@ -1,4 +1,4 @@
-# Generated from CLion Inspection settings
+# Generated from CLion Inspection settings, updated for C++20
 ---
 Checks: '-*,
 bugprone-argument-comment,
@@ -102,6 +102,9 @@ modernize-use-nullptr,
 modernize-use-override,
 modernize-use-transparent-functors,
 modernize-use-uncaught-exceptions,
+modernize-use-starts-ends-with,
+modernize-use-std-format,
+modernize-use-std-numbers,
 mpi-buffer-deref,
 mpi-type-mismatch,
 openmp-use-default-none,
@@ -143,3 +146,6 @@ readability-static-definition-in-anonymous-namespace,
 readability-string-compare,
 readability-uniqueptr-delete-release,
 readability-use-anyofallof'
+WarningsAsErrors: 'bugprone-use-after-move,bugprone-dangling-handle'
+HeaderFilterRegex: 'src/.*'
+FormatStyle: file

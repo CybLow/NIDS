@@ -1,0 +1,34 @@
+# Doxyfile for NIDS
+
+PROJECT_NAME           = "NIDS"
+PROJECT_NUMBER         = 0.2.0
+PROJECT_BRIEF          = "Network Intrusion Detection System"
+OUTPUT_DIRECTORY       = docs/api
+INPUT                  = src/core src/app src/infra/analysis src/infra/capture src/infra/flow
+FILE_PATTERNS          = *.h *.cpp
+RECURSIVE              = YES
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = YES
+HIDE_UNDOC_CLASSES     = YES
+JAVADOC_AUTOBRIEF      = YES
+OPTIMIZE_OUTPUT_FOR_C  = NO
+BUILTIN_STL_SUPPORT    = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+HTML_OUTPUT            = html
+HTML_COLORSTYLE        = AUTO_LIGHT
+HAVE_DOT               = NO
+CLASS_DIAGRAMS         = YES
+COLLABORATION_GRAPH    = NO
+INCLUDE_GRAPH          = NO
+INCLUDED_BY_GRAPH      = NO
+EXCLUDE_PATTERNS       = */tests/* */build/* */vcpkg_installed/* */.git/*
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_FROM_PATH        = src/
+WARN_IF_UNDOCUMENTED   = YES
+WARN_NO_PARAMDOC       = NO
+QUIET                  = YES

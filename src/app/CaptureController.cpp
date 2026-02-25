@@ -1,4 +1,9 @@
 #include "app/CaptureController.h"
+#include "core/services/Configuration.h"
+
+#include <spdlog/spdlog.h>
+
+#include <QString>
 
 namespace nids::app {
 
@@ -11,6 +16,10 @@ CaptureController::CaptureController(
     capture_->setPacketCallback([this](const nids::core::PacketInfo& info) {
         session_.addPacket(info);
         emit packetReceived(info);
+    });
+
+    capture_->setErrorCallback([this](const std::string& message) {
+        emit captureError(QString::fromStdString(message));
     });
 }
 
@@ -28,10 +37,17 @@ void CaptureController::startCapture(const nids::core::PacketFilter& filter,
     std::string bpf = filter.generateBpfString();
 
     if (!capture_->initialize(filter.networkCard, bpf)) {
+        spdlog::error("Failed to initialize capture on interface '{}'", filter.networkCard);
+        emit captureError(
+            QString::fromStdString("Failed to initialize capture on interface: " + filter.networkCard));
         return;
     }
 
-    capture_->startCapture(dumpFile);
+    const auto& actualDumpFile = dumpFile.empty()
+        ? nids::core::Configuration::instance().defaultDumpFile()
+        : dumpFile;
+
+    capture_->startCapture(actualDumpFile);
     emit captureStarted();
 }
 

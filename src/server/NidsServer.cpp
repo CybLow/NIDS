@@ -1,6 +1,6 @@
 #include "server/NidsServer.h"
 
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace nids::server {
 
@@ -15,9 +15,9 @@ void NidsServer::start() {
     if (running_.load()) return;
     running_.store(true);
 
-    std::cout << "NIDS Server starting on " << config_.listenAddress << std::endl;
-    std::cout << "NOTE: gRPC integration pending. Add grpc to vcpkg.json and "
-              << "generate proto stubs to complete server implementation." << std::endl;
+    spdlog::info("NIDS Server starting on {}", config_.listenAddress);
+    spdlog::warn("gRPC integration pending. Add grpc to vcpkg.json and "
+                 "generate proto stubs to complete server implementation.");
 
     // TODO: Build and register gRPC service
     // grpc::ServerBuilder builder;
@@ -32,7 +32,7 @@ void NidsServer::stop() {
     running_.store(false);
 
     // server_->Shutdown();
-    std::cout << "NIDS Server stopped" << std::endl;
+    spdlog::info("NIDS Server stopped");
 }
 
 void NidsServer::waitForShutdown() {
