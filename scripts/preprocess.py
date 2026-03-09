@@ -1079,17 +1079,30 @@ def normalize_features(
     X_train: np.ndarray,
     X_val: np.ndarray,
     X_test: np.ndarray,
+    clip_value: float = 10.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
-    """Fit StandardScaler on training set, transform all splits."""
+    """Fit StandardScaler on training set, transform all splits.
+
+    After normalization, clips values to [-clip_value, clip_value] to mitigate
+    the effect of extreme outliers (heavy-tailed flow features like packet
+    counts and byte volumes can produce values 100-800x the standard deviation).
+    """
     scaler = StandardScaler()
     X_train_norm = scaler.fit_transform(X_train).astype(np.float32)
     X_val_norm = scaler.transform(X_val).astype(np.float32)
     X_test_norm = scaler.transform(X_test).astype(np.float32)
 
+    # Clip extreme outliers post-normalization
+    n_clipped_train = int((np.abs(X_train_norm) > clip_value).sum())
+    X_train_norm = np.clip(X_train_norm, -clip_value, clip_value)
+    X_val_norm = np.clip(X_val_norm, -clip_value, clip_value)
+    X_test_norm = np.clip(X_test_norm, -clip_value, clip_value)
+
     norm_params = {
         "feature_names": FLOW_FEATURE_NAMES,
         "means": scaler.mean_.tolist(),
         "stds": scaler.scale_.tolist(),
+        "clip_value": clip_value,
         "n_features": len(FLOW_FEATURE_NAMES),
     }
 
@@ -1097,6 +1110,13 @@ def normalize_features(
         f"Normalization: {len(FLOW_FEATURE_NAMES)} features, "
         f"StandardScaler fitted on training set"
     )
+    if n_clipped_train > 0:
+        total_cells = X_train_norm.shape[0] * X_train_norm.shape[1]
+        pct = 100.0 * n_clipped_train / total_cells
+        print(
+            f"  Clipped {n_clipped_train:,} values ({pct:.4f}%) to "
+            f"[{-clip_value}, {clip_value}]"
+        )
     return X_train_norm, X_val_norm, X_test_norm, norm_params
 
 

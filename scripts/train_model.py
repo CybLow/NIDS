@@ -160,7 +160,21 @@ def create_dataloaders(
     # Weighted random sampling for class imbalance
     if use_weighted_sampling:
         class_counts = np.bincount(y_train, minlength=n_classes)
-        class_weights = 1.0 / np.maximum(class_counts, 1).astype(np.float64)
+        # Inverse-frequency weights, but cap the maximum weight to prevent
+        # extreme over-sampling of classes with very few samples (e.g., 3).
+        # Without capping, a class with 3 samples gets weight ~200K, which
+        # causes the model to see those 3 samples thousands of times per epoch.
+        class_weights = np.zeros(n_classes, dtype=np.float64)
+        for i in range(n_classes):
+            if class_counts[i] > 0:
+                class_weights[i] = 1.0 / class_counts[i]
+        # Cap: no class weight exceeds 100x the median non-zero weight
+        nonzero_weights = class_weights[class_weights > 0]
+        if len(nonzero_weights) > 0:
+            median_w = np.median(nonzero_weights)
+            max_w = 100.0 * median_w
+            class_weights = np.minimum(class_weights, max_w)
+
         sample_weights = class_weights[y_train]
         sampler = WeightedRandomSampler(
             weights=torch.tensor(sample_weights, dtype=torch.double),
@@ -324,19 +338,16 @@ def main() -> None:
     print(model)
     print()
 
-    # Loss with class weights from metadata
-    metadata_path = args.data_dir / "model_metadata.json"
-    if metadata_path.exists():
-        with open(metadata_path) as f:
-            metadata = json.load(f)
-        weights = torch.zeros(n_classes, dtype=torch.float32)
-        for idx_str, w in metadata.get("class_weights", {}).items():
-            weights[int(idx_str)] = w
-        criterion = nn.CrossEntropyLoss(weight=weights.to(device))
-        print("Using class-weighted cross-entropy loss")
-    else:
-        criterion = nn.CrossEntropyLoss()
-        print("Using unweighted cross-entropy loss (no metadata found)")
+    # Loss function
+    # NOTE: We use WeightedRandomSampler for class rebalancing at the sampling
+    # level, so we do NOT also use class-weighted CrossEntropyLoss (that would
+    # cause double-compensation, biasing the model toward rare classes).
+    # Label smoothing (0.1) helps regularize and prevents over-confident
+    # predictions on the resampled batches.
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    print(
+        "Using CrossEntropyLoss with label_smoothing=0.1 (class rebalancing via sampler)"
+    )
 
     # Optimizer and scheduler
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)

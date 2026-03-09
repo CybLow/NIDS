@@ -84,8 +84,14 @@ def plot_confusion_matrix(
     output_path: Path,
 ) -> None:
     """Generate and save a confusion matrix heatmap."""
-    cm = confusion_matrix(y_true, y_pred)
-    cm_normalized = cm.astype(float) / cm.sum(axis=1, keepdims=True)
+    labels = list(range(len(class_names)))
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    row_sums = cm.sum(axis=1, keepdims=True)
+    # Avoid division by zero for classes absent from the test set
+    cm_normalized = np.divide(
+        cm.astype(float), row_sums, out=np.zeros_like(cm, dtype=float),
+        where=row_sums != 0,
+    )
 
     fig, axes = plt.subplots(1, 2, figsize=(24, 10))
 
@@ -223,14 +229,19 @@ def main() -> None:
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=_NUM_WORKERS,
-        pin_memory=True,
+        pin_memory=device.type == "cuda",
     )
 
     # Get predictions
     y_pred, y_true, y_probs = get_predictions(model, test_loader, device)
 
-    # Classification report
-    report = classification_report(y_true, y_pred, target_names=class_names, digits=4)
+    # Classification report (specify labels so all classes appear even if absent
+    # from the test split)
+    all_labels = list(range(n_classes))
+    report = classification_report(
+        y_true, y_pred, labels=all_labels, target_names=class_names, digits=4,
+        zero_division=0,
+    )
     print("\nClassification Report:")
     print(report)
 
@@ -241,7 +252,8 @@ def main() -> None:
 
     # Per-class metrics as JSON
     report_dict = classification_report(
-        y_true, y_pred, target_names=class_names, digits=6, output_dict=True
+        y_true, y_pred, labels=all_labels, target_names=class_names, digits=6,
+        output_dict=True, zero_division=0,
     )
     metrics_path = args.output_dir / "metrics.json"
     with open(metrics_path, "w") as f:
@@ -271,15 +283,24 @@ def main() -> None:
     accuracy = (y_pred == y_true).mean()
     print(f"\nOverall Test Accuracy: {accuracy:.4f} ({accuracy * 100:.2f}%)")
 
-    # Macro-averaged AUC
+    # Macro-averaged AUC (only over classes that appear in the test set)
     try:
-        y_true_onehot = np.eye(n_classes)[y_true]
-        macro_auc = roc_auc_score(
-            y_true_onehot, y_probs, average="macro", multi_class="ovr"
-        )
-        print(f"Macro AUC-ROC: {macro_auc:.4f}")
-    except ValueError:
-        pass
+        present = sorted(set(y_true))
+        if len(present) >= 2:
+            y_true_onehot = np.eye(n_classes)[y_true][:, present]
+            y_probs_present = y_probs[:, present]
+            macro_auc = roc_auc_score(
+                y_true_onehot, y_probs_present, average="macro", multi_class="ovr"
+            )
+            print(f"Macro AUC-ROC: {macro_auc:.4f}")
+            if len(present) < n_classes:
+                absent = [class_names[i] for i in range(n_classes) if i not in present]
+                print(f"  (excluded {len(absent)} classes with no test samples: "
+                      f"{', '.join(absent)})")
+        else:
+            print("Macro AUC-ROC: N/A (fewer than 2 classes in test set)")
+    except ValueError as e:
+        print(f"WARNING: Could not compute Macro AUC-ROC: {e}")
 
     print(f"\nAll evaluation results saved to: {args.output_dir}/")
 

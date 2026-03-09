@@ -47,7 +47,7 @@ class CnnBiLstmExport(nn.Module):
 def export_to_onnx(
     checkpoint_path: str,
     output_path: str,
-    opset: int = 15,
+    opset: int = 18,
 ) -> None:
     """Export a trained model checkpoint to ONNX format."""
     print(f"Loading checkpoint: {checkpoint_path}")
@@ -73,21 +73,20 @@ def export_to_onnx(
     # Create dummy input
     dummy_input = torch.randn(1, n_features)
 
+    # Dynamic batch dimension for both input and output
+    batch = torch.export.Dim("batch_size", min=1)
+    dynamic_shapes = {"x": {0: batch}}
+
     # Export to ONNX
     print(f"Exporting to ONNX (opset {opset})...")
     torch.onnx.export(
         export_model,
-        dummy_input,
+        (dummy_input,),
         output_path,
-        export_params=True,
         opset_version=opset,
-        do_constant_folding=True,
         input_names=["input"],
         output_names=["output"],
-        dynamic_axes={
-            "input": {0: "batch_size"},
-            "output": {0: "batch_size"},
-        },
+        dynamic_shapes=dynamic_shapes,
     )
     print(f"ONNX model saved: {output_path}")
 
@@ -169,8 +168,8 @@ def main() -> None:
     parser.add_argument(
         "--opset",
         type=int,
-        default=15,
-        help="ONNX opset version (default: 15)",
+        default=18,
+        help="ONNX opset version (default: 18)",
     )
     parser.add_argument(
         "--data-dir",
