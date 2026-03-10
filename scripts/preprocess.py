@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from collections import defaultdict
 from collections.abc import Sequence
@@ -221,6 +222,15 @@ IDLE_THRESHOLD_US = 5_000_000  # 5 seconds
 PROTO_TCP = 6
 PROTO_UDP = 17
 PROTO_ICMP = 1
+PROTO_ARP = 0  # Pseudo protocol number for ARP (not a real IP protocol)
+
+# Maximum packets per flow before forced split.  Prevents mega-flows (e.g.
+# DDoS-RawIPDDoS where 326K packets share a single 5-tuple) from collapsing
+# into a single sample.  Value chosen based on dataset analysis: the rarest
+# classes (DDoS-ICMP, ICMP-Flood, DDoS-RawIP) have only 1-2 unique
+# bidirectional 5-tuples with 200K-326K packets each.  At 200 packets/flow
+# this yields ~1,000-1,600 flows per class — enough for meaningful training.
+MAX_FLOW_PACKETS = 200
 
 
 # ---------------------------------------------------------------------------
@@ -573,7 +583,7 @@ def _parse_tcp_flags_hex(flags_str: Any) -> int:
 def _protocol_str_to_num(proto: Any) -> int:
     """Convert Wireshark protocol string to IP protocol number."""
     if proto is None or (isinstance(proto, float) and math.isnan(proto)):
-        return 0
+        return -1
     proto = str(proto).strip().upper()
     if proto == "TCP":
         return PROTO_TCP
@@ -581,13 +591,43 @@ def _protocol_str_to_num(proto: Any) -> int:
         return PROTO_UDP
     elif proto == "ICMP":
         return PROTO_ICMP
-    return 0
+    elif proto == "ARP":
+        return PROTO_ARP
+    return -1
+
+
+# Regex patterns for extracting IPs from ARP Info text.
+# Examples:
+#   "Who has 192.168.1.184? Tell 192.168.1.67"        -> (1.67 -> src, 1.184 -> dst)
+#   "192.168.1.67 is at aa:bb:cc:dd:ee:ff"            -> (1.67 -> src, 1.67 -> dst)
+_ARP_REQUEST_RE = re.compile(r"Who has ([\d.]+)\?\s*Tell ([\d.]+)", re.IGNORECASE)
+_ARP_REPLY_RE = re.compile(r"^([\d.]+) is at", re.IGNORECASE)
+
+
+def _parse_arp_info(info: str) -> tuple[str, str] | None:
+    """Extract (src_ip, dst_ip) from ARP Info column text.
+
+    For ARP requests ("Who has X? Tell Y"): src = Y (sender), dst = X (target).
+    For ARP replies ("X is at MAC"):        src = X, dst = X (self-referential).
+    Returns None if the Info text cannot be parsed.
+    """
+    m = _ARP_REQUEST_RE.search(info)
+    if m:
+        target_ip = m.group(1)
+        sender_ip = m.group(2)
+        return sender_ip, target_ip
+    m = _ARP_REPLY_RE.search(info)
+    if m:
+        ip = m.group(1)
+        return ip, ip
+    return None
 
 
 def _parse_packet_row(row: pd.Series) -> ParsedPacket | None:
     """Parse a single CSV row into a ParsedPacket.
 
-    Returns None if the row cannot be parsed or is not TCP/UDP.
+    Returns None if the row cannot be parsed.
+    Supports TCP, UDP, ICMP, and ARP packets.
     """
     # Timestamp: "Frame Time (Epoch)" is a Unix timestamp (seconds, float)
     epoch_str = row.get("Frame Time (Epoch)", "")
@@ -596,13 +636,43 @@ def _parse_packet_row(row: pd.Series) -> ParsedPacket | None:
         return None
     timestamp_us = int(ts_sec * 1_000_000)
 
-    # Protocol
-    proto_str = str(row.get("IP Protocol", "") or row.get("Protocol", ""))
+    # Protocol -- try "IP Protocol" first, fall back to "Protocol" for ARP
+    proto_str = str(row.get("IP Protocol", "") or "").strip()
+    if not proto_str or proto_str == "nan":
+        proto_str = str(row.get("Protocol", "") or "").strip()
     protocol = _protocol_str_to_num(proto_str)
-    if protocol not in (PROTO_TCP, PROTO_UDP):
-        return None  # Only TCP and UDP flows (matches C++)
+    if protocol < 0:
+        return None  # Unknown / unsupported protocol
 
-    # IPs
+    # --- ARP handling ---
+    if protocol == PROTO_ARP:
+        info = str(row.get("Info", "") or "").strip()
+        parsed = _parse_arp_info(info)
+        if parsed is None:
+            return None
+        src_ip, dst_ip = parsed
+        # ARP has no IP length; use frame length as a proxy.
+        ip_length = _parse_int(row.get("frame length", 0))
+        if ip_length <= 0:
+            ip_length = _parse_int(row.get("Length", 0))
+        if ip_length <= 0:
+            return None
+        return ParsedPacket(
+            timestamp_us=timestamp_us,
+            src_ip=src_ip,
+            dst_ip=dst_ip,
+            src_port=0,
+            dst_port=0,
+            protocol=PROTO_ARP,
+            ip_length=ip_length,
+            tcp_flags=0,
+            tcp_window=0,
+            tcp_payload_len=0,
+            ip_header_len=0,
+            transport_header_len=0,
+        )
+
+    # --- IP-based protocols (TCP, UDP, ICMP) ---
     src_ip = str(row.get("IP Source", "")).strip()
     dst_ip = str(row.get("IP Destination", "")).strip()
     if not src_ip or not dst_ip or src_ip == "nan" or dst_ip == "nan":
@@ -613,27 +683,35 @@ def _parse_packet_row(row: pd.Series) -> ParsedPacket | None:
     if ip_length <= 0:
         return None
 
-    # Ports
-    if protocol == PROTO_TCP:
-        src_port = _parse_int(row.get("TCP Source Port", 0))
-        dst_port = _parse_int(row.get("TCP Destination Port", 0))
-    else:  # UDP
-        src_port = _parse_int(row.get("UDP Source Port", 0))
-        dst_port = _parse_int(row.get("UDP Destination Port", 0))
-
-    # TCP flags (hex string like "0x002")
+    # Ports and transport header
+    src_port: int
+    dst_port: int
     tcp_flags = 0
     tcp_window = 0
     tcp_payload_len = 0
-    transport_header_len = 8  # default for UDP
+    transport_header_len: int
 
     if protocol == PROTO_TCP:
+        src_port = _parse_int(row.get("TCP Source Port", 0))
+        dst_port = _parse_int(row.get("TCP Destination Port", 0))
+        transport_header_len = 20
         tcp_flags = _parse_tcp_flags_hex(row.get("TCP Flags", ""))
         tcp_window = _parse_int(row.get("TCP Window Size", 0))
         tcp_payload_len = _parse_int(row.get("TCP Length", 0))
-        # We don't have TCP data offset in the CSV, default to 20 bytes.
-        # CICFlowMeter also typically assumes 20 if not available.
-        transport_header_len = 20
+    elif protocol == PROTO_UDP:
+        src_port = _parse_int(row.get("UDP Source Port", 0))
+        dst_port = _parse_int(row.get("UDP Destination Port", 0))
+        transport_header_len = 8
+    elif protocol == PROTO_ICMP:
+        # Use ICMP type as src_port and 0 as dst_port for flow keying.
+        # This mirrors the C++ approach: ICMP type differentiates flow types
+        # (e.g., echo request type=8 vs echo reply type=0).
+        icmp_type = _parse_int(row.get("ICMP Type", 0))
+        src_port = icmp_type
+        dst_port = 0
+        transport_header_len = 8  # ICMP header is 8 bytes
+    else:
+        return None  # Should not reach here
 
     # IP header length: not directly available in CSV, default 20.
     ip_header_len = 20
@@ -841,6 +919,22 @@ class FlowAggregator:
                 stats.bwd_bulk_bytes.append(stats.cur_bwd_bulk_bytes)
             self.completed_flows.append((used_key, stats))
             del self.active_flows[used_key]
+            return
+
+        # Max-flow-size splitting: prevent mega-flows from collapsing into
+        # a single sample.  When exceeded, finalize the current flow and
+        # start a fresh one for the same 5-tuple.
+        total_pkts = stats.total_fwd_packets + stats.total_bwd_packets
+        if total_pkts >= MAX_FLOW_PACKETS:
+            if stats.cur_fwd_bulk_pkts >= 2:
+                stats.fwd_bulk_packets.append(stats.cur_fwd_bulk_pkts)
+                stats.fwd_bulk_bytes.append(stats.cur_fwd_bulk_bytes)
+            if stats.cur_bwd_bulk_pkts >= 2:
+                stats.bwd_bulk_packets.append(stats.cur_bwd_bulk_pkts)
+                stats.bwd_bulk_bytes.append(stats.cur_bwd_bulk_bytes)
+            self.completed_flows.append((used_key, stats))
+            # Start a new flow for the same key
+            self.active_flows[used_key] = FlowStats()
 
     def finalize(self) -> list[tuple[FlowKey, FlowStats]]:
         """Finalize all remaining active flows and return all flows.
@@ -1098,10 +1192,29 @@ def normalize_features(
     X_val_norm = np.clip(X_val_norm, -clip_value, clip_value)
     X_test_norm = np.clip(X_test_norm, -clip_value, clip_value)
 
+    # Guard near-zero stds: replace any std < 1e-8 with 1.0 so that C++
+    # inference (which does (x - mean) / std) never divides by ~0.
+    # sklearn's StandardScaler already does this internally, but we make it
+    # explicit in the saved metadata for safety.
+    safe_stds = scaler.scale_.copy()
+    near_zero_mask = safe_stds < 1e-8
+    n_zero_var = int(near_zero_mask.sum())
+    if n_zero_var > 0:
+        safe_stds[near_zero_mask] = 1.0
+        zero_var_names = [
+            FLOW_FEATURE_NAMES[i]
+            for i in range(len(FLOW_FEATURE_NAMES))
+            if near_zero_mask[i]
+        ]
+        print(
+            f"  {n_zero_var} zero-variance feature(s) (std replaced with 1.0): "
+            f"{zero_var_names}"
+        )
+
     norm_params = {
         "feature_names": FLOW_FEATURE_NAMES,
         "means": scaler.mean_.tolist(),
-        "stds": scaler.scale_.tolist(),
+        "stds": safe_stds.tolist(),
         "clip_value": clip_value,
         "n_features": len(FLOW_FEATURE_NAMES),
     }
@@ -1151,6 +1264,7 @@ def save_metadata(
             "method": "standard_scaler",
             "means": norm_params["means"],
             "stds": norm_params["stds"],
+            "clip_value": norm_params["clip_value"],
         },
         "label_map": label_map,
         "index_to_label": {str(v): k for k, v in label_map.items()},

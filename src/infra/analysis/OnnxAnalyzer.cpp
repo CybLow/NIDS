@@ -74,8 +74,16 @@ bool OnnxAnalyzer::loadModel(const std::string& modelPath) {
 }
 
 nids::core::AttackType OnnxAnalyzer::predict(const std::vector<float>& features) {
+    auto result = predictWithConfidence(features);
+    return result.classification;
+}
+
+nids::core::PredictionResult OnnxAnalyzer::predictWithConfidence(
+    const std::vector<float>& features) {
+    nids::core::PredictionResult result;
+
     if (!impl_->loaded || !impl_->session) {
-        return nids::core::AttackType::Unknown;
+        return result;  // Unknown, 0 confidence
     }
 
     try {
@@ -102,13 +110,24 @@ nids::core::AttackType OnnxAnalyzer::predict(const std::vector<float>& features)
         auto outputSize = outputInfo.GetElementCount();
 
         std::span<const float> outputs(output, outputSize);
+
+        // Copy probabilities (model output already has softmax applied)
+        auto copyCount = std::min(outputSize,
+            static_cast<std::size_t>(nids::core::kAttackTypeCount));
+        for (std::size_t i = 0; i < copyCount; ++i) {
+            result.probabilities[i] = outputs[i];
+        }
+
         auto maxIt = std::ranges::max_element(outputs);
         auto maxIndex = static_cast<int>(std::distance(outputs.begin(), maxIt));
 
-        return nids::core::attackTypeFromIndex(maxIndex);
+        result.classification = nids::core::attackTypeFromIndex(maxIndex);
+        result.confidence = *maxIt;
+
+        return result;
     } catch (const Ort::Exception& e) {
         spdlog::error("ONNX prediction failed: {}", e.what());
-        return nids::core::AttackType::Unknown;
+        return result;  // Unknown, 0 confidence
     }
 }
 

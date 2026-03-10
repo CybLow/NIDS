@@ -1,8 +1,10 @@
 #include "app/ReportGenerator.h"
 #include "core/model/AttackType.h"
+#include "core/model/DetectionResult.h"
 
 #include <fstream>
 #include <chrono>
+#include <iomanip>
 
 namespace nids::app {
 
@@ -34,6 +36,7 @@ ReportGenerator::ReportResult ReportGenerator::generate(
     for (std::size_t i = 0; i < count; ++i) {
         const auto& pkt = session.getPacket(i);
         auto attackType = session.getAnalysisResult(i);
+        auto detection = session.getDetectionResult(i);
 
         file << "Packet #" << i << "\n";
         file << "  Protocol: " << pkt.protocol << "\n";
@@ -41,6 +44,32 @@ ReportGenerator::ReportResult ReportGenerator::generate(
         file << "  Source: " << pkt.ipSource << ":" << pkt.portSource << "\n";
         file << "  Destination: " << pkt.ipDestination << ":" << pkt.portDestination << "\n";
         file << "  Status: " << nids::core::attackTypeToString(attackType) << "\n";
+
+        // Append hybrid detection details if available
+        if (detection.has_value()) {
+            const auto& det = detection.value();
+            file << "  Detection Source: " << nids::core::detectionSourceToString(det.detectionSource) << "\n";
+            file << "  Combined Score: " << std::fixed << std::setprecision(3) << det.combinedScore << "\n";
+            file << "  ML Confidence: " << std::fixed << std::setprecision(3) << det.mlResult.confidence << "\n";
+
+            if (!det.threatIntelMatches.empty()) {
+                file << "  Threat Intel Matches:\n";
+                for (const auto& ti : det.threatIntelMatches) {
+                    file << "    - " << ti.ip << " [" << ti.feedName << "]"
+                         << (ti.isSource ? " (source)" : " (destination)") << "\n";
+                }
+            }
+
+            if (!det.ruleMatches.empty()) {
+                file << "  Heuristic Rules:\n";
+                for (const auto& rule : det.ruleMatches) {
+                    file << "    - " << rule.ruleName << " (severity="
+                         << std::fixed << std::setprecision(2) << rule.severity
+                         << "): " << rule.description << "\n";
+                }
+            }
+        }
+
         file << "\n";
     }
 

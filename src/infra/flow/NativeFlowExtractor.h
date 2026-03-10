@@ -29,6 +29,11 @@ namespace nids::infra {
 /// Number of flow features produced by toFeatureVector().
 inline constexpr int kFlowFeatureCount = 77;
 
+/// Maximum packets per flow before forced split.  Prevents mega-flows
+/// (e.g. DDoS where millions of packets share a single 5-tuple) from
+/// collapsing into a single sample.  Must match Python preprocessing.
+inline constexpr std::uint64_t kMaxFlowPackets = 200;
+
 /// Returns the ordered list of feature column names matching toFeatureVector() output.
 [[nodiscard]] const std::vector<std::string>& flowFeatureNames();
 
@@ -106,15 +111,19 @@ public:
     [[nodiscard]] std::vector<std::vector<float>> loadFeatures(
         const std::string& csvPath) override;
 
+    [[nodiscard]] const std::vector<nids::core::FlowInfo>& flowMetadata() const noexcept override;
+
 private:
     std::map<FlowKey, FlowStats> flows_;
     std::vector<std::pair<FlowKey, FlowStats>> completedFlows_;
+    std::vector<nids::core::FlowInfo> flowMetadata_;   ///< Populated by extractFlows()
     std::int64_t flowTimeoutUs_ = 600'000'000;  // 600 seconds default
 
     void processPacket(const std::uint8_t* data, std::uint32_t len,
                        std::int64_t timestampUs);
     void finalizeBulks();
     void writeCsv(const std::string& outputPath) const;
+    void buildFlowMetadata();   ///< Populate flowMetadata_ from completed + active flows
 };
 
 } // namespace nids::infra

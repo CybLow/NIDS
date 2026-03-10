@@ -37,6 +37,18 @@ public:
     [[nodiscard]] std::filesystem::path tempDirectory() const;
     [[nodiscard]] int onnxIntraOpThreads() const;
 
+    // -- Threat Intelligence --
+
+    [[nodiscard]] std::filesystem::path threatIntelDirectory() const;
+    void setThreatIntelDirectory(const std::filesystem::path& path);
+
+    // -- Hybrid Detection --
+
+    [[nodiscard]] float mlConfidenceThreshold() const noexcept;
+    [[nodiscard]] float weightMl() const noexcept;
+    [[nodiscard]] float weightThreatIntel() const noexcept;
+    [[nodiscard]] float weightHeuristic() const noexcept;
+
     // -- UI --
 
     [[nodiscard]] std::string windowTitle() const;
@@ -56,10 +68,15 @@ private:
 
     std::filesystem::path modelPath_;
     std::filesystem::path metadataPath_;
+    std::filesystem::path threatIntelDir_;
     std::string defaultDumpFile_;
     int64_t flowTimeoutUs_;
     int64_t idleThresholdUs_;
     int onnxIntraOpThreads_;
+    float mlConfidenceThreshold_;
+    float weightMl_;
+    float weightThreatIntel_;
+    float weightHeuristic_;
     std::string windowTitle_;
 };
 

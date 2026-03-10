@@ -47,7 +47,7 @@ class CnnBiLstmExport(nn.Module):
 def export_to_onnx(
     checkpoint_path: str,
     output_path: str,
-    opset: int = 18,
+    opset: int = 17,
 ) -> None:
     """Export a trained model checkpoint to ONNX format."""
     print(f"Loading checkpoint: {checkpoint_path}")
@@ -66,6 +66,10 @@ def export_to_onnx(
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
+    # Flatten LSTM parameters for contiguous memory layout (required by ONNX tracer)
+    if hasattr(model, "lstm"):
+        model.lstm.flatten_parameters()
+
     # Wrap with softmax for export
     export_model = CnnBiLstmExport(model)
     export_model.eval()
@@ -73,28 +77,31 @@ def export_to_onnx(
     # Create dummy input
     dummy_input = torch.randn(1, n_features)
 
-    # Dynamic batch dimension for both input and output
-    batch = torch.export.Dim("batch_size", min=1)
-    dynamic_shapes = {"x": {0: batch}}
-
     # Export to ONNX
     print(f"Exporting to ONNX (opset {opset})...")
-    torch.onnx.export(
-        export_model,
-        (dummy_input,),
-        output_path,
-        opset_version=opset,
-        input_names=["input"],
-        output_names=["output"],
-        dynamic_shapes=dynamic_shapes,
-    )
+    with torch.no_grad():
+        torch.onnx.export(
+            export_model,
+            (dummy_input,),
+            output_path,
+            opset_version=opset,
+            input_names=["input"],
+            output_names=["output"],
+            dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
+            do_constant_folding=True,
+        )
     print(f"ONNX model saved: {output_path}")
 
     # Verify with ONNX Runtime
-    verify_onnx(output_path, n_features, n_classes)
+    verify_onnx(output_path, export_model, n_features, n_classes)
 
 
-def verify_onnx(model_path: str, n_features: int, n_classes: int) -> None:
+def verify_onnx(
+    model_path: str,
+    pytorch_model: nn.Module,
+    n_features: int,
+    n_classes: int,
+) -> None:
     """Verify the exported ONNX model with ONNX Runtime."""
     try:
         import onnx
@@ -123,7 +130,7 @@ def verify_onnx(model_path: str, n_features: int, n_classes: int) -> None:
     # Run inference with dummy data
     dummy = np.random.randn(1, n_features).astype(np.float32)
     result = session.run([output_info.name], {input_info.name: dummy})
-    output = result[0]
+    output = result[0]  # type: ignore[index]
 
     print(f"  Output shape: {output.shape}")
     print(f"  Output sum (should be ~1.0): {output.sum():.6f}")
@@ -132,10 +139,23 @@ def verify_onnx(model_path: str, n_features: int, n_classes: int) -> None:
     assert output.shape == (1, n_classes), (
         f"Expected (1, {n_classes}), got {output.shape}"
     )
-    assert abs(output.sum() - 1.0) < 1e-4, (
+    assert abs(float(output.sum()) - 1.0) < 1e-4, (
         f"Softmax sum should be ~1.0, got {output.sum()}"
     )
     print("ONNX Runtime verification passed.")
+
+    # Numerical equivalence: PyTorch vs ONNX Runtime
+    test_inputs = np.random.randn(32, n_features).astype(np.float32)
+    with torch.no_grad():
+        pt_out = pytorch_model(torch.from_numpy(test_inputs)).numpy()
+    ort_out = session.run([output_info.name], {input_info.name: test_inputs})[0]
+
+    max_diff = float(np.abs(pt_out - ort_out).max())
+    mean_diff = float(np.abs(pt_out - ort_out).mean())
+    print(f"  Max diff:  {max_diff:.8f}")
+    print(f"  Mean diff: {mean_diff:.8f}")
+    assert max_diff < 1e-4, f"ONNX output diverges from PyTorch! max_diff={max_diff}"
+    print("Numerical equivalence: PASSED")
 
 
 def copy_metadata(data_dir: Path, output_dir: Path) -> None:
@@ -162,14 +182,14 @@ def main() -> None:
         "--output",
         "-o",
         type=str,
-        default=str(SCRIPT_DIR.parent / "src" / "model" / "model.onnx"),
+        default=str(SCRIPT_DIR.parent / "models" / "model.onnx"),
         help="Output ONNX model path",
     )
     parser.add_argument(
         "--opset",
         type=int,
-        default=18,
-        help="ONNX opset version (default: 18)",
+        default=17,
+        help="ONNX opset version (default: 17)",
     )
     parser.add_argument(
         "--data-dir",

@@ -29,6 +29,8 @@ public:
 
     [[nodiscard]] bool loadModel(const std::string& modelPath) override;
     [[nodiscard]] nids::core::AttackType predict(const std::vector<float>& features) override;
+    [[nodiscard]] nids::core::PredictionResult predictWithConfidence(
+        const std::vector<float>& features) override;
 
 private:
     struct Impl;

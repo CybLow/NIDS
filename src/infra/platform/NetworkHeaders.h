@@ -184,6 +184,18 @@ constexpr std::uint8_t kTcpUrg = 0x20;
 constexpr std::uint8_t kTcpEce = 0x40;
 constexpr std::uint8_t kTcpCwr = 0x80;
 
+/// Minimal ICMP header (first 4 bytes): type, code, checksum.
+/// The ICMP header is always at least 8 bytes (including identifier + sequence
+/// for echo), but we only need type and code for flow keying.
+struct IcmpHeader {
+    std::uint8_t type;
+    std::uint8_t code;
+    std::uint16_t checksum;
+};
+
+/// Minimum ICMP header size (type + code + checksum + id + seq).
+constexpr std::size_t kIcmpHeaderSize = 8;
+
 inline std::uint8_t getTcpFlags(const TcpHeader* h) noexcept {
 #ifdef _WIN32
     return h->flags;

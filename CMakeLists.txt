@@ -24,6 +24,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/FindPCAP.cmake)
 find_package(Threads REQUIRED)
 find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG QUIET)
 
 set(NIDS_CORE_SOURCES
@@ -38,13 +39,17 @@ set(NIDS_INFRA_SOURCES
     src/infra/capture/PcapCapture.cpp
     src/infra/analysis/OnnxAnalyzer.cpp
     src/infra/analysis/AnalyzerFactory.cpp
+    src/infra/analysis/FeatureNormalizer.cpp
     src/infra/flow/NativeFlowExtractor.cpp
+    src/infra/threat/ThreatIntelProvider.cpp
+    src/infra/rules/HeuristicRuleEngine.cpp
     src/infra/platform/SocketInit.cpp
 )
 
 set(NIDS_APP_SOURCES
     src/app/CaptureController.cpp
     src/app/AnalysisService.cpp
+    src/app/HybridDetectionService.cpp
     src/app/ReportGenerator.cpp
 )
 
@@ -81,6 +86,7 @@ target_link_libraries(NIDS PRIVATE
     Qt::Core
     Qt::Gui
     onnxruntime::onnxruntime
+    nlohmann_json::nlohmann_json
 )
 
 if(spdlog_FOUND)
@@ -103,24 +109,41 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-install(TARGETS NIDS RUNTIME DESTINATION bin)
-install(FILES src/model/model.onnx DESTINATION share/nids/model OPTIONAL)
+# ── Code coverage instrumentation ────────────────────────────────
+if(NIDS_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(NIDS PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+        target_link_options(NIDS PRIVATE --coverage)
+    else()
+        message(WARNING "Code coverage is only supported with GCC or Clang")
+    endif()
+endif()
 
-# Packaging
-include(CPack)
+# ── Install rules ────────────────────────────────────────────────
+install(TARGETS NIDS RUNTIME DESTINATION bin)
+install(FILES models/model.onnx DESTINATION share/nids/model OPTIONAL)
+install(FILES models/model_metadata.json DESTINATION share/nids/model OPTIONAL)
+install(DIRECTORY data/threat_intel/ DESTINATION share/nids/threat_intel
+    FILES_MATCHING PATTERN "*.txt" PATTERN "*.csv" PATTERN "*.list"
+    PATTERN ".gitkeep" EXCLUDE)
+install(PROGRAMS scripts/update_threat_feeds.sh DESTINATION share/nids/scripts OPTIONAL)
+
+# ── Packaging (CPack variables must be set BEFORE include(CPack)) ─
 set(CPACK_PACKAGE_NAME "nids")
 set(CPACK_PACKAGE_VENDOR "NIDS Project")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
 set(CPACK_PACKAGE_CONTACT "nids-dev")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+# set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")  # TODO: add LICENSE file
 set(CPACK_GENERATOR "DEB;RPM;TGZ")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
     "libpcap0.8, libqt6widgets6 (>= 6.2), libqt6gui6 (>= 6.2), libqt6core6 (>= 6.2)")
 set(CPACK_DEBIAN_PACKAGE_SECTION "net")
 set(CPACK_RPM_PACKAGE_REQUIRES
     "libpcap, qt6-qtbase")
+include(CPack)
 
+# ── Tests ────────────────────────────────────────────────────────
 if(NIDS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)

@@ -1,40 +1,73 @@
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
+# ── Build artifacts ───────────────────────────────────────────────
+build/
+build-*/
+cmake-build-*/
+.cache/
+compile_commands.json
 *.o
 *.obj
-
-# Precompiled Headers
+*.lo
+*.slo
+*.d
 *.gch
 *.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
 *.lai
 *.la
 *.a
 *.lib
-
-# Executables
+*.so
+*.dylib
+*.dll
 *.exe
 *.out
 *.app
+*.mod
+*.smod
 
-# Build directories
-build/
-cmake-build-*/
+# ── IDE / editor ─────────────────────────────────────────────────
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+*~
 
-# Test artifacts
+# ── OpenCode ─────────────────────────────────────────────────────
+.opencode/
+
+# ── vcpkg (not used — system packages via dnf) ──────────────────
+vcpkg_installed/
+
+# ── Large / binary files (global — never commit anywhere) ────────
+*.onnx
+*.onnx.data
+*.pt
+*.pth
+*.keras
+*.h5
+*.npy
+*.npz
+*.zip
+
+# ── ML model artifacts (produced by training pipeline) ───────────
+models/evaluation/
+models/training_summary.json
+models/model_metadata.json
+
+# ── Python ───────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.ruff_cache/
+scripts/.venv/
+scripts/data/
+.ipynb_checkpoints/
+
+# ── Test / capture artifacts ─────────────────────────────────────
 *.pcap
 *.csv
+
+# ── OS junk ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

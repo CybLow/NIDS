@@ -168,11 +168,11 @@ def create_dataloaders(
         for i in range(n_classes):
             if class_counts[i] > 0:
                 class_weights[i] = 1.0 / class_counts[i]
-        # Cap: no class weight exceeds 100x the median non-zero weight
+        # Cap: no class weight exceeds 50x the median non-zero weight
         nonzero_weights = class_weights[class_weights > 0]
         if len(nonzero_weights) > 0:
             median_w = np.median(nonzero_weights)
-            max_w = 100.0 * median_w
+            max_w = 50.0 * median_w
             class_weights = np.minimum(class_weights, max_w)
 
         sample_weights = class_weights[y_train]
@@ -293,7 +293,7 @@ def main() -> None:
         help="Directory to save trained model",
     )
     parser.add_argument(
-        "--epochs", type=int, default=50, help="Maximum training epochs (default: 50)"
+        "--epochs", type=int, default=100, help="Maximum training epochs (default: 100)"
     )
     parser.add_argument(
         "--batch-size", type=int, default=512, help="Batch size (default: 512)"
@@ -302,7 +302,7 @@ def main() -> None:
         "--lr", type=float, default=1e-3, help="Initial learning rate (default: 1e-3)"
     )
     parser.add_argument(
-        "--patience", type=int, default=7, help="Early stopping patience (default: 7)"
+        "--patience", type=int, default=10, help="Early stopping patience (default: 10)"
     )
     parser.add_argument(
         "--lstm-hidden", type=int, default=128, help="LSTM hidden size (default: 128)"
@@ -342,11 +342,11 @@ def main() -> None:
     # NOTE: We use WeightedRandomSampler for class rebalancing at the sampling
     # level, so we do NOT also use class-weighted CrossEntropyLoss (that would
     # cause double-compensation, biasing the model toward rare classes).
-    # Label smoothing (0.1) helps regularize and prevents over-confident
+    # Label smoothing (0.05) helps regularize and prevents over-confident
     # predictions on the resampled batches.
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
     print(
-        "Using CrossEntropyLoss with label_smoothing=0.1 (class rebalancing via sampler)"
+        "Using CrossEntropyLoss with label_smoothing=0.05 (class rebalancing via sampler)"
     )
 
     # Optimizer and scheduler

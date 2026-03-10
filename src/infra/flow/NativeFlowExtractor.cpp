@@ -363,6 +363,7 @@ bool NativeFlowExtractor::extractFlows(const std::string& pcapPath,
     }
 
     finalizeBulks();
+    buildFlowMetadata();
     writeCsv(outputCsvPath);
     return true;
 }
@@ -425,8 +426,15 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
         srcPort = getUdpSrcPort(udp);
         dstPort = getUdpDstPort(udp);
         transportHeaderLen = 8;
+    } else if (protocol == kIpProtoIcmp) {
+        if (payloadLen < ipIhl + kIcmpHeaderSize) [[unlikely]] return;
+        auto* icmp = reinterpret_cast<const IcmpHeader*>(payload + ipIhl);
+        // Use ICMP type as src_port for flow keying (matches preprocessing).
+        srcPort = icmp->type;
+        dstPort = 0;
+        transportHeaderLen = static_cast<std::uint32_t>(kIcmpHeaderSize);
     } else {
-        return;  // Only TCP and UDP flows
+        return;  // Unsupported protocol
     }
 
     std::uint32_t headerBytes = ipIhl + transportHeaderLen;
@@ -588,6 +596,25 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
         FlowKey key = *usedKey;
         completedFlows_.emplace_back(std::move(key), std::move(stats));
         flows_.erase(*usedKey);
+        return;
+    }
+
+    // Max-flow-size splitting: prevent mega-flows from collapsing into a
+    // single sample.  When exceeded, finalize the current flow and start
+    // a fresh one for the same 5-tuple.
+    auto totalPkts = stats.totalFwdPackets + stats.totalBwdPackets;
+    if (totalPkts >= kMaxFlowPackets) [[unlikely]] {
+        if (stats.curFwdBulkPkts >= 2) {
+            stats.fwdBulkPackets.push_back(stats.curFwdBulkPkts);
+            stats.fwdBulkBytes.push_back(stats.curFwdBulkBytes);
+        }
+        if (stats.curBwdBulkPkts >= 2) {
+            stats.bwdBulkPackets.push_back(stats.curBwdBulkPkts);
+            stats.bwdBulkBytes.push_back(stats.curBwdBulkBytes);
+        }
+        FlowKey key = *usedKey;
+        completedFlows_.emplace_back(key, std::move(stats));
+        flows_[key] = FlowStats{};  // Start new flow for same 5-tuple
     }
 }
 
@@ -647,6 +674,56 @@ std::vector<std::vector<float>> NativeFlowExtractor::loadFeatures(
     }
 
     return result;
+}
+
+const std::vector<nids::core::FlowInfo>& NativeFlowExtractor::flowMetadata() const noexcept {
+    return flowMetadata_;
+}
+
+void NativeFlowExtractor::buildFlowMetadata() {
+    flowMetadata_.clear();
+    flowMetadata_.reserve(completedFlows_.size() + flows_.size());
+
+    auto buildOne = [&](const FlowKey& key, const FlowStats& stats) {
+        nids::core::FlowInfo info;
+        info.srcIp = key.srcIp;
+        info.dstIp = key.dstIp;
+        info.srcPort = key.srcPort;
+        info.dstPort = key.dstPort;
+        info.protocol = key.protocol;
+
+        info.totalFwdPackets = stats.totalFwdPackets;
+        info.totalBwdPackets = stats.totalBwdPackets;
+
+        double durationUs = static_cast<double>(stats.lastTimeUs - stats.startTimeUs);
+        info.flowDurationUs = durationUs;
+
+        if (durationUs > 0.0) {
+            double durationSec = durationUs / 1'000'000.0;
+            info.fwdPacketsPerSecond = static_cast<double>(stats.totalFwdPackets) / durationSec;
+            info.bwdPacketsPerSecond = static_cast<double>(stats.totalBwdPackets) / durationSec;
+        }
+
+        info.synFlagCount = stats.synCount;
+        info.ackFlagCount = stats.ackCount;
+        info.rstFlagCount = stats.rstCount;
+        info.finFlagCount = stats.finCount;
+
+        auto totalPackets = stats.totalFwdPackets + stats.totalBwdPackets;
+        auto totalBytes = stats.totalFwdBytes + stats.totalBwdBytes;
+        if (totalPackets > 0) {
+            info.avgPacketSize = static_cast<double>(totalBytes) / static_cast<double>(totalPackets);
+        }
+
+        flowMetadata_.push_back(std::move(info));
+    };
+
+    for (const auto& [key, stats] : completedFlows_) {
+        buildOne(key, stats);
+    }
+    for (const auto& [key, stats] : flows_) {
+        buildOne(key, stats);
+    }
 }
 
 } // namespace nids::infra
