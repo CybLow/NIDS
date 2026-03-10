@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "infra/analysis/OnnxAnalyzer.h"
 #include "infra/analysis/AnalyzerFactory.h"
+#include "infra/flow/NativeFlowExtractor.h"  // kFlowFeatureCount
 #include "core/model/AttackType.h"
 
 #include <vector>
@@ -11,7 +12,7 @@ using nids::infra::AnalyzerFactory;
 using nids::infra::AnalyzerBackend;
 using nids::infra::createAnalyzer;
 using nids::core::AttackType;
-using nids::core::IPacketAnalyzer;
+using nids::infra::kFlowFeatureCount;
 
 namespace fs = std::filesystem;
 
@@ -24,7 +25,7 @@ TEST(OnnxAnalyzer, construct_doesNotThrow) {
 TEST(OnnxAnalyzer, predictWithoutLoad_returnsUnknown) {
     OnnxAnalyzer analyzer;
     // Model not loaded — should return Unknown, not crash
-    std::vector<float> features(77, 0.0f);
+    std::vector<float> features(kFlowFeatureCount, 0.0f);
     EXPECT_EQ(analyzer.predict(features), AttackType::Unknown);
 }
 
@@ -47,7 +48,7 @@ TEST(OnnxAnalyzer, loadModel_directoryPath_returnsFalse) {
 TEST(OnnxAnalyzer, predictAfterFailedLoad_returnsUnknown) {
     OnnxAnalyzer analyzer;
     analyzer.loadModel("/nonexistent/model.onnx");
-    std::vector<float> features(77, 1.0f);
+    std::vector<float> features(kFlowFeatureCount, 1.0f);
     EXPECT_EQ(analyzer.predict(features), AttackType::Unknown);
 }
 
@@ -118,7 +119,7 @@ TEST_F(OnnxAnalyzerWithModelTest, predict_returnsValidAttackType) {
     ASSERT_TRUE(analyzer.loadModel(modelPath_));
 
     // All-zeros feature vector (should produce some classification, not crash)
-    std::vector<float> features(77, 0.0f);
+    std::vector<float> features(kFlowFeatureCount, 0.0f);
     auto result = analyzer.predict(features);
 
     // Result should be a valid AttackType (not necessarily a specific one)
@@ -133,7 +134,7 @@ TEST_F(OnnxAnalyzerWithModelTest, predict_deterministicWithSameInput) {
     OnnxAnalyzer analyzer;
     ASSERT_TRUE(analyzer.loadModel(modelPath_));
 
-    std::vector<float> features(77, 0.5f);
+    std::vector<float> features(kFlowFeatureCount, 0.5f);
     auto result1 = analyzer.predict(features);
     auto result2 = analyzer.predict(features);
     EXPECT_EQ(result1, result2);

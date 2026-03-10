@@ -5,12 +5,14 @@
 #include "core/services/IPacketAnalyzer.h"
 #include "core/services/IFlowExtractor.h"
 #include "core/model/CaptureSession.h"
+#include "infra/flow/NativeFlowExtractor.h"  // kFlowFeatureCount
 
 #include <QCoreApplication>
 #include <QSignalSpy>
 
 using namespace nids::core;
 using namespace nids::app;
+using nids::infra::kFlowFeatureCount;
 using ::testing::_;
 using ::testing::Return;
 
@@ -100,9 +102,9 @@ TEST_F(AnalysisServiceTest, analyzeCapture_success_classifiesAllFlows) {
 
     // Return 3 mock flow feature vectors
     std::vector<std::vector<float>> mockFeatures = {
-        std::vector<float>(77, 0.0f),
-        std::vector<float>(77, 0.5f),
-        std::vector<float>(77, 1.0f),
+        std::vector<float>(kFlowFeatureCount, 0.0f),
+        std::vector<float>(kFlowFeatureCount, 0.5f),
+        std::vector<float>(kFlowFeatureCount, 1.0f),
     };
 
     EXPECT_CALL(*extractorPtr, extractFeatures(_)).WillOnce(Return(mockFeatures));
@@ -166,7 +168,7 @@ TEST_F(AnalysisServiceTest, analyzeCapture_singleFlow_correctProgress) {
     auto extractor = std::make_unique<MockFlowExtractor>();
 
     std::vector<std::vector<float>> singleFlow = {
-        std::vector<float>(77, 0.42f),
+        std::vector<float>(kFlowFeatureCount, 0.42f),
     };
 
     EXPECT_CALL(*extractor, extractFeatures(_)).WillOnce(Return(singleFlow));

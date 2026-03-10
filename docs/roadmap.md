@@ -146,11 +146,10 @@ detection source, confidence scores, TI matches, and heuristic rule matches.
 per-flow detection system. This is the highest-priority performance improvement
 documented in ADR-004.
 
-### 8.1 — Replace `std::map` with `std::unordered_map` in `NativeFlowExtractor`
+### 8.1 — ~~Replace `std::map` with `std::unordered_map` in `NativeFlowExtractor`~~ [DONE]
 
-- **File**: `src/infra/flow/NativeFlowExtractor.h:117`
-- **Why**: O(log N) → O(1) amortized per-packet lookup
-- Requires implementing `std::hash<FlowKey>` specialization
+- **File**: `src/infra/flow/NativeFlowExtractor.h`
+- Completed: `std::unordered_map` with `FlowKeyHash` functor, O(1) amortized lookup
 
 ### 8.2 — Switch to Welford's online statistics
 
@@ -172,11 +171,11 @@ documented in ADR-004.
 
 ### 8.4 — Stream completed flows to ML analyzer
 
-- **Why**: Currently all flows are accumulated in memory, written to CSV, then read back
-  and analyzed sequentially (`AnalysisService.cpp:71-83`)
-- Instead: when a flow completes (timeout or FIN/RST), immediately normalize features
-  and run inference
-- Remove the CSV round-trip for live analysis (keep CSV export as an optional output)
+- **Why**: Currently all flows are accumulated in memory and analyzed sequentially
+  (`AnalysisService.cpp`). The CSV round-trip has been eliminated — features are
+  returned in-memory as `std::vector<std::vector<float>>`.
+- Next step: when a flow completes (timeout or FIN/RST), immediately normalize features
+  and run inference (true streaming, not batch-after-capture)
 
 ### 8.5 — Producer-consumer threading
 
@@ -187,7 +186,7 @@ documented in ADR-004.
 
 ### 8.6 — Live pcap via `pcap_open_live()`
 
-- Currently `NativeFlowExtractor::extractFlows()` reads from a saved `.pcap` file
+- Currently `NativeFlowExtractor::extractFeatures()` reads from a saved `.pcap` file
 - Add an overload or mode that accepts packets from the live `PcapCapture` callback
 - This enables real-time detection during capture, not just post-capture
 
@@ -309,7 +308,7 @@ These items are documented for completeness but are not planned for near-term wo
 | `IAnalysisRepository` repository pattern | AGENTS.md §5.6 | Abstract analysis result storage |
 | Command pattern for capture operations | AGENTS.md §5.7 | Undo/queue/log capture operations |
 | `std::expected<T, E>` error handling | AGENTS.md §6.1 | Replace bool returns with rich errors |
-| `ServiceRegistry` optimize to `unordered_map` | `ServiceRegistry.h:23` | Minor perf improvement |
+| ~~`ServiceRegistry` optimize to `unordered_map`~~ | ~~`ServiceRegistry.h:23`~~ | **Done** — already uses `std::unordered_map` |
 
 ---
 

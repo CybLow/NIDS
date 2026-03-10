@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "infra/analysis/FeatureNormalizer.h"
+#include "infra/flow/NativeFlowExtractor.h"  // kFlowFeatureCount
 
 #include <cmath>
 #include <filesystem>
@@ -7,6 +8,7 @@
 #include <vector>
 
 using nids::infra::FeatureNormalizer;
+using nids::infra::kFlowFeatureCount;
 
 namespace fs = std::filesystem;
 
@@ -74,10 +76,10 @@ TEST_F(FeatureNormalizerTest, loadMetadata_validFile_returnsTrue) {
 }
 
 TEST_F(FeatureNormalizerTest, loadMetadata_77Features_returnsTrue) {
-    auto path = writeValidMetadata("full.json", 77);
+    auto path = writeValidMetadata("full.json", kFlowFeatureCount);
     FeatureNormalizer normalizer;
     EXPECT_TRUE(normalizer.loadMetadata(path));
-    EXPECT_EQ(normalizer.featureCount(), 77u);
+    EXPECT_EQ(normalizer.featureCount(), kFlowFeatureCount);
 }
 
 // ── loadMetadata: failure cases ──────────────────────────────────────

@@ -8,12 +8,14 @@
 #include "core/services/IFlowExtractor.h"
 #include "core/model/CaptureSession.h"
 #include "core/model/AttackType.h"
+#include "infra/flow/NativeFlowExtractor.h"  // kFlowFeatureCount
 
 #include <QCoreApplication>
 #include <QSignalSpy>
 
 using namespace nids::core;
 using namespace nids::app;
+using nids::infra::kFlowFeatureCount;
 using ::testing::_;
 using ::testing::Return;
 using ::testing::Invoke;
@@ -111,8 +113,8 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
     auto extractor = std::make_unique<MockExtractor>();
 
     std::vector<std::vector<float>> flows = {
-        std::vector<float>(77, 0.1f),
-        std::vector<float>(77, 0.9f),
+        std::vector<float>(kFlowFeatureCount, 0.1f),
+        std::vector<float>(kFlowFeatureCount, 0.9f),
     };
 
     EXPECT_CALL(*extractor, extractFeatures(_)).WillOnce(Return(flows));
@@ -163,7 +165,7 @@ TEST_F(PipelineTest, analysisWithAllAttackTypes) {
     // Create one flow per attack type
     std::vector<std::vector<float>> flows;
     for (int i = 0; i < kAttackTypeCount; ++i) {
-        flows.emplace_back(77, static_cast<float>(i) / kAttackTypeCount);
+        flows.emplace_back(kFlowFeatureCount, static_cast<float>(i) / kAttackTypeCount);
     }
 
     int callIndex = 0;

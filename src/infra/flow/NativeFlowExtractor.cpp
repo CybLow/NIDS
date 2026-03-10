@@ -8,6 +8,7 @@
 #include <numeric>
 #include <cmath>
 #include <algorithm>
+#include <cassert>
 #include <concepts>
 #include <ranges>
 // Note: std::ranges::fold_left (C++23) is not available under C++20.
@@ -215,6 +216,8 @@ const std::vector<std::string>& flowFeatureNames() {
         "Idle Max",
         "Idle Min",
     };
+    assert(names.size() == static_cast<std::size_t>(kFlowFeatureCount)
+           && "flowFeatureNames() size must match kFlowFeatureCount");
     return names;
 }
 
@@ -365,6 +368,8 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
         features.push_back(static_cast<float>(std::ranges::min(idlePeriodsUs)));
     }
 
+    assert(features.size() == static_cast<std::size_t>(kFlowFeatureCount)
+           && "toFeatureVector() output size must match kFlowFeatureCount");
     return features;
 }
 

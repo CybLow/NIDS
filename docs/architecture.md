@@ -154,8 +154,8 @@ Network Interface
                                    │  (infra)              │
                                    └───────┬───────┬───────┘
                                            │       │
-                              77 features  │       │  FlowInfo metadata
-                              (CSV)        │       │  (IPs, ports, flags)
+                               77 features  │       │  FlowInfo metadata
+                               (in-memory)  │       │  (IPs, ports, flags)
                                            ▼       ▼
                                    ┌───────────────────┐
                                    │  AnalysisService   │
