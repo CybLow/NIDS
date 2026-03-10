@@ -1,24 +1,17 @@
 #pragma once
 
-// gRPC Server stub for the NIDS headless daemon.
-//
-// This file provides the scaffolding for the server-side gRPC implementation.
-// To build, enable NIDS_BUILD_SERVER in CMake and ensure grpc/protobuf are
-// available via vcpkg.
-//
-// Implementation steps:
-// 1. Generate C++ sources from proto/nids.proto using protoc + grpc_cpp_plugin
-// 2. Implement NidsServiceImpl below
-// 3. Wire CaptureController and AnalysisService into the gRPC handlers
-//
-// Example CMake integration:
-//   find_package(gRPC CONFIG REQUIRED)
-//   find_package(Protobuf CONFIG REQUIRED)
-//   add_executable(nids-server src/server/main.cpp src/server/NidsServer.cpp ...)
-//   target_link_libraries(nids-server PRIVATE gRPC::grpc++ protobuf::libprotobuf ...)
-
-#include "app/CaptureController.h"
-#include "app/AnalysisService.h"
+/// gRPC Server stub for the NIDS headless daemon.
+///
+/// This file provides the scaffolding for the server-side gRPC implementation.
+/// To build, enable NIDS_BUILD_SERVER in CMake and ensure grpc/protobuf are
+/// available via the system package manager (e.g., `dnf install grpc-devel`).
+///
+/// Implementation steps (Phase 9 — see docs/roadmap.md):
+///   1. Define proto/nids.proto service
+///   2. Generate C++ stubs with protoc + grpc_cpp_plugin
+///   3. Implement NidsServiceImpl using CaptureController, AnalysisService,
+///      and HybridDetectionService
+///   4. Wire Configuration::instance() for model path, thread count, etc.
 
 #include <memory>
 #include <string>
@@ -28,7 +21,6 @@ namespace nids::server {
 
 struct ServerConfig {
     std::string listenAddress = "0.0.0.0:50051";
-    std::string modelPath = "../src/model/model.json";
     int maxConcurrentSessions = 4;
 };
 
@@ -44,8 +36,6 @@ public:
 private:
     ServerConfig config_;
     std::atomic<bool> running_{false};
-    // gRPC server handle would go here once grpc is added as dependency
-    // std::unique_ptr<grpc::Server> server_;
 };
 
 } // namespace nids::server

@@ -131,10 +131,10 @@ TEST_F(AnalysisServiceTest, analyzeCapture_success_classifiesAllFlows) {
     EXPECT_EQ(progressSpy.at(2).at(0).toInt(), 3);
     EXPECT_EQ(progressSpy.at(2).at(1).toInt(), 3);
 
-    // Verify results stored in session
-    EXPECT_EQ(session.getAnalysisResult(0), AttackType::Benign);
-    EXPECT_EQ(session.getAnalysisResult(1), AttackType::DdosIcmp);
-    EXPECT_EQ(session.getAnalysisResult(2), AttackType::SshBruteForce);
+    // Verify results stored in session (via DetectionResult API)
+    EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::Benign);
+    EXPECT_EQ(session.getDetectionResult(1).finalVerdict, AttackType::DdosIcmp);
+    EXPECT_EQ(session.getDetectionResult(2).finalVerdict, AttackType::SshBruteForce);
 }
 
 TEST_F(AnalysisServiceTest, analyzeCapture_emptyFeatures_finishesWithoutPrediction) {
@@ -182,5 +182,5 @@ TEST_F(AnalysisServiceTest, analyzeCapture_singleFlow_correctProgress) {
     ASSERT_EQ(progressSpy.count(), 1);
     EXPECT_EQ(progressSpy.at(0).at(0).toInt(), 1);
     EXPECT_EQ(progressSpy.at(0).at(1).toInt(), 1);
-    EXPECT_EQ(session.getAnalysisResult(0), AttackType::PortScanning);
+    EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::PortScanning);
 }

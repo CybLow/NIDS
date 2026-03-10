@@ -1,0 +1,24 @@
+{
+    "model": {
+        "path": "models/model.onnx",
+        "metadata_path": "models/model_metadata.json",
+        "onnx_intra_op_threads": 1
+    },
+    "capture": {
+        "dump_file": "dump.pcap",
+        "flow_timeout_us": 600000000,
+        "idle_threshold_us": 5000000
+    },
+    "threat_intel": {
+        "directory": "data/threat_intel"
+    },
+    "hybrid_detection": {
+        "ml_confidence_threshold": 0.7,
+        "weight_ml": 0.5,
+        "weight_threat_intel": 0.3,
+        "weight_heuristic": 0.2
+    },
+    "ui": {
+        "window_title": "NIDS - Network Intrusion Detection System"
+    }
+}

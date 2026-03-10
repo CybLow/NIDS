@@ -25,6 +25,7 @@ public:
     [[nodiscard]] std::filesystem::path modelMetadataPath() const;
 
     void setModelPath(const std::filesystem::path& path);
+    void setModelMetadataPath(const std::filesystem::path& path);
 
     // -- Capture --
 
@@ -32,10 +33,16 @@ public:
     [[nodiscard]] int64_t flowTimeoutUs() const;
     [[nodiscard]] int64_t idleThresholdUs() const;
 
+    void setDefaultDumpFile(const std::string& file);
+    void setFlowTimeoutUs(int64_t timeoutUs);
+    void setIdleThresholdUs(int64_t thresholdUs);
+
     // -- Analysis --
 
     [[nodiscard]] std::filesystem::path tempDirectory() const;
     [[nodiscard]] int onnxIntraOpThreads() const;
+
+    void setOnnxIntraOpThreads(int threads);
 
     // -- Threat Intelligence --
 
@@ -49,13 +56,15 @@ public:
     [[nodiscard]] float weightThreatIntel() const noexcept;
     [[nodiscard]] float weightHeuristic() const noexcept;
 
+    void setMlConfidenceThreshold(float threshold);
+    void setWeightMl(float weight);
+    void setWeightThreatIntel(float weight);
+    void setWeightHeuristic(float weight);
+
     // -- UI --
 
     [[nodiscard]] std::string windowTitle() const;
-
-    /// Load overrides from a JSON config file (optional).
-    /// Returns false if the file exists but cannot be parsed.
-    [[nodiscard]] bool loadFromFile(const std::filesystem::path& configPath);
+    void setWindowTitle(const std::string& title);
 
 private:
     Configuration();

@@ -35,7 +35,6 @@ ReportGenerator::ReportResult ReportGenerator::generate(
     std::size_t count = session.packetCount();
     for (std::size_t i = 0; i < count; ++i) {
         const auto& pkt = session.getPacket(i);
-        auto attackType = session.getAnalysisResult(i);
         auto detection = session.getDetectionResult(i);
 
         file << "Packet #" << i << "\n";
@@ -43,26 +42,25 @@ ReportGenerator::ReportResult ReportGenerator::generate(
         file << "  Application: " << pkt.application << "\n";
         file << "  Source: " << pkt.ipSource << ":" << pkt.portSource << "\n";
         file << "  Destination: " << pkt.ipDestination << ":" << pkt.portDestination << "\n";
-        file << "  Status: " << nids::core::attackTypeToString(attackType) << "\n";
+        file << "  Status: " << nids::core::attackTypeToString(detection.finalVerdict) << "\n";
 
-        // Append hybrid detection details if available
-        if (detection.has_value()) {
-            const auto& det = detection.value();
-            file << "  Detection Source: " << nids::core::detectionSourceToString(det.detectionSource) << "\n";
-            file << "  Combined Score: " << std::fixed << std::setprecision(3) << det.combinedScore << "\n";
-            file << "  ML Confidence: " << std::fixed << std::setprecision(3) << det.mlResult.confidence << "\n";
+        // Append hybrid detection details when available
+        if (detection.detectionSource != nids::core::DetectionSource::None) {
+            file << "  Detection Source: " << nids::core::detectionSourceToString(detection.detectionSource) << "\n";
+            file << "  Combined Score: " << std::fixed << std::setprecision(3) << detection.combinedScore << "\n";
+            file << "  ML Confidence: " << std::fixed << std::setprecision(3) << detection.mlResult.confidence << "\n";
 
-            if (!det.threatIntelMatches.empty()) {
+            if (!detection.threatIntelMatches.empty()) {
                 file << "  Threat Intel Matches:\n";
-                for (const auto& ti : det.threatIntelMatches) {
+                for (const auto& ti : detection.threatIntelMatches) {
                     file << "    - " << ti.ip << " [" << ti.feedName << "]"
                          << (ti.isSource ? " (source)" : " (destination)") << "\n";
                 }
             }
 
-            if (!det.ruleMatches.empty()) {
+            if (!detection.ruleMatches.empty()) {
                 file << "  Heuristic Rules:\n";
-                for (const auto& rule : det.ruleMatches) {
+                for (const auto& rule : detection.ruleMatches) {
                     file << "    - " << rule.ruleName << " (severity="
                          << std::fixed << std::setprecision(2) << rule.severity
                          << "): " << rule.description << "\n";

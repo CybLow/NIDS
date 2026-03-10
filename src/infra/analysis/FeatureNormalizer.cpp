@@ -58,15 +58,12 @@ bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
             stds_[i] = (std::abs(stdVal) < 1e-8f) ? 1.0f : stdVal;
         }
 
-        // Read clip_value (default 10.0 if absent for backward compatibility)
-        if (norm.contains("clip_value")) {
-            clipValue_ = norm["clip_value"].get<float>();
-        } else {
-            clipValue_ = 10.0f;
-            spdlog::warn(
-                "FeatureNormalizer: 'clip_value' not in metadata, using default {:.1f}",
-                clipValue_);
+        if (!norm.contains("clip_value")) {
+            spdlog::error("FeatureNormalizer: normalization section missing 'clip_value'");
+            loaded_ = false;
+            return false;
         }
+        clipValue_ = norm["clip_value"].get<float>();
 
         loaded_ = true;
         spdlog::info(

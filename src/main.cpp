@@ -1,4 +1,5 @@
 #include "core/services/Configuration.h"
+#include "infra/config/ConfigLoader.h"
 #include "infra/platform/SocketInit.h"
 #include "infra/capture/PcapCapture.h"
 #include "infra/analysis/AnalyzerFactory.h"
@@ -15,6 +16,22 @@
 #include <spdlog/spdlog.h>
 
 #include <memory>
+#include <string_view>
+
+namespace {
+
+/// Parse --config <path> from command-line arguments.
+/// Returns the config file path, or empty if not specified.
+std::filesystem::path parseConfigArg(int argc, char* argv[]) {
+    for (int i = 1; i < argc - 1; ++i) {
+        if (std::string_view{argv[i]} == "--config") {
+            return argv[i + 1];
+        }
+    }
+    return {};
+}
+
+} // anonymous namespace
 
 int main(int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::info);
@@ -26,6 +43,15 @@ int main(int argc, char* argv[]) {
     }
 
     auto& config = nids::core::Configuration::instance();
+
+    // Load config from JSON file if --config <path> is provided
+    auto configPath = parseConfigArg(argc, argv);
+    if (!configPath.empty()) {
+        if (!nids::infra::loadConfigFromFile(configPath, config)) {
+            spdlog::critical("Failed to parse config file '{}'", configPath.string());
+            return 1;
+        }
+    }
 
     QApplication app(argc, argv);
 

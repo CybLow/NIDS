@@ -4,6 +4,14 @@
 using nids::core::CaptureSession;
 using nids::core::PacketInfo;
 using nids::core::AttackType;
+using nids::core::DetectionResult;
+
+/// Helper: create a DetectionResult with the given final verdict.
+static DetectionResult makeResult(AttackType verdict) {
+    DetectionResult result;
+    result.finalVerdict = verdict;
+    return result;
+}
 
 TEST(CaptureSession, initiallyEmpty) {
     CaptureSession session;
@@ -43,15 +51,15 @@ TEST(CaptureSession, getPacketOutOfRangeThrows) {
     EXPECT_THROW(session.getPacket(0), std::out_of_range);
 }
 
-TEST(CaptureSession, setAndGetAnalysisResult) {
+TEST(CaptureSession, setAndGetDetectionResult) {
     CaptureSession session;
-    session.setAnalysisResult(0, AttackType::DdosIcmp);
-    EXPECT_EQ(session.getAnalysisResult(0), AttackType::DdosIcmp);
+    session.setDetectionResult(0, makeResult(AttackType::DdosIcmp));
+    EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::DdosIcmp);
 }
 
-TEST(CaptureSession, getAnalysisResultOutOfRangeReturnsUnknown) {
+TEST(CaptureSession, getDetectionResultOutOfRangeReturnsUnknown) {
     CaptureSession session;
-    EXPECT_EQ(session.getAnalysisResult(999), AttackType::Unknown);
+    EXPECT_EQ(session.getDetectionResult(999).finalVerdict, AttackType::Unknown);
 }
 
 TEST(CaptureSession, clearResetsEverything) {
@@ -59,7 +67,7 @@ TEST(CaptureSession, clearResetsEverything) {
     PacketInfo pkt;
     pkt.protocol = "TCP";
     session.addPacket(pkt);
-    session.setAnalysisResult(0, AttackType::Benign);
+    session.setDetectionResult(0, makeResult(AttackType::Benign));
 
     session.clear();
     EXPECT_EQ(session.packetCount(), 0u);

@@ -28,7 +28,6 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG QUIET)
 
 set(NIDS_CORE_SOURCES
-    src/core/model/PacketInfo.cpp
     src/core/model/CaptureSession.cpp
     src/core/services/PacketFilter.cpp
     src/core/services/ServiceRegistry.cpp
@@ -40,6 +39,7 @@ set(NIDS_INFRA_SOURCES
     src/infra/analysis/OnnxAnalyzer.cpp
     src/infra/analysis/AnalyzerFactory.cpp
     src/infra/analysis/FeatureNormalizer.cpp
+    src/infra/config/ConfigLoader.cpp
     src/infra/flow/NativeFlowExtractor.cpp
     src/infra/threat/ThreatIntelProvider.cpp
     src/infra/rules/HeuristicRuleEngine.cpp
@@ -134,7 +134,7 @@ set(CPACK_PACKAGE_VENDOR "NIDS Project")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
 set(CPACK_PACKAGE_CONTACT "nids-dev")
-# set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")  # TODO: add LICENSE file
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 set(CPACK_GENERATOR "DEB;RPM;TGZ")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
     "libpcap0.8, libqt6widgets6 (>= 6.2), libqt6gui6 (>= 6.2), libqt6core6 (>= 6.2)")

@@ -182,6 +182,7 @@ NIDS/
 ## Documentation
 
 - [Architecture](docs/architecture.md) — System design, layers, patterns, data flow
+- [Roadmap](docs/roadmap.md) — All planned work, prioritized by phase
 - [Model Training](docs/model-training.md) — How to train, export, and deploy the model
 - [Deployment](docs/deployment.md) — Docker, bare metal, packaging, systemd
 - [Installation](INSTALL.md) — Build dependencies for all platforms
@@ -191,6 +192,8 @@ NIDS/
 - [ADR-001: Replace frugally-deep with ONNX Runtime](docs/adr/001-replace-fdeep-with-onnx.md)
 - [ADR-002: LSNM2024 Dataset](docs/adr/002-lsnm2024-dataset.md)
 - [ADR-003: Qt6 Migration](docs/adr/003-qt6-migration.md)
+- [ADR-004: Model Benchmark Analysis](docs/adr/004-model-benchmark-analysis.md)
+- [ADR-005: Hybrid Detection System](docs/adr/005-hybrid-detection-system.md)
 
 ## Roadmap
 
@@ -200,11 +203,14 @@ NIDS/
 - [x] Qt6 + C++20 modernization
 - [x] GitHub Actions CI/CD
 - [x] CPack packaging (DEB/RPM/TGZ)
-- [ ] gRPC client/server for remote capture
-- [ ] Real-time per-flow AI detection
-- [ ] YARA rules integration
-- [ ] Deep Packet Inspection (DPI)
-- [ ] Web dashboard
+- [x] Hybrid detection (ML + Threat Intelligence + Heuristic Rules)
+- [ ] Cleanup, config JSON loading, and test foundation (Phase 6)
+- [ ] UI for hybrid detection results (Phase 7)
+- [ ] Real-time per-flow detection (Phase 8)
+- [ ] gRPC server and CLI client (Phase 9)
+- [ ] Model and detection improvements (Phase 10)
+
+See [docs/roadmap.md](docs/roadmap.md) for the full breakdown.
 
 ## License
 

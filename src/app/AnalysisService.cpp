@@ -113,7 +113,10 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
         } else {
             // ML-only fallback (no hybrid service configured)
             auto attackType = analyzer_->predict(normalized);
-            session.setAnalysisResult(idx, attackType);
+            core::DetectionResult mlOnlyResult;
+            mlOnlyResult.finalVerdict = attackType;
+            mlOnlyResult.detectionSource = core::DetectionSource::MlOnly;
+            session.setDetectionResult(idx, mlOnlyResult);
         }
 
         emit analysisProgress(i + 1, total);

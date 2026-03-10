@@ -1,16 +1,16 @@
 #pragma once
 
-// gRPC Client stub for connecting to the NIDS headless daemon.
-//
-// This client can be used by:
-// 1. The Qt GUI application (replacing direct PcapCapture usage)
-// 2. A CLI tool for scripted capture sessions
-// 3. Other services that need NIDS functionality
-//
-// Implementation steps:
-// 1. Generate C++ sources from proto/nids.proto
-// 2. Implement the methods below using the generated stub
-// 3. Create a CLI main() that uses this client
+/// gRPC Client stub for connecting to the NIDS headless daemon.
+///
+/// This client can be used by:
+///   1. A CLI tool for scripted capture/analysis sessions
+///   2. The Qt GUI application (as an alternative to local PcapCapture)
+///   3. Other services that need NIDS functionality remotely
+///
+/// Implementation steps (Phase 9 — see docs/roadmap.md):
+///   1. Generate C++ stubs from proto/nids.proto
+///   2. Implement the methods below using the generated stub
+///   3. Create a CLI main() that uses this client
 
 #include "core/model/PacketInfo.h"
 #include "core/model/AttackType.h"
@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <cstdint>
 
 namespace nids::client {
 
@@ -52,13 +53,12 @@ public:
     using PacketCallback = std::function<void(const nids::core::PacketInfo&)>;
     void streamPackets(const std::string& sessionId, PacketCallback callback);
 
-    [[nodiscard]] bool analyzeCapture(const std::string& sessionId,
-                                       const std::string& modelPath);
+    [[nodiscard]] bool analyzeCapture(const std::string& sessionId);
 
     struct ReportResult {
         bool success = false;
         std::string filePath;
-        int64_t generationTimeMs = 0;
+        std::int64_t generationTimeMs = 0;
     };
     [[nodiscard]] ReportResult generateReport(const std::string& sessionId,
                                                const std::string& outputPath);
@@ -66,7 +66,6 @@ public:
 private:
     ClientConfig config_;
     bool connected_ = false;
-    // std::unique_ptr<nids::NidsService::Stub> stub_;
 };
 
 } // namespace nids::client

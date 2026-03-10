@@ -2,6 +2,7 @@ find_package(GTest CONFIG REQUIRED)
 find_package(Qt6 COMPONENTS Core Test QUIET)
 find_package(onnxruntime CONFIG QUIET)
 find_package(spdlog CONFIG QUIET)
+find_package(nlohmann_json CONFIG QUIET)
 
 include(GoogleTest)
 
@@ -15,6 +16,12 @@ set(TEST_SOURCES
     unit/test_ReportGenerator.cpp
     unit/test_NativeFlowExtractor.cpp
     unit/test_Configuration.cpp
+    unit/test_DetectionResult.cpp
+    unit/test_PredictionResult.cpp
+    unit/test_ThreatIntelProvider.cpp
+    unit/test_HeuristicRuleEngine.cpp
+    unit/test_HybridDetectionService.cpp
+    unit/test_FeatureNormalizer.cpp
 )
 
 set(TESTED_SOURCES
@@ -22,9 +29,13 @@ set(TESTED_SOURCES
     ${CMAKE_SOURCE_DIR}/src/core/services/ServiceRegistry.cpp
     ${CMAKE_SOURCE_DIR}/src/core/services/Configuration.cpp
     ${CMAKE_SOURCE_DIR}/src/core/model/CaptureSession.cpp
-    ${CMAKE_SOURCE_DIR}/src/core/model/PacketInfo.cpp
     ${CMAKE_SOURCE_DIR}/src/app/ReportGenerator.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/HybridDetectionService.cpp
     ${CMAKE_SOURCE_DIR}/src/infra/flow/NativeFlowExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/infra/threat/ThreatIntelProvider.cpp
+    ${CMAKE_SOURCE_DIR}/src/infra/rules/HeuristicRuleEngine.cpp
+    ${CMAKE_SOURCE_DIR}/src/infra/analysis/FeatureNormalizer.cpp
+    ${CMAKE_SOURCE_DIR}/src/infra/config/ConfigLoader.cpp
 )
 
 add_executable(nids_tests ${TEST_SOURCES} ${TESTED_SOURCES})
@@ -41,6 +52,14 @@ target_link_libraries(nids_tests PRIVATE
     Threads::Threads
     ${PCAP_LIBRARY}
 )
+
+if(spdlog_FOUND)
+    target_link_libraries(nids_tests PRIVATE spdlog::spdlog)
+endif()
+
+if(nlohmann_json_FOUND)
+    target_link_libraries(nids_tests PRIVATE nlohmann_json::nlohmann_json)
+endif()
 
 target_compile_features(nids_tests PRIVATE cxx_std_20)
 
@@ -64,7 +83,6 @@ if(Qt6_FOUND)
         ${CMAKE_SOURCE_DIR}/src/app/CaptureController.cpp
         ${CMAKE_SOURCE_DIR}/src/app/AnalysisService.cpp
         ${CMAKE_SOURCE_DIR}/src/core/model/CaptureSession.cpp
-        ${CMAKE_SOURCE_DIR}/src/core/model/PacketInfo.cpp
         ${CMAKE_SOURCE_DIR}/src/core/services/PacketFilter.cpp
         ${CMAKE_SOURCE_DIR}/src/core/services/Configuration.cpp
     )

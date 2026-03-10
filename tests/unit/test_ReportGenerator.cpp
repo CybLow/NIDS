@@ -10,6 +10,7 @@ using nids::app::ReportGenerator;
 using nids::core::CaptureSession;
 using nids::core::PacketInfo;
 using nids::core::AttackType;
+using nids::core::DetectionResult;
 
 namespace fs = std::filesystem;
 
@@ -33,7 +34,9 @@ TEST_F(ReportGeneratorTest, generatesFileSuccessfully) {
     pkt.portDestination = "443";
     pkt.application = "HTTPS";
     session.addPacket(pkt);
-    session.setAnalysisResult(0, AttackType::Benign);
+    DetectionResult detection;
+    detection.finalVerdict = AttackType::Benign;
+    session.setDetectionResult(0, detection);
 
     auto result = ReportGenerator::generate(session, testReportPath, "eth0");
     EXPECT_TRUE(result.success);
@@ -51,7 +54,9 @@ TEST_F(ReportGeneratorTest, reportContainsPacketData) {
     pkt.portDestination = "53";
     pkt.application = "DNS";
     session.addPacket(pkt);
-    session.setAnalysisResult(0, AttackType::DdosIcmp);
+    DetectionResult detection;
+    detection.finalVerdict = AttackType::DdosIcmp;
+    session.setDetectionResult(0, detection);
 
     auto result = ReportGenerator::generate(session, testReportPath);
     ASSERT_TRUE(result.success);

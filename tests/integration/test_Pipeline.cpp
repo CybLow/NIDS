@@ -129,9 +129,9 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
     EXPECT_EQ(startedSpy.count(), 1);
     EXPECT_EQ(finishedSpy.count(), 1);
 
-    // Verify analysis results are stored in session
-    EXPECT_EQ(controller.session().getAnalysisResult(0), AttackType::Benign);
-    EXPECT_EQ(controller.session().getAnalysisResult(1), AttackType::SynFlood);
+    // Verify analysis results are stored in session (via DetectionResult API)
+    EXPECT_EQ(controller.session().getDetectionResult(0).finalVerdict, AttackType::Benign);
+    EXPECT_EQ(controller.session().getDetectionResult(1).finalVerdict, AttackType::SynFlood);
 }
 
 TEST_F(PipelineTest, captureFailure_doesNotProceedToAnalysis) {
@@ -178,9 +178,9 @@ TEST_F(PipelineTest, analysisWithAllAttackTypes) {
     CaptureSession session;
     service.analyzeCapture("all_types.pcap", session);
 
-    // Verify each attack type is correctly stored
+    // Verify each attack type is correctly stored (via DetectionResult API)
     for (int i = 0; i < kAttackTypeCount; ++i) {
-        EXPECT_EQ(session.getAnalysisResult(static_cast<std::size_t>(i)),
+        EXPECT_EQ(session.getDetectionResult(static_cast<std::size_t>(i)).finalVerdict,
                   attackTypeFromIndex(i))
             << "Mismatch at index " << i;
     }
