@@ -2,9 +2,9 @@
 """Preprocess the LSNM2024 dataset for CNN-BiLSTM model training.
 
 The LSNM2024 dataset contains Wireshark packet-level CSV exports, NOT
-CICFlowMeter flow features.  This script aggregates raw packets into
-bidirectional flows and computes the exact 77 CICFlowMeter-compatible
-features that the C++ NativeFlowExtractor produces at inference time.
+pre-computed flow features.  This script aggregates raw packets into
+bidirectional flows and computes the exact 77 flow-level features that
+the C++ NativeFlowExtractor produces at inference time.
 
 Steps:
     1. Load raw Wireshark CSV packets (recursively from Benign/ and Malicious/)
@@ -1285,7 +1285,7 @@ def save_metadata(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Preprocess LSNM2024 Wireshark CSVs into 77 CICFlowMeter flow features.",
+        description="Preprocess LSNM2024 Wireshark CSVs into 77 bidirectional flow features.",
     )
     parser.add_argument(
         "--input-dir",

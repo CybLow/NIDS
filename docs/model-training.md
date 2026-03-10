@@ -140,8 +140,9 @@ cmake --install build --prefix /usr/local
 
 ## Retraining Tips
 
-- To train on a custom dataset, ensure CSV columns match CICFlowMeter output format.
-  Update the label mapping in `preprocess.py` if attack classes differ.
+- To train on a custom dataset, ensure CSV columns match the 77 flow features produced
+  by `NativeFlowExtractor`. Update the label mapping in `preprocess.py` if attack
+  classes differ.
 - GPU training: ensure CUDA and cuDNN are installed. PyTorch auto-detects GPU.
 - For larger datasets, increase batch size and reduce learning rate.
 - Monitor validation loss for overfitting; the early stopping callback handles this

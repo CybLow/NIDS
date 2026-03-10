@@ -2,9 +2,9 @@
 
 // Native C++ flow feature extractor for LSNM2024-compatible flow analysis.
 //
-// Extracts CICFlowMeter-compatible bidirectional flow features directly from
-// pcap files, eliminating the Java dependency. Features are computed per-flow
-// and returned as in-memory feature vectors (no intermediate CSV).
+// Extracts 77 bidirectional flow features directly from pcap files.
+// Features are computed per-flow and returned as in-memory feature vectors
+// (no intermediate CSV).
 //
 // The feature set covers:
 // - Flow duration, packet counts, byte counts (per direction)
@@ -112,7 +112,7 @@ struct FlowStats {
     [[nodiscard]] std::vector<float> toFeatureVector(std::uint16_t dstPort) const;
 };
 
-class NativeFlowExtractor : public nids::core::IFlowExtractor {
+class NativeFlowExtractor : public core::IFlowExtractor {
 public:
     NativeFlowExtractor();
 
@@ -121,12 +121,12 @@ public:
     [[nodiscard]] std::vector<std::vector<float>> extractFeatures(
         const std::string& pcapPath) override;
 
-    [[nodiscard]] const std::vector<nids::core::FlowInfo>& flowMetadata() const noexcept override;
+    [[nodiscard]] const std::vector<core::FlowInfo>& flowMetadata() const noexcept override;
 
 private:
     std::unordered_map<FlowKey, FlowStats, FlowKeyHash> flows_;
     std::vector<std::pair<FlowKey, FlowStats>> completedFlows_;
-    std::vector<nids::core::FlowInfo> flowMetadata_;   ///< Populated by extractFeatures()
+    std::vector<core::FlowInfo> flowMetadata_;   ///< Populated by extractFeatures()
     std::int64_t flowTimeoutUs_ = 600'000'000;  // 600 seconds default
 
     void processPacket(const std::uint8_t* data, std::uint32_t len,

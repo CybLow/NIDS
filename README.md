@@ -15,8 +15,8 @@ on the LSNM2024 dataset. Built with C++20, Qt6, and ONNX Runtime.
   force, RCE, SQL injection, XSS, port scanning, and more)
 - **ONNX Runtime Inference**: Fast CPU inference with optional GPU acceleration via
   CUDA/TensorRT
-- **Native Flow Extraction**: 77 CIC-compatible features computed in C++ — no external
-  tools (CICFlowMeter) required
+- **Native Flow Extraction**: 77 bidirectional flow features computed in C++ — no
+  external tools required
 - **Real-time Packet Capture**: Live capture with BPF filtering via libpcap
 - **Application Detection**: Port-to-service mapping for 100+ protocols
 - **Hex/ASCII Inspector**: Raw packet data viewer
@@ -197,7 +197,7 @@ NIDS/
 
 ## Roadmap
 
-- [x] Native C++ flow feature extraction (replaces CICFlowMeter)
+- [x] Native C++ flow feature extraction (77 bidirectional flow features)
 - [x] ONNX Runtime for ML inference
 - [x] CNN-BiLSTM model trained on LSNM2024
 - [x] Qt6 + C++20 modernization

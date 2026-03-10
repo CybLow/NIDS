@@ -49,7 +49,7 @@ using nids::platform::getTcpFlags;
 using nids::platform::getTcpWindow;
 using nids::platform::getUdpSrcPort;
 using nids::platform::getUdpDstPort;
-constexpr std::int64_t kIdleThresholdUs = 5'000'000;   // 5 seconds (CICFlowMeter default)
+constexpr std::int64_t kIdleThresholdUs = 5'000'000;   // 5 seconds (standard idle threshold)
 constexpr std::int64_t kDefaultFlowTimeoutUs = 600'000'000;  // 600 seconds
 constexpr std::uint16_t kEtherTypeVlan = 0x8100;
 
@@ -110,7 +110,7 @@ void pushIatStats(std::vector<float>& features, const std::vector<std::int64_t>&
 } // anonymous namespace
 
 const std::vector<std::string>& flowFeatureNames() {
-    // Feature names matching CICFlowMeter column convention and toFeatureVector() order.
+    // Feature names matching toFeatureVector() order.
     // 77 features total (kFlowFeatureCount).
     static const std::vector<std::string> names = {
         // 0: Destination port

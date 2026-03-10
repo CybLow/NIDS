@@ -17,7 +17,7 @@ Cross-references: [ADR-004](adr/004-model-benchmark-analysis.md),
 - [x] 9 phases of C++20/Qt6 modernization
 - [x] ONNX Runtime ML inference (replaces frugally-deep)
 - [x] CNN-BiLSTM model trained on LSNM2024 (87.78% accuracy, 97.78% attack recall)
-- [x] Native C++ flow feature extraction (77 CICFlowMeter-compatible features)
+- [x] Native C++ flow feature extraction (77 bidirectional flow features)
 - [x] Hybrid detection system (ML + Threat Intelligence + Heuristic Rules)
 - [x] `FeatureNormalizer` (z-score normalization with clip values)
 - [x] Threat feed update script (`scripts/update_threat_feeds.sh`)

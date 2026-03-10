@@ -11,7 +11,7 @@ Architecture:
     -> Dense(128) -> BN -> ReLU -> Dropout(0.3)
     -> Dense(n_classes)
 
-The number of input features (77 for CICFlowMeter flow features) and output
+The number of input features (77 bidirectional flow features) and output
 classes (16 for LSNM2024) are determined dynamically from the preprocessed data.
 
 Usage:

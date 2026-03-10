@@ -39,7 +39,7 @@ techniques.**
 
 | Capability | How |
 |---|---|
-| Detect **statistical anomalies** in flow patterns | ML classifier (CNN-BiLSTM, 77 CICFlowMeter features) |
+| Detect **statistical anomalies** in flow patterns | ML classifier (CNN-BiLSTM, 77 bidirectional flow features) |
 | Catch **known-bad IP addresses** regardless of traffic pattern | Threat intelligence (5 free feeds, O(1) lookup) |
 | Flag **obvious protocol/port anomalies** | Heuristic rules (7 hardcoded rules) |
 | Provide **confidence-aware verdicts** | Full softmax probability distribution + combined score |
@@ -311,7 +311,7 @@ Updated via `scripts/update_threat_feeds.sh`, loaded at startup from
 ## ML Pipeline
 
 1. **Feature Extraction**: `NativeFlowExtractor` reads a pcap file and computes
-   77 CIC-compatible flow features (duration, packet counts, byte statistics, flags,
+   77 bidirectional flow features (duration, packet counts, byte statistics, flags,
    inter-arrival times, etc.). Also retains per-flow metadata (`FlowInfo`) for TI
    lookups and heuristic rules.
 2. **Normalization**: `FeatureNormalizer` applies StandardScaler parameters from
