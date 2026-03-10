@@ -9,17 +9,26 @@ using nids::infra::NativeFlowExtractor;
 
 namespace fs = std::filesystem;
 
-TEST(FlowKey, Ordering) {
+TEST(FlowKey, Equality) {
     FlowKey a{"10.0.0.1", "192.168.1.1", 12345, 443, 6};
     FlowKey b{"10.0.0.1", "192.168.1.1", 12345, 443, 6};
     FlowKey c{"10.0.0.2", "192.168.1.1", 12345, 443, 6};
     FlowKey d{"10.0.0.1", "192.168.1.2", 12345, 443, 6};
 
-    EXPECT_FALSE(a < b);
-    EXPECT_FALSE(b < a);
-    EXPECT_TRUE(a < c);
-    EXPECT_FALSE(c < a);
-    EXPECT_TRUE(a < d);
+    EXPECT_EQ(a, b);
+    EXPECT_NE(a, c);
+    EXPECT_NE(a, d);
+}
+
+TEST(FlowKey, HashConsistency) {
+    nids::infra::FlowKeyHash hasher;
+    FlowKey a{"10.0.0.1", "192.168.1.1", 12345, 443, 6};
+    FlowKey b{"10.0.0.1", "192.168.1.1", 12345, 443, 6};
+    FlowKey c{"10.0.0.2", "192.168.1.1", 12345, 443, 6};
+
+    EXPECT_EQ(hasher(a), hasher(b));
+    // Different keys should (very likely) produce different hashes
+    EXPECT_NE(hasher(a), hasher(c));
 }
 
 TEST(FlowStats, ToFeatureVectorSizeAndOrder) {
@@ -41,7 +50,7 @@ TEST(FlowStats, ToFeatureVectorSizeAndOrder) {
     EXPECT_FLOAT_EQ(features[5], 300.0f);   // Total Bwd Bytes
 }
 
-TEST(NativeFlowExtractor, ExtractFlowsWithMinimalPcap) {
+TEST(NativeFlowExtractor, ExtractFeaturesWithMinimalPcap) {
     // Create minimal pcap: global header (24 bytes) + one packet
     // PCAP global header (libpcap format): magic 0xa1b2c3d4, version 2.4, linktype 1 (Ethernet)
     std::uint8_t pcapGlobalHeader[] = {
@@ -71,28 +80,30 @@ TEST(NativeFlowExtractor, ExtractFlowsWithMinimalPcap) {
     ofs.close();
 
     NativeFlowExtractor extractor;
-    std::string csvPath = (fs::temp_directory_path() / "nids_test_output.csv").string();
-    bool ok = extractor.extractFlows(pcapPath, csvPath);
+    auto features = extractor.extractFeatures(pcapPath);
 
     fs::remove(pcapPath);
 
-    EXPECT_TRUE(ok);
-    if (ok) {
-        auto features = extractor.loadFeatures(csvPath);
-        fs::remove(csvPath);
-        EXPECT_EQ(features.size(), 1u);
-        if (!features.empty()) {
-            EXPECT_EQ(features[0].size(), static_cast<std::size_t>(nids::infra::kFlowFeatureCount));
-            EXPECT_FLOAT_EQ(features[0][0], 443.0f);  // Destination port
-        }
-    } else {
-        fs::remove(csvPath);
+    EXPECT_EQ(features.size(), 1u);
+    if (!features.empty()) {
+        EXPECT_EQ(features[0].size(), static_cast<std::size_t>(nids::infra::kFlowFeatureCount));
+        EXPECT_FLOAT_EQ(features[0][0], 443.0f);  // Destination port
+    }
+
+    // Verify flow metadata is populated
+    const auto& metadata = extractor.flowMetadata();
+    EXPECT_EQ(metadata.size(), 1u);
+    if (!metadata.empty()) {
+        EXPECT_EQ(metadata[0].srcIp, "192.168.1.1");
+        EXPECT_EQ(metadata[0].dstIp, "192.168.1.2");
+        EXPECT_EQ(metadata[0].dstPort, 443);
+        EXPECT_EQ(metadata[0].protocol, 6);  // TCP
     }
 }
 
-TEST(NativeFlowExtractor, LoadFeatures) {
+TEST(NativeFlowExtractor, ExtractFeatures_badFile_returnsEmpty) {
     NativeFlowExtractor extractor;
-    auto features = extractor.loadFeatures("/nonexistent_file_xyz");
+    auto features = extractor.extractFeatures("/nonexistent_file_xyz.pcap");
     EXPECT_TRUE(features.empty());
 }
 

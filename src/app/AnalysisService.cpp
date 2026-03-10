@@ -5,10 +5,6 @@
 
 #include <spdlog/spdlog.h>
 
-#include <filesystem>
-
-namespace fs = std::filesystem;
-
 namespace nids::app {
 
 namespace {
@@ -68,19 +64,16 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
                                       nids::core::CaptureSession& session) {
     emit analysisStarted();
 
-    auto csvPath = (nids::core::Configuration::instance().tempDirectory()
-                    / "nids_analysis_features.csv").string();
-
     spdlog::info("Extracting flow features from '{}'", pcapPath);
 
-    if (!extractor_->extractFlows(pcapPath, csvPath)) {
-        spdlog::error("Failed to extract flow features from '{}'", pcapPath);
-        emit analysisError("Failed to extract flow features from capture");
-        emit analysisFinished();
-        return;
+    auto allFeatures = extractor_->extractFeatures(pcapPath);
+    if (allFeatures.empty()) {
+        spdlog::warn("No flows extracted from '{}' (empty capture or extraction failure)", pcapPath);
+        // Not necessarily an error -- empty captures produce zero flows.
+        // Only emit analysisError if the pcap could not be opened at all,
+        // but extractFeatures() returning empty is ambiguous. Log and proceed.
     }
 
-    auto allFeatures = extractor_->loadFeatures(csvPath);
     const auto& metadata = extractor_->flowMetadata();
     int total = static_cast<int>(allFeatures.size());
 
@@ -120,12 +113,6 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
         }
 
         emit analysisProgress(i + 1, total);
-    }
-
-    // Clean up temporary CSV
-    std::error_code ec;
-    if (!fs::remove(csvPath, ec) && ec) {
-        spdlog::warn("Failed to remove temporary CSV '{}': {}", csvPath, ec.message());
     }
 
     spdlog::info("Analysis complete: {} flows processed", total);

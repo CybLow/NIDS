@@ -24,8 +24,12 @@ public:
 
 class MockFlowExtractor : public IFlowExtractor {
 public:
-    MOCK_METHOD(bool, extractFlows, (const std::string&, const std::string&), (override));
-    MOCK_METHOD(std::vector<std::vector<float>>, loadFeatures, (const std::string&), (override));
+    MOCK_METHOD(std::vector<std::vector<float>>, extractFeatures, (const std::string&), (override));
+    MOCK_METHOD(const std::vector<FlowInfo>&, flowMetadata, (), (const, noexcept, override));
+
+private:
+    // Default empty metadata returned by flowMetadata() when no expectation is set.
+    std::vector<FlowInfo> emptyMetadata_;
 };
 
 // ── Fixture ──────────────────────────────────────────────────────────
@@ -66,27 +70,26 @@ TEST_F(AnalysisServiceTest, loadModel_returnsFalseOnFailure) {
     EXPECT_FALSE(service.loadModel("/bad/path.onnx"));
 }
 
-TEST_F(AnalysisServiceTest, analyzeCapture_extractionFailure_emitsError) {
+TEST_F(AnalysisServiceTest, analyzeCapture_extractionFailure_emitsNoFlows) {
     auto analyzer = std::make_unique<MockAnalyzer>();
     auto extractor = std::make_unique<MockFlowExtractor>();
 
-    EXPECT_CALL(*extractor, extractFlows(_, _)).WillOnce(Return(false));
-    // predict should never be called if extraction fails
+    // extractFeatures returns empty on failure
+    EXPECT_CALL(*extractor, extractFeatures(_))
+        .WillOnce(Return(std::vector<std::vector<float>>{}));
+    // predict should never be called if no features
     EXPECT_CALL(*analyzer, predict(_)).Times(0);
 
     AnalysisService service(std::move(analyzer), std::move(extractor));
 
     QSignalSpy startedSpy(&service, &AnalysisService::analysisStarted);
-    QSignalSpy errorSpy(&service, &AnalysisService::analysisError);
     QSignalSpy finishedSpy(&service, &AnalysisService::analysisFinished);
 
     CaptureSession session;
     service.analyzeCapture("test.pcap", session);
 
     EXPECT_EQ(startedSpy.count(), 1);
-    EXPECT_EQ(errorSpy.count(), 1);
     EXPECT_EQ(finishedSpy.count(), 1);
-    EXPECT_TRUE(errorSpy.first().at(0).toString().contains("extract"));
 }
 
 TEST_F(AnalysisServiceTest, analyzeCapture_success_classifiesAllFlows) {
@@ -102,8 +105,7 @@ TEST_F(AnalysisServiceTest, analyzeCapture_success_classifiesAllFlows) {
         std::vector<float>(77, 1.0f),
     };
 
-    EXPECT_CALL(*extractorPtr, extractFlows(_, _)).WillOnce(Return(true));
-    EXPECT_CALL(*extractorPtr, loadFeatures(_)).WillOnce(Return(mockFeatures));
+    EXPECT_CALL(*extractorPtr, extractFeatures(_)).WillOnce(Return(mockFeatures));
     EXPECT_CALL(*analyzerPtr, predict(_))
         .WillOnce(Return(AttackType::Benign))
         .WillOnce(Return(AttackType::DdosIcmp))
@@ -141,8 +143,7 @@ TEST_F(AnalysisServiceTest, analyzeCapture_emptyFeatures_finishesWithoutPredicti
     auto analyzer = std::make_unique<MockAnalyzer>();
     auto extractor = std::make_unique<MockFlowExtractor>();
 
-    EXPECT_CALL(*extractor, extractFlows(_, _)).WillOnce(Return(true));
-    EXPECT_CALL(*extractor, loadFeatures(_))
+    EXPECT_CALL(*extractor, extractFeatures(_))
         .WillOnce(Return(std::vector<std::vector<float>>{}));
     EXPECT_CALL(*analyzer, predict(_)).Times(0);
 
@@ -168,8 +169,7 @@ TEST_F(AnalysisServiceTest, analyzeCapture_singleFlow_correctProgress) {
         std::vector<float>(77, 0.42f),
     };
 
-    EXPECT_CALL(*extractor, extractFlows(_, _)).WillOnce(Return(true));
-    EXPECT_CALL(*extractor, loadFeatures(_)).WillOnce(Return(singleFlow));
+    EXPECT_CALL(*extractor, extractFeatures(_)).WillOnce(Return(singleFlow));
     EXPECT_CALL(*analyzer, predict(_)).WillOnce(Return(AttackType::PortScanning));
 
     AnalysisService service(std::move(analyzer), std::move(extractor));

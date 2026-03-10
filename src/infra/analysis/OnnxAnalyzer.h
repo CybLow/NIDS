@@ -2,17 +2,13 @@
 
 // ONNX Runtime-based analyzer for ML inference.
 //
-// This provides a drop-in replacement for FdeepAnalyzer with superior
-// performance characteristics:
+// Performance characteristics:
 // - GPU acceleration (CUDA, DirectML, TensorRT providers)
 // - Broader model format support (.onnx from PyTorch, TensorFlow, etc.)
 // - Better inference throughput for real-time detection
 //
-// To enable:
-// 1. Add onnxruntime to vcpkg.json: "onnxruntime-gpu" or "onnxruntime"
-// 2. Convert the Keras model: python -m tf2onnx.convert --keras model.keras --output model.onnx
-// 3. Set NIDS_USE_ONNX=ON in CMake
-// 4. The IPacketAnalyzer interface is shared with FdeepAnalyzer
+// Model conversion:
+//   python -m tf2onnx.convert --keras model.keras --output model.onnx
 
 #include "core/services/IPacketAnalyzer.h"
 

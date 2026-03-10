@@ -5,20 +5,50 @@
 #include <pcap.h>
 #include <spdlog/spdlog.h>
 
-#include <fstream>
-#include <sstream>
 #include <numeric>
 #include <cmath>
 #include <algorithm>
 #include <concepts>
 #include <ranges>
+// Note: std::ranges::fold_left (C++23) is not available under C++20.
+// std::accumulate is used for reductions until the project adopts C++23.
 
 namespace nids::infra {
 
-using namespace nids::platform;
-
 namespace {
 
+using nids::platform::EthernetHeader;
+using nids::platform::IPv4Header;
+using nids::platform::TcpHeader;
+using nids::platform::UdpHeader;
+using nids::platform::IcmpHeader;
+using nids::platform::kEthernetHeaderSize;
+using nids::platform::kIcmpHeaderSize;
+using nids::platform::kIpProtoTcp;
+using nids::platform::kIpProtoUdp;
+using nids::platform::kIpProtoIcmp;
+using nids::platform::kEtherTypeIPv4;
+using nids::platform::kTcpFin;
+using nids::platform::kTcpSyn;
+using nids::platform::kTcpRst;
+using nids::platform::kTcpPsh;
+using nids::platform::kTcpAck;
+using nids::platform::kTcpUrg;
+using nids::platform::kTcpCwr;
+using nids::platform::kTcpEce;
+using nids::platform::getEtherType;
+using nids::platform::getIpIhl;
+using nids::platform::getIpProtocol;
+using nids::platform::getIpTotalLength;
+using nids::platform::getIpSrcStr;
+using nids::platform::getIpDstStr;
+using nids::platform::getTcpSrcPort;
+using nids::platform::getTcpDstPort;
+using nids::platform::getTcpDataOffset;
+using nids::platform::getTcpFlags;
+using nids::platform::getTcpWindow;
+using nids::platform::getUdpSrcPort;
+using nids::platform::getUdpDstPort;
 constexpr std::int64_t kIdleThresholdUs = 5'000'000;   // 5 seconds (CICFlowMeter default)
 constexpr std::int64_t kDefaultFlowTimeoutUs = 600'000'000;  // 600 seconds
 constexpr std::uint16_t kEtherTypeVlan = 0x8100;
@@ -27,7 +57,8 @@ template<std::ranges::sized_range Container>
     requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
 double mean(const Container& c) {
     if (c.empty()) return 0.0;
-    double sum = std::accumulate(c.begin(), c.end(), 0.0);
+    double sum = std::accumulate(c.begin(), c.end(), 0.0,
+        [](double acc, auto val) { return acc + static_cast<double>(val); });
     return sum / static_cast<double>(c.size());
 }
 
@@ -55,8 +86,8 @@ void pushLengthStats(std::vector<float>& features, const std::vector<std::uint32
     if (lengths.empty()) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
     } else {
-        features.push_back(static_cast<float>(*std::max_element(lengths.begin(), lengths.end())));
-        features.push_back(static_cast<float>(*std::min_element(lengths.begin(), lengths.end())));
+        features.push_back(static_cast<float>(std::ranges::max(lengths)));
+        features.push_back(static_cast<float>(std::ranges::min(lengths)));
         features.push_back(static_cast<float>(mean(lengths)));
         features.push_back(static_cast<float>(stddev(lengths)));
     }
@@ -66,12 +97,13 @@ void pushIatStats(std::vector<float>& features, const std::vector<std::int64_t>&
     if (iats.empty()) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
     } else {
-        double totalUs = std::accumulate(iats.begin(), iats.end(), 0.0);
+        double totalUs = std::accumulate(iats.begin(), iats.end(), 0.0,
+            [](double acc, auto val) { return acc + static_cast<double>(val); });
         features.push_back(static_cast<float>(totalUs));
         features.push_back(static_cast<float>(mean(iats)));
         features.push_back(static_cast<float>(stddev(iats)));
-        features.push_back(static_cast<float>(*std::max_element(iats.begin(), iats.end())));
-        features.push_back(static_cast<float>(*std::min_element(iats.begin(), iats.end())));
+        features.push_back(static_cast<float>(std::ranges::max(iats)));
+        features.push_back(static_cast<float>(std::ranges::min(iats)));
     }
 }
 
@@ -192,14 +224,6 @@ void NativeFlowExtractor::setFlowTimeout(std::int64_t timeoutUs) {
     flowTimeoutUs_ = timeoutUs;
 }
 
-bool FlowKey::operator<(const FlowKey& other) const {
-    if (srcIp != other.srcIp) return srcIp < other.srcIp;
-    if (dstIp != other.dstIp) return dstIp < other.dstIp;
-    if (srcPort != other.srcPort) return srcPort < other.srcPort;
-    if (dstPort != other.dstPort) return dstPort < other.dstPort;
-    return protocol < other.protocol;
-}
-
 std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     std::vector<float> features;
     features.reserve(kFlowFeatureCount);
@@ -236,8 +260,8 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     } else {
         features.push_back(static_cast<float>(mean(flowIatUs)));
         features.push_back(static_cast<float>(stddev(flowIatUs)));
-        features.push_back(static_cast<float>(*std::max_element(flowIatUs.begin(), flowIatUs.end())));
-        features.push_back(static_cast<float>(*std::min_element(flowIatUs.begin(), flowIatUs.end())));
+        features.push_back(static_cast<float>(std::ranges::max(flowIatUs)));
+        features.push_back(static_cast<float>(std::ranges::min(flowIatUs)));
     }
     // 20-24: Fwd IAT Total, Mean, Std, Max, Min
     pushIatStats(features, fwdIatUs);
@@ -263,8 +287,8 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     if (allPacketLengths.empty()) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
     } else {
-        features.push_back(static_cast<float>(*std::min_element(allPacketLengths.begin(), allPacketLengths.end())));
-        features.push_back(static_cast<float>(*std::max_element(allPacketLengths.begin(), allPacketLengths.end())));
+        features.push_back(static_cast<float>(std::ranges::min(allPacketLengths)));
+        features.push_back(static_cast<float>(std::ranges::max(allPacketLengths)));
         features.push_back(static_cast<float>(mean(allPacketLengths)));
         features.push_back(static_cast<float>(stddev(allPacketLengths)));
         features.push_back(static_cast<float>(variance(allPacketLengths)));
@@ -297,7 +321,8 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     } else {
         features.push_back(static_cast<float>(mean(fwdBulkBytes)));
         features.push_back(static_cast<float>(mean(fwdBulkPackets)));
-        double totalFwdBulkBytes = std::accumulate(fwdBulkBytes.begin(), fwdBulkBytes.end(), 0.0);
+        double totalFwdBulkBytes = std::accumulate(fwdBulkBytes.begin(), fwdBulkBytes.end(), 0.0,
+            [](double acc, auto val) { return acc + static_cast<double>(val); });
         features.push_back(durationUs > 0 ? static_cast<float>(totalFwdBulkBytes / (durationUs / 1e6)) : 0.0f);
     }
     // 58-60: Bwd Bytes/Bulk Avg, Bwd Packet/Bulk Avg, Bwd Bulk Rate Avg
@@ -306,7 +331,8 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     } else {
         features.push_back(static_cast<float>(mean(bwdBulkBytes)));
         features.push_back(static_cast<float>(mean(bwdBulkPackets)));
-        double totalBwdBulkBytes = std::accumulate(bwdBulkBytes.begin(), bwdBulkBytes.end(), 0.0);
+        double totalBwdBulkBytes = std::accumulate(bwdBulkBytes.begin(), bwdBulkBytes.end(), 0.0,
+            [](double acc, auto val) { return acc + static_cast<double>(val); });
         features.push_back(durationUs > 0 ? static_cast<float>(totalBwdBulkBytes / (durationUs / 1e6)) : 0.0f);
     }
     // 61-64: Subflow Fwd Packets, Subflow Fwd Bytes, Subflow Bwd Packets, Subflow Bwd Bytes
@@ -326,8 +352,8 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     } else {
         features.push_back(static_cast<float>(mean(activePeriodsUs)));
         features.push_back(static_cast<float>(stddev(activePeriodsUs)));
-        features.push_back(static_cast<float>(*std::max_element(activePeriodsUs.begin(), activePeriodsUs.end())));
-        features.push_back(static_cast<float>(*std::min_element(activePeriodsUs.begin(), activePeriodsUs.end())));
+        features.push_back(static_cast<float>(std::ranges::max(activePeriodsUs)));
+        features.push_back(static_cast<float>(std::ranges::min(activePeriodsUs)));
     }
     // 73-76: Idle Mean, Std, Max, Min
     if (idlePeriodsUs.empty()) {
@@ -335,20 +361,20 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     } else {
         features.push_back(static_cast<float>(mean(idlePeriodsUs)));
         features.push_back(static_cast<float>(stddev(idlePeriodsUs)));
-        features.push_back(static_cast<float>(*std::max_element(idlePeriodsUs.begin(), idlePeriodsUs.end())));
-        features.push_back(static_cast<float>(*std::min_element(idlePeriodsUs.begin(), idlePeriodsUs.end())));
+        features.push_back(static_cast<float>(std::ranges::max(idlePeriodsUs)));
+        features.push_back(static_cast<float>(std::ranges::min(idlePeriodsUs)));
     }
 
     return features;
 }
 
-bool NativeFlowExtractor::extractFlows(const std::string& pcapPath,
-                                         const std::string& outputCsvPath) {
+std::vector<std::vector<float>> NativeFlowExtractor::extractFeatures(
+    const std::string& pcapPath) {
     char errbuf[PCAP_ERRBUF_SIZE];
     auto handle = makePcapHandle(pcap_open_offline(pcapPath.c_str(), errbuf));
     if (!handle) {
         spdlog::error("Cannot open pcap file: {}", errbuf);
-        return false;
+        return {};
     }
 
     flows_.clear();
@@ -364,8 +390,7 @@ bool NativeFlowExtractor::extractFlows(const std::string& pcapPath,
 
     finalizeBulks();
     buildFlowMetadata();
-    writeCsv(outputCsvPath);
-    return true;
+    return buildFeatureVectors();
 }
 
 void NativeFlowExtractor::finalizeBulks() {
@@ -457,23 +482,29 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
         flows_.erase(itBwd);
     }
 
+    // Re-lookup after possible timeout evictions.
     itFwd = flows_.find(keyFwd);
     itBwd = flows_.find(keyBwd);
-    FlowKey* usedKey = nullptr;
+
+    // Determine which flow entry to use and direction.
+    // We store the key by value so we can reference the stats without const_cast.
+    FlowKey activeKey;
     bool isForward = false;
+    bool isNew = false;
     if (itFwd != flows_.end()) {
-        usedKey = const_cast<FlowKey*>(&itFwd->first);
+        activeKey = itFwd->first;
         isForward = true;
     } else if (itBwd != flows_.end()) {
-        usedKey = const_cast<FlowKey*>(&itBwd->first);
+        activeKey = itBwd->first;
         isForward = false;
     } else {
-        flows_[keyFwd] = FlowStats{};
-        usedKey = const_cast<FlowKey*>(&keyFwd);
+        activeKey = keyFwd;
         isForward = true;
+        isNew = true;
     }
 
-    FlowStats& stats = flows_[*usedKey];
+    // Insert or access the flow stats.
+    FlowStats& stats = isNew ? flows_[activeKey] : flows_[activeKey];
     if (stats.startTimeUs == 0) {
         stats.startTimeUs = timestampUs;
     }
@@ -593,9 +624,8 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
             stats.bwdBulkPackets.push_back(stats.curBwdBulkPkts);
             stats.bwdBulkBytes.push_back(stats.curBwdBulkBytes);
         }
-        FlowKey key = *usedKey;
-        completedFlows_.emplace_back(std::move(key), std::move(stats));
-        flows_.erase(*usedKey);
+        completedFlows_.emplace_back(activeKey, std::move(stats));
+        flows_.erase(activeKey);
         return;
     }
 
@@ -612,68 +642,9 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
             stats.bwdBulkPackets.push_back(stats.curBwdBulkPkts);
             stats.bwdBulkBytes.push_back(stats.curBwdBulkBytes);
         }
-        FlowKey key = *usedKey;
-        completedFlows_.emplace_back(key, std::move(stats));
-        flows_[key] = FlowStats{};  // Start new flow for same 5-tuple
+        completedFlows_.emplace_back(activeKey, std::move(stats));
+        flows_[activeKey] = FlowStats{};  // Start new flow for same 5-tuple
     }
-}
-
-void NativeFlowExtractor::writeCsv(const std::string& outputPath) const {
-    std::ofstream file(outputPath);
-    if (!file.is_open()) return;
-
-    // Write named column headers
-    const auto& names = flowFeatureNames();
-    for (std::size_t i = 0; i < names.size(); ++i) {
-        if (i > 0) file << ",";
-        file << names[i];
-    }
-    file << "\n";
-
-    auto writeFlow = [&](const FlowKey& key, const FlowStats& stats) {
-        auto features = stats.toFeatureVector(key.dstPort);
-        for (std::size_t i = 0; i < features.size(); ++i) {
-            if (i > 0) file << ",";
-            file << features[i];
-        }
-        file << "\n";
-    };
-
-    for (const auto& [key, stats] : completedFlows_) {
-        writeFlow(key, stats);
-    }
-    for (const auto& [key, stats] : flows_) {
-        writeFlow(key, stats);
-    }
-}
-
-std::vector<std::vector<float>> NativeFlowExtractor::loadFeatures(
-    const std::string& csvPath) {
-    std::vector<std::vector<float>> result;
-    std::ifstream file(csvPath);
-    if (!file.is_open()) return result;
-
-    std::string line;
-    std::getline(file, line);  // skip header
-
-    while (std::getline(file, line)) {
-        std::vector<float> row;
-        std::stringstream ss(line);
-        std::string cell;
-        while (std::getline(ss, cell, ',')) {
-            try {
-                row.push_back(std::stof(cell));
-            } catch (...) {
-                row.push_back(0.0f);
-            }
-        }
-        while (row.size() < static_cast<std::size_t>(kFlowFeatureCount)) {
-            row.push_back(0.0f);
-        }
-        result.push_back(std::move(row));
-    }
-
-    return result;
 }
 
 const std::vector<nids::core::FlowInfo>& NativeFlowExtractor::flowMetadata() const noexcept {
@@ -724,6 +695,20 @@ void NativeFlowExtractor::buildFlowMetadata() {
     for (const auto& [key, stats] : flows_) {
         buildOne(key, stats);
     }
+}
+
+std::vector<std::vector<float>> NativeFlowExtractor::buildFeatureVectors() const {
+    std::vector<std::vector<float>> result;
+    result.reserve(completedFlows_.size() + flows_.size());
+
+    for (const auto& [key, stats] : completedFlows_) {
+        result.push_back(stats.toFeatureVector(key.dstPort));
+    }
+    for (const auto& [key, stats] : flows_) {
+        result.push_back(stats.toFeatureVector(key.dstPort));
+    }
+
+    return result;
 }
 
 } // namespace nids::infra

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include <map>
+#include <unordered_map>
 #include <set>
 
 namespace nids::core {
@@ -20,7 +20,7 @@ public:
     ) const;
 
 private:
-    std::map<int, std::string> portToService_;
+    std::unordered_map<int, std::string> portToService_;
 };
 
 } // namespace nids::core

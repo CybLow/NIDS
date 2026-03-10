@@ -4,7 +4,7 @@
 //
 // Extracts CICFlowMeter-compatible bidirectional flow features directly from
 // pcap files, eliminating the Java dependency. Features are computed per-flow
-// and output as named columns matching the CICFlowMeter convention.
+// and returned as in-memory feature vectors (no intermediate CSV).
 //
 // The feature set covers:
 // - Flow duration, packet counts, byte counts (per direction)
@@ -21,8 +21,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include <map>
+#include <unordered_map>
 #include <cstdint>
+#include <functional>
 
 namespace nids::infra {
 
@@ -44,7 +45,19 @@ struct FlowKey {
     std::uint16_t dstPort;
     std::uint8_t protocol;
 
-    bool operator<(const FlowKey& other) const;
+    bool operator==(const FlowKey& other) const = default;
+};
+
+/// Hash functor for FlowKey, combining all five tuple fields.
+struct FlowKeyHash {
+    std::size_t operator()(const FlowKey& k) const noexcept {
+        std::size_t h = std::hash<std::string>{}(k.srcIp);
+        h ^= std::hash<std::string>{}(k.dstIp) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<std::uint16_t>{}(k.srcPort) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<std::uint16_t>{}(k.dstPort) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<std::uint8_t>{}(k.protocol) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        return h;
+    }
 };
 
 struct FlowStats {
@@ -105,25 +118,24 @@ public:
 
     void setFlowTimeout(std::int64_t timeoutUs);
 
-    [[nodiscard]] bool extractFlows(const std::string& pcapPath,
-                                    const std::string& outputCsvPath) override;
-
-    [[nodiscard]] std::vector<std::vector<float>> loadFeatures(
-        const std::string& csvPath) override;
+    [[nodiscard]] std::vector<std::vector<float>> extractFeatures(
+        const std::string& pcapPath) override;
 
     [[nodiscard]] const std::vector<nids::core::FlowInfo>& flowMetadata() const noexcept override;
 
 private:
-    std::map<FlowKey, FlowStats> flows_;
+    std::unordered_map<FlowKey, FlowStats, FlowKeyHash> flows_;
     std::vector<std::pair<FlowKey, FlowStats>> completedFlows_;
-    std::vector<nids::core::FlowInfo> flowMetadata_;   ///< Populated by extractFlows()
+    std::vector<nids::core::FlowInfo> flowMetadata_;   ///< Populated by extractFeatures()
     std::int64_t flowTimeoutUs_ = 600'000'000;  // 600 seconds default
 
     void processPacket(const std::uint8_t* data, std::uint32_t len,
                        std::int64_t timestampUs);
     void finalizeBulks();
-    void writeCsv(const std::string& outputPath) const;
     void buildFlowMetadata();   ///< Populate flowMetadata_ from completed + active flows
+
+    /// Build feature vectors from completed + active flows (same order as flowMetadata_).
+    [[nodiscard]] std::vector<std::vector<float>> buildFeatureVectors() const;
 };
 
 } // namespace nids::infra

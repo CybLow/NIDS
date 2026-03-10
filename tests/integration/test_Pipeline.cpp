@@ -39,8 +39,11 @@ public:
 
 class MockExtractor : public IFlowExtractor {
 public:
-    MOCK_METHOD(bool, extractFlows, (const std::string&, const std::string&), (override));
-    MOCK_METHOD(std::vector<std::vector<float>>, loadFeatures, (const std::string&), (override));
+    MOCK_METHOD(std::vector<std::vector<float>>, extractFeatures, (const std::string&), (override));
+    MOCK_METHOD(const std::vector<FlowInfo>&, flowMetadata, (), (const, noexcept, override));
+
+private:
+    std::vector<FlowInfo> emptyMetadata_;
 };
 
 // ── Fixture ──────────────────────────────────────────────────────────
@@ -112,8 +115,7 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
         std::vector<float>(77, 0.9f),
     };
 
-    EXPECT_CALL(*extractor, extractFlows(_, _)).WillOnce(Return(true));
-    EXPECT_CALL(*extractor, loadFeatures(_)).WillOnce(Return(flows));
+    EXPECT_CALL(*extractor, extractFeatures(_)).WillOnce(Return(flows));
     EXPECT_CALL(*analyzer, predict(_))
         .WillOnce(Return(AttackType::Benign))
         .WillOnce(Return(AttackType::SynFlood));
@@ -165,8 +167,7 @@ TEST_F(PipelineTest, analysisWithAllAttackTypes) {
     }
 
     int callIndex = 0;
-    EXPECT_CALL(*extractor, extractFlows(_, _)).WillOnce(Return(true));
-    EXPECT_CALL(*extractor, loadFeatures(_)).WillOnce(Return(flows));
+    EXPECT_CALL(*extractor, extractFeatures(_)).WillOnce(Return(flows));
     EXPECT_CALL(*analyzer, predict(_))
         .Times(kAttackTypeCount)
         .WillRepeatedly(Invoke([&](const std::vector<float>&) -> AttackType {

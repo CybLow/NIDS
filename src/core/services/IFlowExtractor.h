@@ -32,15 +32,15 @@ class IFlowExtractor {
 public:
     virtual ~IFlowExtractor() = default;
 
-    [[nodiscard]] virtual bool extractFlows(const std::string& pcapPath,
-                                            const std::string& outputCsvPath) = 0;
+    /// Extract flow features directly from a pcap file, returning one feature
+    /// vector per flow.  Each inner vector has exactly kFlowFeatureCount floats.
+    /// Returns an empty vector on failure.
+    [[nodiscard]] virtual std::vector<std::vector<float>> extractFeatures(
+        const std::string& pcapPath) = 0;
 
-    [[nodiscard]] virtual std::vector<std::vector<float>> loadFeatures(
-        const std::string& csvPath) = 0;
-
-    /// Returns per-flow metadata for the most recent extractFlows() call.
-    /// The vector is indexed in the same order as the CSV rows / loadFeatures() output.
-    /// Empty if extractFlows() has not been called yet.
+    /// Returns per-flow metadata for the most recent extractFeatures() call.
+    /// The vector is indexed in the same order as the extractFeatures() output.
+    /// Empty if extractFeatures() has not been called yet.
     [[nodiscard]] virtual const std::vector<FlowInfo>& flowMetadata() const noexcept = 0;
 };
 
