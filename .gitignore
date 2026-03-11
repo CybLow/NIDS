@@ -68,6 +68,13 @@ scripts/data/
 *.pcap
 *.csv
 
+# ── SonarQube ────────────────────────────────────────────────────
+.scannerwork/
+cppcheck-report.xml
+gcc-warnings.txt
+clang-tidy-report.txt
+sonarqube-data/
+
 # ── OS junk ──────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

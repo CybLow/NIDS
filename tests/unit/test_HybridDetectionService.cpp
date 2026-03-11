@@ -22,6 +22,7 @@ public:
     MOCK_METHOD(ThreatIntelLookup, lookup, (std::uint32_t), (const, override));
     MOCK_METHOD(std::size_t, entryCount, (), (const, noexcept, override));
     MOCK_METHOD(std::size_t, feedCount, (), (const, noexcept, override));
+    MOCK_METHOD(std::vector<std::string>, feedNames, (), (const, override));
 };
 
 class MockRuleEngine : public IRuleEngine {
@@ -267,4 +268,194 @@ TEST_F(HybridDetectionServiceTest, allThreeLayers_detectionSourceIsEnsemble) {
     EXPECT_TRUE(result.hasThreatIntelMatch());
     EXPECT_TRUE(result.hasRuleMatch());
     EXPECT_EQ(result.finalVerdict, AttackType::DdosIcmp);
+}
+
+// ── Remaining detection source paths ─────────────────────────────────
+
+TEST_F(HybridDetectionServiceTest, detectionSource_heuristicRuleOnly) {
+    // No TI match
+    EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
+        .WillOnce(Return(ThreatIntelLookup{false, ""}));
+    EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
+        .WillOnce(Return(ThreatIntelLookup{false, ""}));
+
+    // Rule fires
+    std::vector<HeuristicRuleResult> ruleMatches = {
+        {"syn_flood", "SYN flood detected", 0.85f}
+    };
+    EXPECT_CALL(mockRules_, evaluate(_)).WillOnce(Return(ruleMatches));
+
+    HybridDetectionService service(&mockTi_, &mockRules_);
+
+    auto pred = makePrediction(AttackType::Benign, 0.55f);
+    auto flow = makeBenignFlowMeta();
+    auto result = service.evaluate(pred, "192.168.1.10", "10.0.0.1", flow);
+
+    // ML benign (not attack), no TI, but rule fires → HeuristicRule
+    EXPECT_EQ(result.detectionSource, DetectionSource::HeuristicRule);
+}
+
+TEST_F(HybridDetectionServiceTest, detectionSource_threatIntelOnly_noMlAttack) {
+    // TI match on destination
+    EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
+        .WillOnce(Return(ThreatIntelLookup{false, ""}));
+    EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
+        .WillOnce(Return(ThreatIntelLookup{true, "spamhaus"}));
+
+    HybridDetectionService service(&mockTi_, nullptr);
+
+    auto pred = makePrediction(AttackType::Benign, 0.8f);
+    auto result = service.evaluate(pred, "192.168.1.10", "10.0.0.1");
+
+    // ML benign, TI match, no rules → ThreatIntel
+    EXPECT_EQ(result.detectionSource, DetectionSource::ThreatIntel);
+    EXPECT_EQ(result.finalVerdict, AttackType::Unknown);
+}
+
+TEST_F(HybridDetectionServiceTest, detectionSource_mlPlusHeuristic) {
+    // No TI match
+    EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
+        .WillOnce(Return(ThreatIntelLookup{false, ""}));
+    EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
+        .WillOnce(Return(ThreatIntelLookup{false, ""}));
+
+    // Rule fires
+    std::vector<HeuristicRuleResult> ruleMatches = {
+        {"high_packet_rate", "High rate", 0.7f}
+    };
+    EXPECT_CALL(mockRules_, evaluate(_)).WillOnce(Return(ruleMatches));
+
+    HybridDetectionService service(&mockTi_, &mockRules_);
+
+    // ML says attack
+    auto pred = makePrediction(AttackType::SynFlood, 0.85f);
+    auto flow = makeBenignFlowMeta();
+    auto result = service.evaluate(pred, "192.168.1.10", "10.0.0.1", flow);
+
+    // ML attack + rule but no TI → MlPlusHeuristic
+    EXPECT_EQ(result.detectionSource, DetectionSource::MlPlusHeuristic);
+    EXPECT_EQ(result.finalVerdict, AttackType::SynFlood);
+}
+
+TEST_F(HybridDetectionServiceTest, detectionSource_mlPlusThreatIntel) {
+    // TI match
+    EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
+        .WillOnce(Return(ThreatIntelLookup{true, "feodo"}));
+    EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
+        .WillOnce(Return(ThreatIntelLookup{false, ""}));
+
+    HybridDetectionService service(&mockTi_, nullptr);
+
+    // ML says attack
+    auto pred = makePrediction(AttackType::PortScanning, 0.88f);
+    auto result = service.evaluate(pred, "192.168.1.10", "10.0.0.1");
+
+    // ML attack + TI but no rules → MlPlusThreatIntel
+    EXPECT_EQ(result.detectionSource, DetectionSource::MlPlusThreatIntel);
+    EXPECT_EQ(result.finalVerdict, AttackType::PortScanning);
+}
+
+// ── Unknown ML path ──────────────────────────────────────────────────
+
+TEST_F(HybridDetectionServiceTest, unknownMlResult_noTi_returnsUnknown) {
+    HybridDetectionService service(nullptr, nullptr);
+
+    auto pred = makePrediction(AttackType::Unknown, 0.5f);
+    auto result = service.evaluate(pred, "192.168.1.10", "10.0.0.1");
+
+    // Unknown is not Benign and not attack → returns classification as-is
+    EXPECT_EQ(result.finalVerdict, AttackType::Unknown);
+}
+
+TEST_F(HybridDetectionServiceTest, unknownMlResult_withTi_escalates) {
+    EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
+        .WillOnce(Return(ThreatIntelLookup{true, "feodo"}));
+    EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
+        .WillOnce(Return(ThreatIntelLookup{false, ""}));
+
+    HybridDetectionService service(&mockTi_, nullptr);
+
+    auto pred = makePrediction(AttackType::Unknown, 0.5f);
+    auto result = service.evaluate(pred, "192.168.1.10", "10.0.0.1");
+
+    // Unknown ML + TI match → Unknown (hasTiMatch returns Unknown)
+    EXPECT_EQ(result.finalVerdict, AttackType::Unknown);
+    EXPECT_TRUE(result.hasThreatIntelMatch());
+}
+
+// ── setConfidenceThreshold ───────────────────────────────────────────
+
+TEST_F(HybridDetectionServiceTest, setConfidenceThreshold_affectsRuleEscalation) {
+    EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
+        .WillRepeatedly(Return(ThreatIntelLookup{false, ""}));
+    EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
+        .WillRepeatedly(Return(ThreatIntelLookup{false, ""}));
+
+    std::vector<HeuristicRuleResult> ruleMatches = {
+        {"syn_flood", "SYN flood detected", 0.85f}
+    };
+    EXPECT_CALL(mockRules_, evaluate(_)).WillRepeatedly(Return(ruleMatches));
+
+    HybridDetectionService service(&mockTi_, &mockRules_);
+
+    // ML benign with 0.75 confidence
+    auto pred = makePrediction(AttackType::Benign, 0.75f);
+    auto flow = makeBenignFlowMeta();
+
+    // Default threshold (0.7) → 0.75 >= 0.7, so ML is "high confidence" → stays benign
+    auto result1 = service.evaluate(pred, "192.168.1.10", "10.0.0.1", flow);
+    EXPECT_EQ(result1.finalVerdict, AttackType::Benign);
+
+    // Raise threshold to 0.9 → 0.75 < 0.9, ML is NOT high confidence → escalates
+    service.setConfidenceThreshold(0.9f);
+    auto result2 = service.evaluate(pred, "192.168.1.10", "10.0.0.1", flow);
+    EXPECT_EQ(result2.finalVerdict, AttackType::Unknown);
+}
+
+// ── Destination TI match ─────────────────────────────────────────────
+
+TEST_F(HybridDetectionServiceTest, tiMatchOnDestination_recorded) {
+    EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
+        .WillOnce(Return(ThreatIntelLookup{false, ""}));
+    EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
+        .WillOnce(Return(ThreatIntelLookup{true, "botnet"}));
+
+    HybridDetectionService service(&mockTi_, nullptr);
+
+    auto pred = makePrediction(AttackType::Benign, 0.9f);
+    auto result = service.evaluate(pred, "192.168.1.10", "10.0.0.1");
+
+    ASSERT_EQ(result.threatIntelMatches.size(), 1u);
+    EXPECT_EQ(result.threatIntelMatches[0].ip, "10.0.0.1");
+    EXPECT_FALSE(result.threatIntelMatches[0].isSource);
+    EXPECT_EQ(result.threatIntelMatches[0].feedName, "botnet");
+}
+
+// ── Both TI matches ─────────────────────────────────────────────────
+
+TEST_F(HybridDetectionServiceTest, tiMatchOnBothIps_twoMatchesRecorded) {
+    EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
+        .WillOnce(Return(ThreatIntelLookup{true, "feodo"}));
+    EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
+        .WillOnce(Return(ThreatIntelLookup{true, "spamhaus"}));
+
+    HybridDetectionService service(&mockTi_, nullptr);
+
+    auto pred = makePrediction(AttackType::Benign, 0.8f);
+    auto result = service.evaluate(pred, "192.168.1.10", "10.0.0.1");
+
+    EXPECT_EQ(result.threatIntelMatches.size(), 2u);
+    EXPECT_TRUE(result.hasThreatIntelMatch());
+}
+
+// ── Combined score: ML Unknown stays zero ────────────────────────────
+
+TEST_F(HybridDetectionServiceTest, combinedScore_unknownMl_mlScoreIsZero) {
+    HybridDetectionService service(nullptr, nullptr);
+
+    auto pred = makePrediction(AttackType::Unknown, 0.5f);
+    auto result = service.evaluate(pred, "10.0.0.1", "10.0.0.2");
+
+    // Unknown ML → mlScore = 0; no TI, no rules → combined = 0.0
+    EXPECT_FLOAT_EQ(result.combinedScore, 0.0f);
 }

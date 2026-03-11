@@ -5,6 +5,7 @@
 #include <pcap.h>
 #include <spdlog/spdlog.h>
 
+#include <array>
 #include <numeric>
 #include <cmath>
 #include <algorithm>
@@ -57,7 +58,8 @@ constexpr std::uint16_t kEtherTypeVlan = 0x8100;
 template<std::ranges::sized_range Container>
     requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
 double mean(const Container& c) {
-    if (c.empty()) return 0.0;
+    if (c.empty())
+        return 0.0;
     double sum = std::accumulate(c.begin(), c.end(), 0.0,
         [](double acc, auto val) { return acc + static_cast<double>(val); });
     return sum / static_cast<double>(c.size());
@@ -66,20 +68,28 @@ double mean(const Container& c) {
 template<std::ranges::sized_range Container>
     requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
 double stddev(const Container& c) {
-    if (c.size() <= 1) return 0.0;
+    if (c.size() <= 1)
+        return 0.0;
     double m = mean(c);
     double accum = std::transform_reduce(c.begin(), c.end(), 0.0, std::plus<>{},
-        [m](auto val) { double d = static_cast<double>(val) - m; return d * d; });
+        [m](auto val) {
+            double d = static_cast<double>(val) - m;
+            return d * d;
+        });
     return std::sqrt(accum / static_cast<double>(c.size() - 1));
 }
 
 template<std::ranges::sized_range Container>
     requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
 double variance(const Container& c) {
-    if (c.size() <= 1) return 0.0;
+    if (c.size() <= 1)
+        return 0.0;
     double m = mean(c);
     double accum = std::transform_reduce(c.begin(), c.end(), 0.0, std::plus<>{},
-        [m](auto val) { double d = static_cast<double>(val) - m; return d * d; });
+        [m](auto val) {
+            double d = static_cast<double>(val) - m;
+            return d * d;
+        });
     return accum / static_cast<double>(c.size());
 }
 
@@ -106,6 +116,57 @@ void pushIatStats(std::vector<float>& features, const std::vector<std::int64_t>&
         features.push_back(static_cast<float>(std::ranges::max(iats)));
         features.push_back(static_cast<float>(std::ranges::min(iats)));
     }
+}
+
+/// Push a rate = count / durationSec if duration > 0, else push 0.
+void pushRate(std::vector<float>& features, double count, double durationUs) {
+    features.push_back(durationUs > 0 ? static_cast<float>(count / (durationUs / 1e6)) : 0.0f);
+}
+
+/// Push min/max/mean/std/variance stats for a uint32 container, or 5 zeros if empty.
+void pushFullLengthStats(std::vector<float>& features, const std::vector<std::uint32_t>& lengths) {
+    if (lengths.empty()) {
+        features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+    } else {
+        features.push_back(static_cast<float>(std::ranges::min(lengths)));
+        features.push_back(static_cast<float>(std::ranges::max(lengths)));
+        features.push_back(static_cast<float>(mean(lengths)));
+        features.push_back(static_cast<float>(stddev(lengths)));
+        features.push_back(static_cast<float>(variance(lengths)));
+    }
+}
+
+/// Push 4 period stats (mean, std, max, min) or 4 zeros if empty.
+void pushPeriodStats(std::vector<float>& features, const std::vector<std::int64_t>& periods) {
+    if (periods.empty()) {
+        features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
+    } else {
+        features.push_back(static_cast<float>(mean(periods)));
+        features.push_back(static_cast<float>(stddev(periods)));
+        features.push_back(static_cast<float>(std::ranges::max(periods)));
+        features.push_back(static_cast<float>(std::ranges::min(periods)));
+    }
+}
+
+/// Push bulk statistics (avg bytes/bulk, avg packets/bulk, bulk rate) or 3 zeros if empty.
+void pushBulkStats(std::vector<float>& features,
+                   const std::vector<std::uint32_t>& bulkBytes,
+                   const std::vector<std::uint32_t>& bulkPackets,
+                   double durationUs) {
+    if (bulkBytes.empty()) {
+        features.insert(features.end(), {0.0f, 0.0f, 0.0f});
+    } else {
+        features.push_back(static_cast<float>(mean(bulkBytes)));
+        features.push_back(static_cast<float>(mean(bulkPackets)));
+        double totalBulkBytes = std::accumulate(bulkBytes.begin(), bulkBytes.end(), 0.0,
+            [](double acc, auto val) { return acc + static_cast<double>(val); });
+        features.push_back(durationUs > 0 ? static_cast<float>(totalBulkBytes / (durationUs / 1e6)) : 0.0f);
+    }
+}
+
+/// Push a safe ratio = numerator / denominator, or 0 if denominator is 0.
+void pushRatio(std::vector<float>& features, double numerator, double denominator) {
+    features.push_back(denominator > 0 ? static_cast<float>(numerator / denominator) : 0.0f);
 }
 
 } // anonymous namespace
@@ -231,8 +292,9 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     std::vector<float> features;
     features.reserve(kFlowFeatureCount);
 
-    double durationUs = static_cast<double>(lastTimeUs - startTimeUs);
-    if (durationUs < 0) durationUs = 0;
+    auto durationUs = static_cast<double>(lastTimeUs - startTimeUs);
+    if (durationUs < 0)
+        durationUs = 0;
 
     // 0: Destination Port
     features.push_back(static_cast<float>(dstPort));
@@ -248,24 +310,10 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     // 10-13: Bwd Packet Length Max, Min, Mean, Std
     pushLengthStats(features, bwdPacketLengths);
     // 14-15: Flow Bytes/s, Flow Packets/s
-    if (durationUs > 0) {
-        double totalBytes = static_cast<double>(totalFwdBytes + totalBwdBytes);
-        double totalPackets = static_cast<double>(totalFwdPackets + totalBwdPackets);
-        features.push_back(static_cast<float>(totalBytes / (durationUs / 1e6)));
-        features.push_back(static_cast<float>(totalPackets / (durationUs / 1e6)));
-    } else {
-        features.push_back(0.0f);
-        features.push_back(0.0f);
-    }
+    pushRate(features, static_cast<double>(totalFwdBytes + totalBwdBytes), durationUs);
+    pushRate(features, static_cast<double>(totalFwdPackets + totalBwdPackets), durationUs);
     // 16-19: Flow IAT Mean, Std, Max, Min
-    if (flowIatUs.empty()) {
-        features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
-    } else {
-        features.push_back(static_cast<float>(mean(flowIatUs)));
-        features.push_back(static_cast<float>(stddev(flowIatUs)));
-        features.push_back(static_cast<float>(std::ranges::max(flowIatUs)));
-        features.push_back(static_cast<float>(std::ranges::min(flowIatUs)));
-    }
+    pushPeriodStats(features, flowIatUs);
     // 20-24: Fwd IAT Total, Mean, Std, Max, Min
     pushIatStats(features, fwdIatUs);
     // 25-29: Bwd IAT Total, Mean, Std, Max, Min
@@ -279,23 +327,10 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     features.push_back(static_cast<float>(fwdHeaderBytes));
     features.push_back(static_cast<float>(bwdHeaderBytes));
     // 36-37: Fwd Packets/s, Bwd Packets/s
-    if (durationUs > 0) {
-        features.push_back(static_cast<float>(totalFwdPackets) / static_cast<float>(durationUs / 1e6));
-        features.push_back(static_cast<float>(totalBwdPackets) / static_cast<float>(durationUs / 1e6));
-    } else {
-        features.push_back(0.0f);
-        features.push_back(0.0f);
-    }
+    pushRate(features, static_cast<double>(totalFwdPackets), durationUs);
+    pushRate(features, static_cast<double>(totalBwdPackets), durationUs);
     // 38-42: Packet Length Min, Max, Mean, Std, Variance (all packets)
-    if (allPacketLengths.empty()) {
-        features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-    } else {
-        features.push_back(static_cast<float>(std::ranges::min(allPacketLengths)));
-        features.push_back(static_cast<float>(std::ranges::max(allPacketLengths)));
-        features.push_back(static_cast<float>(mean(allPacketLengths)));
-        features.push_back(static_cast<float>(stddev(allPacketLengths)));
-        features.push_back(static_cast<float>(variance(allPacketLengths)));
-    }
+    pushFullLengthStats(features, allPacketLengths);
     // 43-50: FIN, SYN, RST, PSH, ACK, URG, CWR, ECE counts
     features.push_back(static_cast<float>(finCount));
     features.push_back(static_cast<float>(synCount));
@@ -306,38 +341,18 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     features.push_back(static_cast<float>(cwrCount));
     features.push_back(static_cast<float>(eceCount));
     // 51: Down/Up Ratio (backward/forward packets)
-    if (totalFwdPackets > 0) {
-        features.push_back(static_cast<float>(totalBwdPackets) / static_cast<float>(totalFwdPackets));
-    } else {
-        features.push_back(0.0f);
-    }
+    pushRatio(features, static_cast<double>(totalBwdPackets), static_cast<double>(totalFwdPackets));
     // 52: Average Packet Size
     std::uint64_t totalPackets = totalFwdPackets + totalBwdPackets;
     std::uint64_t totalBytes = totalFwdBytes + totalBwdBytes;
-    features.push_back(totalPackets > 0 ? static_cast<float>(totalBytes) / static_cast<float>(totalPackets) : 0.0f);
+    pushRatio(features, static_cast<double>(totalBytes), static_cast<double>(totalPackets));
     // 53-54: Fwd Segment Size Avg, Bwd Segment Size Avg
-    features.push_back(totalFwdPackets > 0 ? static_cast<float>(totalFwdBytes - fwdHeaderBytes) / static_cast<float>(totalFwdPackets) : 0.0f);
-    features.push_back(totalBwdPackets > 0 ? static_cast<float>(totalBwdBytes - bwdHeaderBytes) / static_cast<float>(totalBwdPackets) : 0.0f);
+    pushRatio(features, static_cast<double>(totalFwdBytes - fwdHeaderBytes), static_cast<double>(totalFwdPackets));
+    pushRatio(features, static_cast<double>(totalBwdBytes - bwdHeaderBytes), static_cast<double>(totalBwdPackets));
     // 55-57: Fwd Bytes/Bulk Avg, Fwd Packet/Bulk Avg, Fwd Bulk Rate Avg
-    if (fwdBulkBytes.empty()) {
-        features.insert(features.end(), {0.0f, 0.0f, 0.0f});
-    } else {
-        features.push_back(static_cast<float>(mean(fwdBulkBytes)));
-        features.push_back(static_cast<float>(mean(fwdBulkPackets)));
-        double totalFwdBulkBytes = std::accumulate(fwdBulkBytes.begin(), fwdBulkBytes.end(), 0.0,
-            [](double acc, auto val) { return acc + static_cast<double>(val); });
-        features.push_back(durationUs > 0 ? static_cast<float>(totalFwdBulkBytes / (durationUs / 1e6)) : 0.0f);
-    }
+    pushBulkStats(features, fwdBulkBytes, fwdBulkPackets, durationUs);
     // 58-60: Bwd Bytes/Bulk Avg, Bwd Packet/Bulk Avg, Bwd Bulk Rate Avg
-    if (bwdBulkBytes.empty()) {
-        features.insert(features.end(), {0.0f, 0.0f, 0.0f});
-    } else {
-        features.push_back(static_cast<float>(mean(bwdBulkBytes)));
-        features.push_back(static_cast<float>(mean(bwdBulkPackets)));
-        double totalBwdBulkBytes = std::accumulate(bwdBulkBytes.begin(), bwdBulkBytes.end(), 0.0,
-            [](double acc, auto val) { return acc + static_cast<double>(val); });
-        features.push_back(durationUs > 0 ? static_cast<float>(totalBwdBulkBytes / (durationUs / 1e6)) : 0.0f);
-    }
+    pushBulkStats(features, bwdBulkBytes, bwdBulkPackets, durationUs);
     // 61-64: Subflow Fwd Packets, Subflow Fwd Bytes, Subflow Bwd Packets, Subflow Bwd Bytes
     features.push_back(static_cast<float>(totalFwdPackets));
     features.push_back(static_cast<float>(totalFwdBytes));
@@ -350,23 +365,9 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
     features.push_back(static_cast<float>(actDataPktFwd));
     features.push_back(static_cast<float>(minSegSizeForward));
     // 69-72: Active Mean, Std, Max, Min
-    if (activePeriodsUs.empty()) {
-        features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
-    } else {
-        features.push_back(static_cast<float>(mean(activePeriodsUs)));
-        features.push_back(static_cast<float>(stddev(activePeriodsUs)));
-        features.push_back(static_cast<float>(std::ranges::max(activePeriodsUs)));
-        features.push_back(static_cast<float>(std::ranges::min(activePeriodsUs)));
-    }
+    pushPeriodStats(features, activePeriodsUs);
     // 73-76: Idle Mean, Std, Max, Min
-    if (idlePeriodsUs.empty()) {
-        features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
-    } else {
-        features.push_back(static_cast<float>(mean(idlePeriodsUs)));
-        features.push_back(static_cast<float>(stddev(idlePeriodsUs)));
-        features.push_back(static_cast<float>(std::ranges::max(idlePeriodsUs)));
-        features.push_back(static_cast<float>(std::ranges::min(idlePeriodsUs)));
-    }
+    pushPeriodStats(features, idlePeriodsUs);
 
     assert(features.size() == static_cast<std::size_t>(kFlowFeatureCount)
            && "toFeatureVector() output size must match kFlowFeatureCount");
@@ -414,128 +415,191 @@ void NativeFlowExtractor::finalizeBulks() {
 void NativeFlowExtractor::processPacket(const std::uint8_t* data,
                                           std::uint32_t len,
                                           std::int64_t timestampUs) {
-    if (len < kEthernetHeaderSize) [[unlikely]] return;
+    ParsedPacket pkt;
+    if (!parsePacketHeaders(data, len, pkt))
+        return;
 
-    auto* eth = reinterpret_cast<const EthernetHeader*>(data);
-    std::uint16_t etherType = getEtherType(eth);
-    const std::uint8_t* payload = data + kEthernetHeaderSize;
-    std::uint32_t payloadLen = len - kEthernetHeaderSize;
+    FlowKey keyFwd{.srcIp = pkt.srcIp, .dstIp = pkt.dstIp, .srcPort = pkt.srcPort,
+                   .dstPort = pkt.dstPort, .protocol = pkt.protocol};
+    FlowKey keyBwd{.srcIp = pkt.dstIp, .dstIp = pkt.srcIp, .srcPort = pkt.dstPort,
+                   .dstPort = pkt.srcPort, .protocol = pkt.protocol};
 
-    if (etherType == kEtherTypeVlan && payloadLen >= 4) [[unlikely]] {
-        etherType = (static_cast<std::uint16_t>(payload[2]) << 8) | payload[3];
-        payload += 4;
-        payloadLen -= 4;
-    }
+    auto [activeKey, isForward] = resolveFlow(keyFwd, keyBwd, timestampUs);
 
-    if (etherType != kEtherTypeIPv4 || payloadLen < 20) [[unlikely]] return;
-
-    auto* ip = reinterpret_cast<const IPv4Header*>(payload);
-    std::uint8_t ipIhl = getIpIhl(ip);
-    std::uint8_t protocol = getIpProtocol(ip);
-    std::uint32_t ipTotalLen = getIpTotalLength(ip);
-    if (payloadLen < ipIhl || ipTotalLen < ipIhl) return;
-
-    std::string srcIp(getIpSrcStr(ip));
-    std::string dstIp(getIpDstStr(ip));
-
-    std::uint16_t srcPort = 0;
-    std::uint16_t dstPort = 0;
-    std::uint32_t transportHeaderLen = 0;
-    std::uint32_t totalPacketLen = ipTotalLen;
-
-    if (protocol == kIpProtoTcp) [[likely]] {
-        if (payloadLen < ipIhl + 20u) [[unlikely]] return;
-        auto* tcp = reinterpret_cast<const TcpHeader*>(payload + ipIhl);
-        srcPort = getTcpSrcPort(tcp);
-        dstPort = getTcpDstPort(tcp);
-        transportHeaderLen = getTcpDataOffset(tcp);
-        if (transportHeaderLen < 20) transportHeaderLen = 20;
-    } else if (protocol == kIpProtoUdp) {
-        if (payloadLen < ipIhl + 8u) [[unlikely]] return;
-        auto* udp = reinterpret_cast<const UdpHeader*>(payload + ipIhl);
-        srcPort = getUdpSrcPort(udp);
-        dstPort = getUdpDstPort(udp);
-        transportHeaderLen = 8;
-    } else if (protocol == kIpProtoIcmp) {
-        if (payloadLen < ipIhl + kIcmpHeaderSize) [[unlikely]] return;
-        auto* icmp = reinterpret_cast<const IcmpHeader*>(payload + ipIhl);
-        // Use ICMP type as src_port for flow keying (matches preprocessing).
-        srcPort = icmp->type;
-        dstPort = 0;
-        transportHeaderLen = static_cast<std::uint32_t>(kIcmpHeaderSize);
-    } else {
-        return;  // Unsupported protocol
-    }
-
-    std::uint32_t headerBytes = ipIhl + transportHeaderLen;
-    std::uint32_t payloadSize = totalPacketLen > headerBytes ? totalPacketLen - headerBytes : 0;
-
-    FlowKey keyFwd{.srcIp = srcIp, .dstIp = dstIp, .srcPort = srcPort,
-                   .dstPort = dstPort, .protocol = protocol};
-    FlowKey keyBwd{.srcIp = dstIp, .dstIp = srcIp, .srcPort = dstPort,
-                   .dstPort = srcPort, .protocol = protocol};
-
-    auto itFwd = flows_.find(keyFwd);
-    auto itBwd = flows_.find(keyBwd);
-    if (itFwd != flows_.end() && (timestampUs - itFwd->second.lastTimeUs > flowTimeoutUs_)) {
-        completedFlows_.emplace_back(keyFwd, std::move(itFwd->second));
-        flows_.erase(itFwd);
-        itFwd = flows_.end();
-    }
-    if (itBwd != flows_.end() && (timestampUs - itBwd->second.lastTimeUs > flowTimeoutUs_)) {
-        completedFlows_.emplace_back(keyBwd, std::move(itBwd->second));
-        flows_.erase(itBwd);
-    }
-
-    // Re-lookup after possible timeout evictions.
-    itFwd = flows_.find(keyFwd);
-    itBwd = flows_.find(keyBwd);
-
-    // Determine which flow entry to use and direction.
-    // We store the key by value so we can reference the stats without const_cast.
-    FlowKey activeKey;
-    bool isForward = false;
-    bool isNew = false;
-    if (itFwd != flows_.end()) {
-        activeKey = itFwd->first;
-        isForward = true;
-    } else if (itBwd != flows_.end()) {
-        activeKey = itBwd->first;
-        isForward = false;
-    } else {
-        activeKey = keyFwd;
-        isForward = true;
-        isNew = true;
-    }
-
-    // Insert or access the flow stats.
-    FlowStats& stats = isNew ? flows_[activeKey] : flows_[activeKey];
+    FlowStats& stats = flows_[activeKey];
     if (stats.startTimeUs == 0) {
         stats.startTimeUs = timestampUs;
     }
 
     std::int64_t prevLastTimeUs = stats.lastTimeUs;
     std::int64_t flowGapUs = (prevLastTimeUs > 0) ? (timestampUs - prevLastTimeUs) : 0;
-    if (flowGapUs > 0) stats.flowIatUs.push_back(flowGapUs);
+    if (flowGapUs > 0)
+        stats.flowIatUs.push_back(flowGapUs);
     stats.lastTimeUs = timestampUs;
-    std::uint32_t packetLen = totalPacketLen;
 
+    updateDirectionStats(stats, pkt, timestampUs, isForward);
+    stats.allPacketLengths.push_back(pkt.totalPacketLen);
+
+    bool tcpFinOrRst = false;
+    if (pkt.protocol == kIpProtoTcp) {
+        auto* tcp = reinterpret_cast<const TcpHeader*>(pkt.transportHeader);
+        std::uint8_t flags = getTcpFlags(tcp);
+        tcpFinOrRst = (flags & (kTcpFin | kTcpRst)) != 0;
+        updateTcpFlags(stats, pkt.transportHeader - pkt.ipIhl,
+                       pkt.ipIhl, pkt.payloadSize, isForward);
+    }
+
+    updateBulkTracking(stats, pkt.totalPacketLen, isForward);
+    updateActiveIdle(stats, timestampUs, prevLastTimeUs, flowGapUs);
+
+    if (tcpFinOrRst) {
+        completeFlow(activeKey, stats);
+        flows_.erase(activeKey);
+        return;
+    }
+
+    // Max-flow-size splitting: prevent mega-flows from collapsing into a single sample.
+    auto totalPkts = stats.totalFwdPackets + stats.totalBwdPackets;
+    if (totalPkts >= kMaxFlowPackets) {
+        completeFlow(activeKey, stats);
+        flows_[activeKey] = FlowStats{};  // Start new flow for same 5-tuple
+    }
+}
+
+bool NativeFlowExtractor::parseEthernetAndIp(const std::uint8_t* data,
+                                                 std::uint32_t len,
+                                                 ParsedPacket& pkt,
+                                                 const std::uint8_t*& transportStart,
+                                                 std::uint32_t& remainingLen) {
+    if (len < static_cast<std::uint32_t>(kEthernetHeaderSize))
+        return false;
+
+    auto* eth = reinterpret_cast<const EthernetHeader*>(data);
+    std::uint16_t etherType = getEtherType(eth);
+    const std::uint8_t* payload = data + kEthernetHeaderSize;
+    std::uint32_t payloadLen = len - static_cast<std::uint32_t>(kEthernetHeaderSize);
+
+    if (etherType == kEtherTypeVlan && payloadLen >= 4) {
+        etherType = (static_cast<std::uint16_t>(payload[2]) << 8) | payload[3];
+        payload += 4;
+        payloadLen -= 4;
+    }
+
+    if (etherType != kEtherTypeIPv4 || payloadLen < 20)
+        return false;
+
+    auto* ip = reinterpret_cast<const IPv4Header*>(payload);
+    pkt.ipIhl = getIpIhl(ip);
+    pkt.protocol = getIpProtocol(ip);
+    std::uint32_t ipTotalLen = getIpTotalLength(ip);
+    if (payloadLen < pkt.ipIhl || ipTotalLen < pkt.ipIhl)
+        return false;
+
+    pkt.srcIp = getIpSrcStr(ip);
+    pkt.dstIp = getIpDstStr(ip);
+    pkt.totalPacketLen = ipTotalLen;
+    transportStart = payload + pkt.ipIhl;
+    remainingLen = payloadLen;
+    return true;
+}
+
+bool NativeFlowExtractor::parseTransportHeader(ParsedPacket& pkt,
+                                                   const std::uint8_t* transportStart,
+                                                   std::uint32_t payloadLen) {
+    if (pkt.protocol == kIpProtoTcp) {
+        if (payloadLen < pkt.ipIhl + 20u)
+            return false;
+        auto* tcp = reinterpret_cast<const TcpHeader*>(transportStart);
+        pkt.srcPort = getTcpSrcPort(tcp);
+        pkt.dstPort = getTcpDstPort(tcp);
+        pkt.transportHeaderLen = getTcpDataOffset(tcp);
+        if (pkt.transportHeaderLen < 20)
+            pkt.transportHeaderLen = 20;
+        pkt.transportHeader = transportStart;
+    } else if (pkt.protocol == kIpProtoUdp) {
+        if (payloadLen < pkt.ipIhl + 8u)
+            return false;
+        auto* udp = reinterpret_cast<const UdpHeader*>(transportStart);
+        pkt.srcPort = getUdpSrcPort(udp);
+        pkt.dstPort = getUdpDstPort(udp);
+        pkt.transportHeaderLen = 8;
+        pkt.transportHeader = transportStart;
+    } else if (pkt.protocol == kIpProtoIcmp) {
+        if (payloadLen < pkt.ipIhl + static_cast<std::uint32_t>(kIcmpHeaderSize))
+            return false;
+        auto* icmp = reinterpret_cast<const IcmpHeader*>(transportStart);
+        pkt.srcPort = icmp->type;
+        pkt.dstPort = 0;
+        pkt.transportHeaderLen = static_cast<std::uint32_t>(kIcmpHeaderSize);
+        pkt.transportHeader = transportStart;
+    } else {
+        return false;  // Unsupported protocol
+    }
+    return true;
+}
+
+bool NativeFlowExtractor::parsePacketHeaders(const std::uint8_t* data,
+                                                std::uint32_t len,
+                                                ParsedPacket& pkt) {
+    const std::uint8_t* transportStart = nullptr;
+    std::uint32_t remainingLen = 0;
+
+    if (!parseEthernetAndIp(data, len, pkt, transportStart, remainingLen))
+        return false;
+    if (!parseTransportHeader(pkt, transportStart, remainingLen))
+        return false;
+
+    pkt.headerBytes = pkt.ipIhl + pkt.transportHeaderLen;
+    pkt.payloadSize = pkt.totalPacketLen > pkt.headerBytes
+                        ? pkt.totalPacketLen - pkt.headerBytes : 0;
+    return true;
+}
+
+NativeFlowExtractor::FlowLookupResult
+NativeFlowExtractor::resolveFlow(const FlowKey& keyFwd, const FlowKey& keyBwd,
+                                   std::int64_t timestampUs) {
+    // Evict timed-out flows
+    if (auto it = flows_.find(keyFwd); it != flows_.end()) {
+        if (timestampUs - it->second.lastTimeUs > flowTimeoutUs_) {
+            completedFlows_.emplace_back(keyFwd, std::move(it->second));
+            flows_.erase(it);
+        }
+    }
+    if (auto it = flows_.find(keyBwd); it != flows_.end()) {
+        if (timestampUs - it->second.lastTimeUs > flowTimeoutUs_) {
+            completedFlows_.emplace_back(keyBwd, std::move(it->second));
+            flows_.erase(it);
+        }
+    }
+
+    // Determine direction
+    if (flows_.contains(keyFwd)) {
+        return {keyFwd, true};
+    }
+    if (flows_.contains(keyBwd)) {
+        return {keyBwd, false};
+    }
+    return {keyFwd, true};  // New flow
+}
+
+void NativeFlowExtractor::updateDirectionStats(FlowStats& stats,
+                                                  const ParsedPacket& pkt,
+                                                  std::int64_t timestampUs,
+                                                  bool isForward) {
     if (isForward) {
         stats.totalFwdPackets++;
-        stats.totalFwdBytes += packetLen;
-        stats.fwdPacketLengths.push_back(packetLen);
-        stats.fwdHeaderBytes += headerBytes;
-
+        stats.totalFwdBytes += pkt.totalPacketLen;
+        stats.fwdPacketLengths.push_back(pkt.totalPacketLen);
+        stats.fwdHeaderBytes += pkt.headerBytes;
         if (stats.lastFwdTimeUs >= 0) {
             stats.fwdIatUs.push_back(timestampUs - stats.lastFwdTimeUs);
         }
         stats.lastFwdTimeUs = timestampUs;
     } else {
         stats.totalBwdPackets++;
-        stats.totalBwdBytes += packetLen;
-        stats.bwdPacketLengths.push_back(packetLen);
-        stats.bwdHeaderBytes += headerBytes;
-
+        stats.totalBwdBytes += pkt.totalPacketLen;
+        stats.bwdPacketLengths.push_back(pkt.totalPacketLen);
+        stats.bwdHeaderBytes += pkt.headerBytes;
         if (stats.lastBwdTimeUs >= 0) {
             std::int64_t iat = timestampUs - stats.lastBwdTimeUs;
             stats.bwdIatUs.push_back(iat);
@@ -543,43 +607,82 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
         }
         stats.lastBwdTimeUs = timestampUs;
     }
+}
 
-    stats.allPacketLengths.push_back(packetLen);
+void NativeFlowExtractor::countGlobalTcpFlags(FlowStats& stats,
+                                                  std::uint8_t flags) {
+    // Each flag maps to a counter — use a table to avoid 8 separate branches.
+    struct FlagMapping {
+        std::uint8_t mask;
+        std::uint32_t FlowStats::* counter;
+    };
+    static constexpr std::array<FlagMapping, 8> kFlagMap = {{
+        {kTcpFin, &FlowStats::finCount},
+        {kTcpSyn, &FlowStats::synCount},
+        {kTcpRst, &FlowStats::rstCount},
+        {kTcpPsh, &FlowStats::pshCount},
+        {kTcpAck, &FlowStats::ackCount},
+        {kTcpUrg, &FlowStats::urgCount},
+        {kTcpCwr, &FlowStats::cwrCount},
+        {kTcpEce, &FlowStats::eceCount},
+    }};
 
-    bool tcpFinOrRst = false;
-    if (protocol == kIpProtoTcp) {
-        auto* tcp = reinterpret_cast<const TcpHeader*>(payload + ipIhl);
-        std::uint8_t flags = getTcpFlags(tcp);
-        tcpFinOrRst = (flags & (kTcpFin | kTcpRst)) != 0;
-        std::uint16_t win = getTcpWindow(tcp);
+    for (const auto& [mask, counter] : kFlagMap) {
+        if (flags & mask)
+            ++(stats.*counter);
+    }
+}
 
-        if (isForward) {
-            if (flags & kTcpPsh) stats.fwdPshFlags++;
-            if (flags & kTcpUrg) stats.fwdUrgFlags++;
-            if (stats.fwdInitWinBytes == 0) stats.fwdInitWinBytes = win;
-            if (payloadSize > 0) {
-                stats.actDataPktFwd++;
-                if (stats.minSegSizeForward == 0 || payloadSize < stats.minSegSizeForward) {
-                    stats.minSegSizeForward = payloadSize;
-                }
-            }
-        } else {
-            if (flags & kTcpPsh) stats.bwdPshFlags++;
-            if (flags & kTcpUrg) stats.bwdUrgFlags++;
-            if (stats.bwdInitWinBytes == 0) stats.bwdInitWinBytes = win;
+void NativeFlowExtractor::updateFwdTcpState(FlowStats& stats,
+                                                std::uint8_t flags,
+                                                std::uint16_t win,
+                                                std::uint32_t payloadSize) {
+    if (flags & kTcpPsh)
+        stats.fwdPshFlags++;
+    if (flags & kTcpUrg)
+        stats.fwdUrgFlags++;
+    if (stats.fwdInitWinBytes == 0)
+        stats.fwdInitWinBytes = win;
+    if (payloadSize > 0) {
+        stats.actDataPktFwd++;
+        if (stats.minSegSizeForward == 0 || payloadSize < stats.minSegSizeForward) {
+            stats.minSegSizeForward = payloadSize;
         }
+    }
+}
 
-        if (flags & kTcpFin) stats.finCount++;
-        if (flags & kTcpSyn) stats.synCount++;
-        if (flags & kTcpRst) stats.rstCount++;
-        if (flags & kTcpPsh) stats.pshCount++;
-        if (flags & kTcpAck) stats.ackCount++;
-        if (flags & kTcpUrg) stats.urgCount++;
-        if (flags & kTcpCwr) stats.cwrCount++;
-        if (flags & kTcpEce) stats.eceCount++;
+void NativeFlowExtractor::updateBwdTcpState(FlowStats& stats,
+                                                std::uint8_t flags,
+                                                std::uint16_t win) {
+    if (flags & kTcpPsh)
+        stats.bwdPshFlags++;
+    if (flags & kTcpUrg)
+        stats.bwdUrgFlags++;
+    if (stats.bwdInitWinBytes == 0)
+        stats.bwdInitWinBytes = win;
+}
+
+void NativeFlowExtractor::updateTcpFlags(FlowStats& stats,
+                                             const std::uint8_t* ipPayload,
+                                             std::uint32_t ipIhl,
+                                             std::uint32_t payloadSize,
+                                             bool isForward) {
+    auto* tcp = reinterpret_cast<const TcpHeader*>(ipPayload + ipIhl);
+    std::uint8_t flags = getTcpFlags(tcp);
+    std::uint16_t win = getTcpWindow(tcp);
+
+    if (isForward) {
+        updateFwdTcpState(stats, flags, win, payloadSize);
+    } else {
+        updateBwdTcpState(stats, flags, win);
     }
 
-    // Bulk tracking: bulk = 2+ packets in same direction
+    countGlobalTcpFlags(stats, flags);
+}
+
+void NativeFlowExtractor::updateBulkTracking(FlowStats& stats,
+                                                std::uint32_t packetLen,
+                                                bool isForward) {
     if (isForward) {
         stats.curFwdBulkPkts++;
         stats.curFwdBulkBytes += packetLen;
@@ -605,8 +708,12 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
         }
         stats.lastPacketWasFwd = false;
     }
+}
 
-    // Active/idle tracking (5s threshold)
+void NativeFlowExtractor::updateActiveIdle(FlowStats& stats,
+                                              std::int64_t timestampUs,
+                                              std::int64_t prevLastTimeUs,
+                                              std::int64_t flowGapUs) {
     if (flowGapUs > kIdleThresholdUs && prevLastTimeUs > 0) {
         if (stats.lastActiveTimeUs >= 0) {
             stats.activePeriodsUs.push_back(prevLastTimeUs - stats.lastActiveTimeUs);
@@ -619,37 +726,18 @@ void NativeFlowExtractor::processPacket(const std::uint8_t* data,
         stats.lastIdleTimeUs = -1;
     }
     stats.lastActiveTimeUs = timestampUs;
+}
 
-    if (tcpFinOrRst) [[unlikely]] {
-        if (stats.curFwdBulkPkts >= 2) {
-            stats.fwdBulkPackets.push_back(stats.curFwdBulkPkts);
-            stats.fwdBulkBytes.push_back(stats.curFwdBulkBytes);
-        }
-        if (stats.curBwdBulkPkts >= 2) {
-            stats.bwdBulkPackets.push_back(stats.curBwdBulkPkts);
-            stats.bwdBulkBytes.push_back(stats.curBwdBulkBytes);
-        }
-        completedFlows_.emplace_back(activeKey, std::move(stats));
-        flows_.erase(activeKey);
-        return;
+void NativeFlowExtractor::completeFlow(const FlowKey& key, FlowStats& stats) {
+    if (stats.curFwdBulkPkts >= 2) {
+        stats.fwdBulkPackets.push_back(stats.curFwdBulkPkts);
+        stats.fwdBulkBytes.push_back(stats.curFwdBulkBytes);
     }
-
-    // Max-flow-size splitting: prevent mega-flows from collapsing into a
-    // single sample.  When exceeded, finalize the current flow and start
-    // a fresh one for the same 5-tuple.
-    auto totalPkts = stats.totalFwdPackets + stats.totalBwdPackets;
-    if (totalPkts >= kMaxFlowPackets) [[unlikely]] {
-        if (stats.curFwdBulkPkts >= 2) {
-            stats.fwdBulkPackets.push_back(stats.curFwdBulkPkts);
-            stats.fwdBulkBytes.push_back(stats.curFwdBulkBytes);
-        }
-        if (stats.curBwdBulkPkts >= 2) {
-            stats.bwdBulkPackets.push_back(stats.curBwdBulkPkts);
-            stats.bwdBulkBytes.push_back(stats.curBwdBulkBytes);
-        }
-        completedFlows_.emplace_back(activeKey, std::move(stats));
-        flows_[activeKey] = FlowStats{};  // Start new flow for same 5-tuple
+    if (stats.curBwdBulkPkts >= 2) {
+        stats.bwdBulkPackets.push_back(stats.curBwdBulkPkts);
+        stats.bwdBulkBytes.push_back(stats.curBwdBulkBytes);
     }
+    completedFlows_.emplace_back(key, std::move(stats));
 }
 
 const std::vector<nids::core::FlowInfo>& NativeFlowExtractor::flowMetadata() const noexcept {
@@ -671,7 +759,7 @@ void NativeFlowExtractor::buildFlowMetadata() {
         info.totalFwdPackets = stats.totalFwdPackets;
         info.totalBwdPackets = stats.totalBwdPackets;
 
-        double durationUs = static_cast<double>(stats.lastTimeUs - stats.startTimeUs);
+        auto durationUs = static_cast<double>(stats.lastTimeUs - stats.startTimeUs);
         info.flowDurationUs = durationUs;
 
         if (durationUs > 0.0) {

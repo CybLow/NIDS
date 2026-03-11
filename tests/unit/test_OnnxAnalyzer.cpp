@@ -8,7 +8,6 @@
 #include <filesystem>
 
 using nids::infra::OnnxAnalyzer;
-using nids::infra::AnalyzerFactory;
 using nids::infra::AnalyzerBackend;
 using nids::infra::createAnalyzer;
 using nids::core::AttackType;
@@ -47,7 +46,7 @@ TEST(OnnxAnalyzer, loadModel_directoryPath_returnsFalse) {
 
 TEST(OnnxAnalyzer, predictAfterFailedLoad_returnsUnknown) {
     OnnxAnalyzer analyzer;
-    analyzer.loadModel("/nonexistent/model.onnx");
+    [[maybe_unused]] auto loaded = analyzer.loadModel("/nonexistent/model.onnx");
     std::vector<float> features(kFlowFeatureCount, 1.0f);
     EXPECT_EQ(analyzer.predict(features), AttackType::Unknown);
 }

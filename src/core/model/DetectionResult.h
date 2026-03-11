@@ -9,9 +9,11 @@
 #include "core/model/AttackType.h"
 #include "core/model/PredictionResult.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <ranges>
 
 namespace nids::core {
 
@@ -26,6 +28,11 @@ enum class DetectionSource : std::uint8_t {
     None             ///< No detection (benign, no flags)
 };
 
+/**
+ * Convert a DetectionSource to its human-readable display string.
+ * @param source The detection source to convert.
+ * @return Display name of the detection source.
+ */
 [[nodiscard]] constexpr std::string_view detectionSourceToString(
     DetectionSource source) noexcept {
     switch (source) {
@@ -56,39 +63,38 @@ struct RuleMatch {
 
 /// Full detection result for a single flow.
 struct DetectionResult {
-    // -- ML layer --
+    /** ML classifier prediction result for this flow. */
     PredictionResult mlResult;
 
-    // -- Threat intelligence layer --
+    /** Threat intelligence matches found for source/destination IPs. */
     std::vector<ThreatIntelMatch> threatIntelMatches;
 
-    // -- Heuristic rules layer --
+    /** Heuristic rule matches triggered by flow metadata. */
     std::vector<RuleMatch> ruleMatches;
 
-    // -- Combined verdict --
+    /** Final attack classification after combining all detection layers. */
     AttackType finalVerdict = AttackType::Unknown;
     float combinedScore = 0.0f;       ///< Unified threat score [0.0, 1.0]
+    /** Identifies which detection layer(s) drove the final verdict. */
     DetectionSource detectionSource = DetectionSource::None;
 
-    // -- Convenience accessors --
-
+    /** Check whether any threat intelligence feed matched this flow. */
     [[nodiscard]] bool hasThreatIntelMatch() const noexcept {
         return !threatIntelMatches.empty();
     }
 
+    /** Check whether any heuristic rule fired for this flow. */
     [[nodiscard]] bool hasRuleMatch() const noexcept {
         return !ruleMatches.empty();
     }
 
     /// Maximum severity across all matched heuristic rules, or 0.0 if none.
     [[nodiscard]] float maxRuleSeverity() const noexcept {
-        float maxSev = 0.0f;
-        for (const auto& rule : ruleMatches) {
-            if (rule.severity > maxSev) {
-                maxSev = rule.severity;
-            }
-        }
-        return maxSev;
+        if (ruleMatches.empty())
+            return 0.0f;
+        auto it = std::ranges::max_element(ruleMatches, {},
+            [](const RuleMatch& r) { return r.severity; });
+        return it->severity;
     }
 
     /// True if any detection layer flagged this flow as suspicious.

@@ -13,8 +13,10 @@ concurrency:
 env:
   VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
   VCPKG_DISABLE_METRICS: 1
+  VCPKG_COMMIT: '01f602195983451bc83e72f4214af2cbc495aa94'
 
 jobs:
+  # ── Stage 1: Build matrix (GCC + Clang) ──────────────────────────
   build:
     name: Build (${{ matrix.compiler }})
     strategy:
@@ -48,7 +50,7 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
 
       - name: Cache vcpkg binary cache
         uses: actions/cache@v4
@@ -68,16 +70,95 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.cc }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
             -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DNIDS_BUILD_TESTS=ON
 
       - name: Build
         run: cmake --build build --parallel
 
-      - name: Test
-        run: ctest --test-dir build --output-on-failure --timeout 120
+      - name: Unit + integration tests
+        run: |
+          ctest --test-dir build --output-on-failure --timeout 120 \
+            --exclude-regex 'Stress'
 
+      - name: Upload compile_commands.json
+        if: matrix.compiler == 'gcc-13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-commands
+          path: build/compile_commands.json
+          retention-days: 1
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "### Build: ${{ matrix.compiler }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Compiler: ${{ matrix.cc }} / ${{ matrix.cxx }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Type: Release" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Stage 2a: Stress / performance tests ─────────────────────────
+  stress-tests:
+    name: Stress Tests
+    needs: [build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-13 g++-13 \
+            cmake ninja-build \
+            qt6-base-dev \
+            libpcap-dev \
+            curl zip unzip tar pkg-config
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+
+      - name: Cache vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-gcc-13-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-gcc-13-
+
+      - name: Create vcpkg binary cache dir
+        run: mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc-13 \
+            -DCMAKE_CXX_COMPILER=g++-13 \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DNIDS_BUILD_TESTS=ON
+
+      - name: Build stress tests
+        run: cmake --build build --parallel --target nids_stress_tests
+
+      - name: Run stress tests
+        run: |
+          ctest --test-dir build --output-on-failure --timeout 300 \
+            --tests-regex 'Stress' --parallel 1
+
+      - name: Stress test summary
+        if: always()
+        run: |
+          echo "### Stress Tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "Stress / performance tests completed." >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Stage 2b: clang-tidy lint ────────────────────────────────────
   lint:
     name: Lint (clang-tidy)
+    needs: [build]
     runs-on: ubuntu-24.04
 
     steps:
@@ -87,7 +168,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang-17 clang-tidy-17 \
+            clang-17 clang-tidy-17 clang-tools-17 \
             cmake ninja-build \
             qt6-base-dev \
             libpcap-dev \
@@ -96,15 +177,15 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
 
       - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-lint-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-clang-17-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            vcpkg-lint-
+            vcpkg-clang-17-
 
       - name: Create vcpkg binary cache dir
         run: mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
@@ -121,31 +202,124 @@ jobs:
 
       - name: Run clang-tidy
         run: |
-          find src -name '*.cpp' | \
-            xargs clang-tidy-17 -p build \
-              --warnings-as-errors='bugprone-*,modernize-*,performance-*'
+          # run-clang-tidy-17 is provided by clang-tools-17 on Ubuntu 24.04
+          run-clang-tidy-17 -p build -quiet \
+            'src/.*\.(cpp|h)$' 2>&1 | tee clang-tidy-output.txt
 
-  docker:
-    name: Docker Build
+          # Fail if any warnings or errors were reported
+          if grep -qE 'warning:|error:' clang-tidy-output.txt; then
+            echo "::error::clang-tidy found issues"
+            grep -cE 'warning:|error:' clang-tidy-output.txt | xargs -I{} echo "Total issues: {}"
+            grep -E 'warning:|error:' clang-tidy-output.txt | grep -v 'warnings generated'
+            exit 1
+          fi
+          echo "clang-tidy: 0 issues found"
+
+      - name: Lint summary
+        if: always()
+        run: |
+          echo "### Lint (clang-tidy)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f clang-tidy-output.txt ]; then
+            count=$(grep -cE 'warning:|error:' clang-tidy-output.txt 2>/dev/null || echo "0")
+            echo "- Issues found: $count" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ── Stage 2c: cppcheck ──────────────────────────────────────────
+  cppcheck:
+    name: Lint (cppcheck)
+    needs: [build]
     runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-13 g++-13 \
+            cmake ninja-build \
+            qt6-base-dev \
+            libpcap-dev \
+            cppcheck \
+            curl zip unzip tar pkg-config
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v6
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
         with:
-          context: .
-          push: false
-          tags: nids:ci-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
 
+      - name: Cache vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-gcc-13-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-gcc-13-
+
+      - name: Create vcpkg binary cache dir
+        run: mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+
+      - name: Configure (compile_commands.json)
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=gcc-13 \
+            -DCMAKE_CXX_COMPILER=g++-13 \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DNIDS_BUILD_TESTS=ON
+
+      - name: Run cppcheck
+        run: |
+          # Generate XML report for SonarQube import
+          cppcheck --project=build/compile_commands.json \
+            --enable=all \
+            --std=c++20 \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --suppress=unmatchedSuppression \
+            --inline-suppr \
+            --xml --xml-version=2 2> cppcheck-report.xml
+
+          # Human-readable output for CI log
+          cppcheck --project=build/compile_commands.json \
+            --enable=all \
+            --std=c++20 \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --suppress=unmatchedSuppression \
+            --inline-suppr 2>&1 | tee cppcheck-output.txt
+
+          # Fail on any real issues
+          if grep -qE '\(error\)|\(warning\)|\(style\)|\(performance\)|\(portability\)' cppcheck-output.txt; then
+            echo "::error::cppcheck found issues"
+            grep -E '\(error\)|\(warning\)|\(style\)|\(performance\)|\(portability\)' cppcheck-output.txt
+            exit 1
+          fi
+          echo "cppcheck: 0 issues found"
+
+      - name: Upload cppcheck report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cppcheck-report
+          path: cppcheck-report.xml
+          retention-days: 7
+
+      - name: cppcheck summary
+        if: always()
+        run: |
+          echo "### Lint (cppcheck)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f cppcheck-output.txt ]; then
+            count=$(grep -cE '\(error\)|\(warning\)|\(style\)|\(performance\)|\(portability\)' cppcheck-output.txt 2>/dev/null || echo "0")
+            echo "- Issues found: $count" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ── Stage 3: Code coverage ──────────────────────────────────────
   coverage:
     name: Code Coverage
+    needs: [build]
     runs-on: ubuntu-24.04
 
     steps:
@@ -160,20 +334,21 @@ jobs:
             qt6-base-dev \
             libpcap-dev \
             lcov \
-            curl zip unzip tar pkg-config
+            curl zip unzip tar pkg-config python3-pip
+          pip3 install --break-system-packages gcovr
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
 
       - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-coverage-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-gcc-13-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            vcpkg-coverage-
+            vcpkg-gcc-13-
 
       - name: Create vcpkg binary cache dir
         run: mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
@@ -185,16 +360,17 @@ jobs:
             -DCMAKE_C_COMPILER=gcc-13 \
             -DCMAKE_CXX_COMPILER=g++-13 \
             -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DNIDS_BUILD_TESTS=ON \
             -DNIDS_COVERAGE=ON
 
       - name: Build
         run: cmake --build build --parallel
 
-      - name: Test
+      - name: Run all tests (unit + integration + stress)
         run: ctest --test-dir build --output-on-failure --timeout 120
 
-      - name: Generate coverage report
+      - name: Generate lcov report
         run: |
           lcov --capture --directory build --output-file coverage.info \
             --gcov-tool gcov-13 --ignore-errors mismatch
@@ -203,6 +379,49 @@ jobs:
             --output-file coverage.info --ignore-errors unused
           lcov --list coverage.info
 
+      - name: Generate Cobertura XML report
+        run: |
+          gcovr --root . build \
+            --cobertura coverage-cobertura.xml \
+            --cobertura-pretty \
+            --gcov-executable gcov-13 \
+            --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
+            --exclude-unreachable-branches \
+            --exclude-throw-branches \
+            --filter 'src/' \
+            -e 'src/ui/' \
+            -e 'src/server/' \
+            -e 'src/client/'
+          # Ensure source paths are relative for container-based consumers
+          sed -i 's|<source>[^<]*</source>|<source>.</source>|g' coverage-cobertura.xml
+
+      - name: Coverage threshold check
+        run: |
+          LINE_RATE=$(python3 -c "
+          import xml.etree.ElementTree as ET
+          r = ET.parse('coverage-cobertura.xml').getroot()
+          print(f'{float(r.get(\"line-rate\", 0)) * 100:.1f}')
+          ")
+          BRANCH_RATE=$(python3 -c "
+          import xml.etree.ElementTree as ET
+          r = ET.parse('coverage-cobertura.xml').getroot()
+          print(f'{float(r.get(\"branch-rate\", 0)) * 100:.1f}')
+          ")
+          echo "Line coverage:   ${LINE_RATE}%"
+          echo "Branch coverage: ${BRANCH_RATE}%"
+
+          # Enforce minimum line coverage threshold (matches custom quality gate)
+          MIN_LINE=65
+          python3 -c "
+          import sys
+          line = float('${LINE_RATE}')
+          if line < ${MIN_LINE}:
+              print(f'::error::Line coverage {line:.1f}% is below the {${MIN_LINE}}% threshold')
+              sys.exit(1)
+          else:
+              print(f'Line coverage {line:.1f}% meets the {${MIN_LINE}}% threshold')
+          "
+
       - name: Upload coverage to Codecov
         if: github.event_name == 'push'
         uses: codecov/codecov-action@v4
@@ -210,3 +429,344 @@ jobs:
           files: coverage.info
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.info
+            coverage-cobertura.xml
+            build/compile_commands.json
+          retention-days: 7
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "### Code Coverage" >> "$GITHUB_STEP_SUMMARY"
+          python3 -c "
+          import xml.etree.ElementTree as ET
+          r = ET.parse('coverage-cobertura.xml').getroot()
+          line = float(r.get('line-rate', 0)) * 100
+          branch = float(r.get('branch-rate', 0)) * 100
+          print(f'- Line coverage: {line:.1f}%')
+          print(f'- Branch coverage: {branch:.1f}%')
+          " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+  # ── Stage 4: Docker build ───────────────────────────────────────
+  docker:
+    name: Docker Build
+    needs: [build]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          tags: nids:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build CI Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.ci
+          push: false
+          tags: nids-ci:${{ github.sha }}
+          cache-from: type=gha,scope=ci
+          cache-to: type=gha,mode=max,scope=ci
+
+  # ── Stage 5: Self-hosted SonarQube analysis ─────────────────────
+  # Runs SonarQube + PostgreSQL as Docker containers inside the runner,
+  # installs the sonar-cxx community plugin, and performs a full scan.
+  sonarqube:
+    name: SonarQube Analysis
+    needs: [coverage, cppcheck]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-reports
+
+      - name: Download cppcheck report
+        uses: actions/download-artifact@v4
+        with:
+          name: cppcheck-report
+
+      - name: Start SonarQube stack
+        run: |
+          # Create a Docker network for SonarQube + PostgreSQL
+          docker network create sonar-net
+
+          # Start PostgreSQL
+          docker run -d --name sonar-db --network sonar-net \
+            -e POSTGRES_USER=sonarqube \
+            -e POSTGRES_PASSWORD=sonarqube \
+            -e POSTGRES_DB=sonarqube \
+            postgres:16-alpine
+
+          # Wait for PostgreSQL to be ready
+          for i in $(seq 1 30); do
+            if docker exec sonar-db pg_isready -U sonarqube >/dev/null 2>&1; then
+              echo "PostgreSQL is ready (attempt $i)"
+              break
+            fi
+            echo "Waiting for PostgreSQL... (attempt $i)"
+            sleep 2
+          done
+
+          # Start SonarQube (without the plugin initially)
+          docker run -d --name sonarqube --network sonar-net \
+            -p 9000:9000 \
+            -e SONAR_JDBC_URL=jdbc:postgresql://sonar-db:5432/sonarqube \
+            -e SONAR_JDBC_USERNAME=sonarqube \
+            -e SONAR_JDBC_PASSWORD=sonarqube \
+            sonarqube:26.3.0.120487-community
+
+          # Wait for SonarQube to be fully UP
+          echo "Waiting for SonarQube to start..."
+          for i in $(seq 1 60); do
+            STATUS=$(curl -sf http://localhost:9000/api/system/status 2>/dev/null | \
+              python3 -c "import json,sys; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
+            if [ "$STATUS" = "UP" ]; then
+              echo "SonarQube is UP (attempt $i)"
+              break
+            fi
+            echo "Waiting... (attempt $i, status: $STATUS)"
+            sleep 5
+          done
+
+      - name: Install sonar-cxx plugin and restart
+        run: |
+          # Download and copy sonar-cxx plugin into the running container
+          curl -sSfL -o /tmp/sonar-cxx-plugin-2.2.2.1409.jar \
+            "https://github.com/SonarOpenCommunity/sonar-cxx/releases/download/cxx-2.2.2/sonar-cxx-plugin-2.2.2.1409.jar"
+          docker cp /tmp/sonar-cxx-plugin-2.2.2.1409.jar \
+            sonarqube:/opt/sonarqube/extensions/plugins/sonar-cxx-plugin-2.2.2.1409.jar
+
+          # Restart SonarQube to load the plugin
+          docker restart sonarqube
+
+          # Wait for SonarQube to come back up
+          echo "Waiting for SonarQube restart..."
+          sleep 15
+          for i in $(seq 1 60); do
+            STATUS=$(curl -sf http://localhost:9000/api/system/status 2>/dev/null | \
+              python3 -c "import json,sys; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
+            if [ "$STATUS" = "UP" ]; then
+              echo "SonarQube is UP after restart (attempt $i)"
+              break
+            fi
+            echo "Waiting for restart... (attempt $i, status: $STATUS)"
+            sleep 5
+          done
+
+      - name: Configure SonarQube project
+        run: |
+          SQ_URL="http://localhost:9000"
+          SQ_AUTH="admin:admin"
+
+          # Change default admin password
+          curl -sf -u "$SQ_AUTH" -X POST \
+            "$SQ_URL/api/users/change_password" \
+            -d "login=admin&previousPassword=admin&password=NidsCI2026!" || true
+          SQ_AUTH="admin:NidsCI2026!"
+
+          # Generate a token for the scanner
+          TOKEN_RESPONSE=$(curl -sf -u "$SQ_AUTH" -X POST \
+            "$SQ_URL/api/user_tokens/generate" \
+            -d "name=ci-token&type=GLOBAL_ANALYSIS_TOKEN" 2>/dev/null || echo '{}')
+          SONAR_TOKEN=$(echo "$TOKEN_RESPONSE" | python3 -c \
+            "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
+
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::warning::Could not generate SonarQube token — using admin credentials"
+            SONAR_TOKEN=""
+          fi
+          echo "SONAR_TOKEN=$SONAR_TOKEN" >> "$GITHUB_ENV"
+          echo "SQ_AUTH=$SQ_AUTH" >> "$GITHUB_ENV"
+
+          # Create the project
+          curl -sf -u "$SQ_AUTH" -X POST \
+            "$SQ_URL/api/projects/create" \
+            -d "project=nids&name=NIDS" || true
+
+          # Create custom quality gate matching local setup
+          QG_RESPONSE=$(curl -sf -u "$SQ_AUTH" -X POST \
+            "$SQ_URL/api/qualitygates/create" \
+            -d "name=NIDS" 2>/dev/null || echo '{}')
+          QG_ID=$(echo "$QG_RESPONSE" | python3 -c \
+            "import json,sys; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
+
+          if [ -n "$QG_ID" ]; then
+            curl -sf -u "$SQ_AUTH" -X POST "$SQ_URL/api/qualitygates/create_condition" \
+              -d "gateName=NIDS&metric=new_coverage&op=LT&error=65" || true
+            curl -sf -u "$SQ_AUTH" -X POST "$SQ_URL/api/qualitygates/create_condition" \
+              -d "gateName=NIDS&metric=new_violations&op=GT&error=0" || true
+            curl -sf -u "$SQ_AUTH" -X POST "$SQ_URL/api/qualitygates/create_condition" \
+              -d "gateName=NIDS&metric=new_duplicated_lines_density&op=GT&error=3" || true
+            curl -sf -u "$SQ_AUTH" -X POST "$SQ_URL/api/qualitygates/select" \
+              -d "gateName=NIDS&projectKey=nids" || true
+          fi
+
+      - name: Run SonarQube scan
+        run: |
+          SQ_URL="http://localhost:9000"
+
+          if [ -n "$SONAR_TOKEN" ]; then
+            AUTH_ARGS="-Dsonar.token=$SONAR_TOKEN"
+          else
+            AUTH_ARGS="-Dsonar.login=admin -Dsonar.password=NidsCI2026!"
+          fi
+
+          docker run --rm --network=host \
+            -v "${{ github.workspace }}:/usr/src" \
+            -e SONAR_HOST_URL="$SQ_URL" \
+            -e SONAR_SCANNER_OPTS="-Dsonar.scm.disabled=true" \
+            sonarsource/sonar-scanner-cli:latest \
+            -Dsonar.projectKey=nids \
+            -Dsonar.projectName=NIDS \
+            -Dsonar.projectVersion=0.2.0 \
+            -Dsonar.sources=src \
+            -Dsonar.tests=tests \
+            -Dsonar.sourceEncoding=UTF-8 \
+            -Dsonar.cxx.file.suffixes=.cpp,.h,.hpp,.cxx,.cc,.hh,.hxx \
+            -Dsonar.cxx.cppcheck.reportPaths=cppcheck-report.xml \
+            -Dsonar.cxx.cobertura.reportPaths=coverage-cobertura.xml \
+            -Dsonar.cxx.jsonCompilationDatabase=build/compile_commands.json \
+            -Dsonar.cxx.forceIncludes=/usr/src/sonar-qt-compat.h \
+            "-Dsonar.exclusions=**/node_modules/**,**/build/**,**/cmake-build-*/**,**/.opencode/**,**/proto/**" \
+            "-Dsonar.test.exclusions=tests/**" \
+            "-Dsonar.coverage.exclusions=src/ui/**,src/main.cpp,src/server/**,src/client/**,src/infra/platform/SocketInit.cpp,src/infra/platform/SocketInit.h,src/infra/capture/PcapCapture.cpp,src/infra/capture/PcapHandle.h,src/infra/analysis/OnnxAnalyzer.cpp,src/infra/analysis/OnnxAnalyzer.h,src/infra/analysis/AnalyzerFactory.cpp,src/infra/analysis/AnalyzerFactory.h,src/core/services/IPacketAnalyzer.h" \
+            $AUTH_ARGS
+
+      - name: Check quality gate
+        if: always()
+        run: |
+          SQ_URL="http://localhost:9000"
+
+          # Wait for the compute engine to finish
+          echo "Waiting for SonarQube analysis to complete..."
+          sleep 10
+          for i in $(seq 1 30); do
+            CE_STATUS=$(curl -sf -u "$SQ_AUTH" \
+              "$SQ_URL/api/ce/component?component=nids" 2>/dev/null | \
+              python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          current = d.get('current', {})
+          queue = d.get('queue', [])
+          busy = any(t.get('status') in ('PENDING','IN_PROGRESS') for t in [current] + queue if t)
+          print('BUSY' if busy else 'IDLE')
+          " 2>/dev/null || echo "UNKNOWN")
+
+            if [ "$CE_STATUS" = "IDLE" ]; then
+              echo "Analysis complete (attempt $i)"
+              break
+            fi
+            echo "Analysis still running... (attempt $i)"
+            sleep 5
+          done
+
+          # Check quality gate result
+          QG_RESULT=$(curl -sf -u "$SQ_AUTH" \
+            "$SQ_URL/api/qualitygates/project_status?projectKey=nids" 2>/dev/null | \
+            python3 -c "import json,sys; print(json.load(sys.stdin)['projectStatus']['status'])" \
+            2>/dev/null || echo "UNKNOWN")
+
+          echo "Quality gate status: $QG_RESULT"
+
+          # Get metrics summary
+          echo "### SonarQube Analysis" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Quality Gate: **$QG_RESULT**" >> "$GITHUB_STEP_SUMMARY"
+
+          curl -sf -u "$SQ_AUTH" \
+            "$SQ_URL/api/measures/component?component=nids&metricKeys=coverage,ncloc,bugs,vulnerabilities,code_smells" \
+            2>/dev/null > /tmp/metrics.json || echo '{}' > /tmp/metrics.json
+
+          python3 -c "
+          import json
+          with open('/tmp/metrics.json') as f:
+              d = json.load(f)
+          measures = {m['metric']: m.get('value', 'N/A') for m in d.get('component', {}).get('measures', [])}
+          print(f'- Coverage: {measures.get(\"coverage\", \"N/A\")}%')
+          print(f'- Lines of code: {measures.get(\"ncloc\", \"N/A\")}')
+          print(f'- Bugs: {measures.get(\"bugs\", \"N/A\")}')
+          print(f'- Vulnerabilities: {measures.get(\"vulnerabilities\", \"N/A\")}')
+          print(f'- Code smells: {measures.get(\"code_smells\", \"N/A\")}')
+          " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+          if [ "$QG_RESULT" != "OK" ] && [ "$QG_RESULT" != "NONE" ]; then
+            echo "::warning::SonarQube quality gate: $QG_RESULT (non-blocking in CI)"
+          fi
+
+      - name: Cleanup containers
+        if: always()
+        run: |
+          docker rm -f sonarqube sonar-db 2>/dev/null || true
+          docker network rm sonar-net 2>/dev/null || true
+
+  # ── Stage 6: Quality gate ───────────────────────────────────────
+  quality-gate:
+    name: Quality Gate
+    needs: [build, lint, cppcheck, stress-tests, coverage, docker]
+    runs-on: ubuntu-24.04
+    if: always()
+
+    steps:
+      - name: Check job results
+        run: |
+          echo "### Quality Gate Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+
+          FAILED=0
+
+          check_job() {
+            local name="$1"
+            local result="$2"
+            if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+              echo "| $name | Passed |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| $name | **FAILED** |" >> "$GITHUB_STEP_SUMMARY"
+              FAILED=1
+            fi
+          }
+
+          check_job "Build (gcc-13 + clang-17)" "${{ needs.build.result }}"
+          check_job "Lint (clang-tidy)" "${{ needs.lint.result }}"
+          check_job "Lint (cppcheck)" "${{ needs.cppcheck.result }}"
+          check_job "Stress Tests" "${{ needs.stress-tests.result }}"
+          check_job "Code Coverage" "${{ needs.coverage.result }}"
+          check_job "Docker Build" "${{ needs.docker.result }}"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo "**Quality gate: FAILED** — one or more checks did not pass." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Quality gate failed"
+            exit 1
+          else
+            echo "**Quality gate: PASSED** — all checks succeeded." >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -83,3 +83,12 @@ TEST(DetectionSource, toStringCoversAllValues) {
     EXPECT_EQ(detectionSourceToString(DetectionSource::Ensemble), "Ensemble (ML + TI + Rules)");
     EXPECT_EQ(detectionSourceToString(DetectionSource::None), "None");
 }
+
+TEST(DetectionSource, toStringInvalidEnum_returnsUnknown) {
+    using nids::core::detectionSourceToString;
+
+    // Cast an out-of-range value to DetectionSource to exercise the
+    // post-switch fallback `return "Unknown"` (line 47 in DetectionResult.h).
+    auto invalid = static_cast<DetectionSource>(static_cast<std::uint8_t>(255));
+    EXPECT_EQ(detectionSourceToString(invalid), "Unknown");
+}

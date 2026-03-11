@@ -10,7 +10,8 @@ std::string PacketFilter::generateBpfString() const {
     std::string filter;
 
     auto appendClause = [&filter](const std::string& clause) {
-        if (!filter.empty()) filter += " and ";
+        if (!filter.empty())
+            filter += " and ";
         filter += clause;
     };
 

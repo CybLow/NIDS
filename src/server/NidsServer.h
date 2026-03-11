@@ -19,19 +19,28 @@
 
 namespace nids::server {
 
+/** Configuration for the gRPC server. */
 struct ServerConfig {
+    /** Address and port to listen on (e.g. "0.0.0.0:50051"). */
     std::string listenAddress = "0.0.0.0:50051";
+    /** Maximum number of concurrent capture/analysis sessions. */
     int maxConcurrentSessions = 4;
 };
 
+/** gRPC server that exposes NIDS capture and analysis as a headless daemon. */
 class NidsServer {
 public:
+    /** Construct with the given server configuration. */
     explicit NidsServer(const ServerConfig& config);
+    /** Shut down the server and release resources. */
     ~NidsServer();
 
+    /** Start the gRPC server and begin accepting connections. */
     void start();
+    /** Initiate a graceful shutdown of the server. */
     void stop();
-    void waitForShutdown();
+    /** Block the calling thread until the server has fully shut down. */
+    static void waitForShutdown();
 
 private:
     ServerConfig config_;

@@ -19,22 +19,35 @@ namespace nids::core {
 /// Metadata for a single flow, used as input to heuristic rule evaluation.
 /// This is a lightweight struct extracted from NativeFlowExtractor output.
 struct FlowMetadata {
+    /** Source IP address (dotted-decimal). */
     std::string srcIp;
+    /** Destination IP address (dotted-decimal). */
     std::string dstIp;
+    /** Source port number. */
     std::uint16_t srcPort = 0;
+    /** Destination port number. */
     std::uint16_t dstPort = 0;
     std::string protocol;           ///< "TCP", "UDP", "ICMP"
 
-    // Basic flow statistics (subset of 77 features, used for heuristic rules)
+    /** Total number of forward (src→dst) packets. */
     std::uint64_t totalFwdPackets = 0;
+    /** Total number of backward (dst→src) packets. */
     std::uint64_t totalBwdPackets = 0;
+    /** Flow duration in microseconds. */
     double flowDurationUs = 0.0;
+    /** Forward packet rate (packets per second). */
     double fwdPacketsPerSecond = 0.0;
+    /** Backward packet rate (packets per second). */
     double bwdPacketsPerSecond = 0.0;
+    /** Number of TCP SYN flags observed. */
     std::uint64_t synFlagCount = 0;
+    /** Number of TCP ACK flags observed. */
     std::uint64_t ackFlagCount = 0;
+    /** Number of TCP RST flags observed. */
     std::uint64_t rstFlagCount = 0;
+    /** Number of TCP FIN flags observed. */
     std::uint64_t finFlagCount = 0;
+    /** Average packet size in bytes. */
     double avgPacketSize = 0.0;
 };
 
@@ -45,6 +58,7 @@ struct HeuristicRuleResult {
     float severity = 0.0f;       ///< Severity [0.0, 1.0]
 };
 
+/** Abstract interface for heuristic rule-based detection. */
 class IRuleEngine {
 public:
     virtual ~IRuleEngine() = default;

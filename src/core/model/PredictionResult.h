@@ -1,22 +1,27 @@
 #pragma once
 
-/// Prediction result from the ML classifier.
-///
-/// Wraps the raw model output: the top predicted class plus the full
-/// softmax probability distribution. This replaces the bare AttackType
-/// return from IPacketAnalyzer::predict(), enabling downstream consumers
-/// (HybridDetectionService) to make confidence-aware decisions.
+/**
+ * Prediction result from the ML classifier.
+ *
+ * Wraps the raw model output: the top predicted class plus the full
+ * softmax probability distribution. This replaces the bare AttackType
+ * return from IPacketAnalyzer::predict(), enabling downstream consumers
+ * (HybridDetectionService) to make confidence-aware decisions.
+ */
 
 #include "core/model/AttackType.h"
 
 #include <array>
-#include <algorithm>
 
 namespace nids::core {
 
+/** Prediction result from the ML classifier. */
 struct PredictionResult {
+    /** Top predicted attack class from the ML model. */
     AttackType classification = AttackType::Unknown;
+    /** Confidence score (softmax probability) of the top prediction [0.0, 1.0]. */
     float confidence = 0.0f;
+    /** Full softmax probability distribution over all kAttackTypeCount classes. */
     std::array<float, kAttackTypeCount> probabilities{};
 
     /// True if the classifier had no result (model not loaded, inference failed).

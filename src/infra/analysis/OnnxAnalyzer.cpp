@@ -39,10 +39,10 @@ bool OnnxAnalyzer::loadModel(const std::string& modelPath) {
         Ort::AllocatorWithDefaultOptions allocator;
 
         // Dynamically query input names from the model
-        size_t numInputs = impl_->session->GetInputCount();
+        std::size_t numInputs = impl_->session->GetInputCount();
         impl_->inputNamesOwned.clear();
         impl_->inputNames.clear();
-        for (size_t i = 0; i < numInputs; ++i) {
+        for (std::size_t i = 0; i < numInputs; ++i) {
             auto name = impl_->session->GetInputNameAllocated(i, allocator);
             impl_->inputNamesOwned.emplace_back(name.get());
         }
@@ -51,10 +51,10 @@ bool OnnxAnalyzer::loadModel(const std::string& modelPath) {
         }
 
         // Dynamically query output names from the model
-        size_t numOutputs = impl_->session->GetOutputCount();
+        std::size_t numOutputs = impl_->session->GetOutputCount();
         impl_->outputNamesOwned.clear();
         impl_->outputNames.clear();
-        for (size_t i = 0; i < numOutputs; ++i) {
+        for (std::size_t i = 0; i < numOutputs; ++i) {
             auto name = impl_->session->GetOutputNameAllocated(i, allocator);
             impl_->outputNamesOwned.emplace_back(name.get());
         }
@@ -105,7 +105,7 @@ nids::core::PredictionResult OnnxAnalyzer::predictWithConfidence(
             impl_->outputNames.data(),
             impl_->outputNames.size());
 
-        const float* output = outputTensors.front().GetTensorData<float>();
+        const auto* output = outputTensors.front().GetTensorData<float>();
         auto outputInfo = outputTensors.front().GetTensorTypeAndShapeInfo();
         auto outputSize = outputInfo.GetElementCount();
 

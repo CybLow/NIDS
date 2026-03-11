@@ -1,15 +1,17 @@
 #pragma once
 
-/// Hybrid detection service combining ML, threat intelligence, and heuristic rules.
-///
-/// Orchestrates the three detection layers to produce a unified DetectionResult
-/// for each flow. Implements the escalation logic described in ADR-005:
-/// - TI matches always escalate (override benign ML verdicts)
-/// - Low ML confidence + heuristic match = escalate
-/// - High ML confidence with no corroboration = trust ML
-///
-/// Located in the app/ layer per Clean Architecture (depends on core/ interfaces,
-/// injected with infra/ implementations).
+/**
+ * Hybrid detection service combining ML, threat intelligence, and heuristic rules.
+ *
+ * Orchestrates the three detection layers to produce a unified DetectionResult
+ * for each flow. Implements the escalation logic described in ADR-005:
+ * - TI matches always escalate (override benign ML verdicts)
+ * - Low ML confidence + heuristic match = escalate
+ * - High ML confidence with no corroboration = trust ML
+ *
+ * Located in the app/ layer per Clean Architecture (depends on core/ interfaces,
+ * injected with infra/ implementations).
+ */
 
 #include "core/model/DetectionResult.h"
 #include "core/model/PredictionResult.h"
@@ -21,12 +23,16 @@
 
 namespace nids::app {
 
+/** Hybrid detection service combining ML, threat intelligence, and heuristic rules. */
 class HybridDetectionService {
 public:
     /// Weights for combining detection signals into a unified score.
     struct Weights {
+        /** ML classifier weight (0.0–1.0). */
         float ml = 0.5f;
+        /** Threat intelligence weight (0.0–1.0). */
         float threatIntel = 0.3f;
+        /** Heuristic rule engine weight (0.0–1.0). */
         float heuristic = 0.2f;
     };
 
@@ -77,6 +83,13 @@ private:
 
     /// Determine the final verdict using escalation logic.
     [[nodiscard]] nids::core::AttackType determineVerdict(
+        const nids::core::PredictionResult& mlResult,
+        bool hasTiMatch,
+        bool hasRuleMatch,
+        float maxRuleSeverity) const noexcept;
+
+    /// Escalation logic when ML classifies as benign.
+    [[nodiscard]] nids::core::AttackType verdictForBenign(
         const nids::core::PredictionResult& mlResult,
         bool hasTiMatch,
         bool hasRuleMatch,

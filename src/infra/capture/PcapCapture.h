@@ -14,22 +14,35 @@
 
 namespace nids::infra {
 
+/** Worker object that runs the pcap capture loop on a dedicated QThread. */
 class PcapCaptureWorker : public QObject {
     Q_OBJECT
 
 public:
+    /** Construct a capture worker, optionally parented to @p parent. */
     explicit PcapCaptureWorker(QObject* parent = nullptr);
 
+    /**
+     * Configure the capture session parameters before starting.
+     * @param interface  Network interface name to capture on.
+     * @param bpfFilter  BPF filter expression (may be empty).
+     * @param dumpFile   Path to write captured packets (empty to skip dump).
+     */
     void configure(const std::string& interface, const std::string& bpfFilter,
                    const std::string& dumpFile);
 
 public slots:
+    /** Start the blocking pcap capture loop. Runs until requestStop() is called. */
     void doCapture();
+    /** Signal the capture loop to stop after the current iteration. */
     void requestStop();
 
 signals:
+    /** Emitted for each captured packet with parsed metadata. */
     void packetCaptured(const nids::core::PacketInfo& info);
+    /** Emitted when the capture loop exits normally. */
     void captureFinished();
+    /** Emitted when a capture error occurs. */
     void captureError(const QString& message);
 
 private:
@@ -49,12 +62,19 @@ private:
     nids::core::ServiceRegistry serviceRegistry_;
 };
 
+/** Pcap-based packet capture implementing IPacketCapture via a worker thread. */
 class PcapCapture : public QObject, public nids::core::IPacketCapture {
     Q_OBJECT
 
 public:
+    /** Construct the capture manager, optionally parented to @p parent. */
     explicit PcapCapture(QObject* parent = nullptr);
     ~PcapCapture() override;
+
+    PcapCapture(const PcapCapture&) = delete;
+    PcapCapture& operator=(const PcapCapture&) = delete;
+    PcapCapture(PcapCapture&&) = delete;
+    PcapCapture& operator=(PcapCapture&&) = delete;
 
     [[nodiscard]] bool initialize(const std::string& interface,
                                   const std::string& bpfFilter) override;
@@ -67,6 +87,7 @@ public:
     [[nodiscard]] std::vector<std::string> listInterfaces() override;
 
 signals:
+    /** Emitted for each captured packet, forwarded from the worker thread. */
     void packetReceived(const nids::core::PacketInfo& info);
 
 private:

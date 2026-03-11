@@ -18,10 +18,12 @@ namespace nids::core {
 
 /// Result of a threat intelligence lookup for a single IP.
 struct ThreatIntelLookup {
+    /** True if the IP was found in at least one threat feed. */
     bool matched = false;
     std::string feedName;    ///< Name of the feed that matched (empty if no match)
 };
 
+/** Abstract interface for threat intelligence IP reputation lookups. */
 class IThreatIntelligence {
 public:
     virtual ~IThreatIntelligence() = default;
@@ -43,6 +45,9 @@ public:
 
     /// Returns the number of loaded feeds.
     [[nodiscard]] virtual std::size_t feedCount() const noexcept = 0;
+
+    /// Returns the names of all loaded feeds.
+    [[nodiscard]] virtual std::vector<std::string> feedNames() const = 0;
 };
 
 } // namespace nids::core

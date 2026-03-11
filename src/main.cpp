@@ -3,6 +3,7 @@
 #include "infra/platform/SocketInit.h"
 #include "infra/capture/PcapCapture.h"
 #include "infra/analysis/AnalyzerFactory.h"
+#include "infra/analysis/FeatureNormalizer.h"
 #include "infra/flow/NativeFlowExtractor.h"
 #include "infra/threat/ThreatIntelProvider.h"
 #include "infra/rules/HeuristicRuleEngine.h"
@@ -15,6 +16,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <filesystem>
 #include <memory>
 #include <string_view>
 
@@ -95,8 +97,9 @@ int main(int argc, char* argv[]) {
 
     // -- Analysis Service --
     auto flowExtractor = std::make_unique<nids::infra::NativeFlowExtractor>();
+    auto featureNormalizer = std::make_unique<nids::infra::FeatureNormalizer>();
     auto analysisService = std::make_unique<nids::app::AnalysisService>(
-        std::move(analyzer), std::move(flowExtractor));
+        std::move(analyzer), std::move(flowExtractor), std::move(featureNormalizer));
 
     // Load normalization parameters so inference receives data in the same
     // format the model was trained on (StandardScaler + clip).
@@ -109,8 +112,9 @@ int main(int argc, char* argv[]) {
     // Wire hybrid detection into the analysis pipeline
     analysisService->setHybridDetection(hybridService.get());
 
-    nids::ui::MainWindow window(std::move(controller), std::move(analysisService));
+    nids::ui::MainWindow window(std::move(controller), std::move(analysisService),
+                                 hybridService.get(), threatIntel.get(), ruleEngine.get());
     window.show();
 
-    return app.exec();
+    return QApplication::exec();
 }

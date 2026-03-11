@@ -25,6 +25,9 @@ Cross-references: [ADR-004](adr/004-model-benchmark-analysis.md),
 - [x] Rewritten `docs/architecture.md` with detection philosophy and hybrid data flow
 - [x] GitHub Actions CI/CD
 - [x] CPack packaging (DEB/RPM/TGZ)
+- [x] Phase 7 — UI for hybrid detection results (tabbed Packets/Flows view,
+  `FlowTableModel`, `DetectionDetailWidget`, worker thread, TI status panel,
+  weight tuning dialog)
 
 ---
 
@@ -102,41 +105,47 @@ detection code.
 
 ---
 
-## Phase 7: UI for Hybrid Detection Results
+## Phase 7: UI for Hybrid Detection Results [DONE]
 
 **Goal**: Surface the rich `DetectionResult` data in the Qt UI so users can see
 detection source, confidence scores, TI matches, and heuristic rule matches.
 
-### 7.1 — Extend `PacketTableModel` to show `DetectionResult`
+### 7.1 — FlowTableModel + tabbed view [DONE]
 
-- Add columns: Detection Source, Combined Score, ML Confidence
-- Color-code rows by combined score severity (green/yellow/orange/red)
-- Migrate model from reading `analysisResults_` to `detectionResults_`
+- Tabbed layout: "Packets" tab (existing `PacketTableModel`) + "Flows" tab
+- `FlowTableModel` with 10 columns (Flow #, Src/Dst IP/Port, Protocol, Verdict,
+  ML Confidence, Combined Score, Detection Source)
+- Severity color-coding (green/yellow/orange/red)
+- Batch and incremental row insertion
 
-### 7.2 — Detection detail panel
+### 7.2 — Detection detail panel [DONE]
 
-- New `DetectionDetailWidget` (or panel in `MainWindow`) shown when a row is selected
-- Displays: ML verdict + confidence, TI matches (feed name, category), heuristic rule
-  matches (rule name, severity, description), combined score breakdown
-- This is read-only; no editing
+- `DetectionDetailWidget` shown when a flow row is selected
+- Displays: flow metadata, ML verdict + confidence, probability distribution (16 rows),
+  TI matches (IP, feed name, direction), heuristic rule matches (name, description,
+  severity), combined score breakdown
 
-### 7.3 — Move analysis to a worker thread
+### 7.3 — Move analysis to a worker thread [DONE]
 
-- **File**: `docs/architecture.md:304-305` documents this as needed
-- **Why**: Analysis currently runs synchronously, freezing the UI
-- **Pattern**: QThread + worker object (per AGENTS.md Section 4.1)
-- Use `Qt::QueuedConnection` signals to update `CaptureSession` and UI from the worker
+- `AnalysisService` (QObject) moved to a dedicated `QThread` in `MainWindow` constructor
+- `runAnalysis()` dispatches via `QMetaObject::invokeMethod` with `Qt::QueuedConnection`
+- Report prompt deferred to `populateFlowResults()` (after analysis finishes)
+- Thread properly quit/waited in destructor
 
-### 7.4 — Threat intelligence status panel
+### 7.4 — Threat intelligence status panel [DONE]
 
-- Show loaded feed names, last update time, total IP count, CIDR range count
-- Button to trigger `scripts/update_threat_feeds.sh` via `QProcess`
+- Status bar shows "TI: X feeds, Y entries [feed1, feed2, ...]  |  Rules: N"
+- `IThreatIntelligence` extended with `feedNames()` virtual method
+- `MainWindow` receives non-owning `IThreatIntelligence*` and `IRuleEngine*`
 
-### 7.5 — Hybrid weight tuning UI
+### 7.5 — Hybrid weight tuning UI [DONE]
 
-- Sliders or spin boxes for ML/TI/Heuristic weights (constrained to sum to 1.0)
+- `WeightTuningDialog` with three linked sliders (ML/TI/Heuristic, sum-to-1.0 constraint)
 - ML confidence threshold slider
-- Save to config JSON (requires Phase 6.1)
+- Proportional redistribution: adjusting one slider proportionally adjusts the others
+- Apply saves to `HybridDetectionService` (runtime) and `Configuration` (persistent)
+- Reset to defaults button
+- Accessed via Settings > Detection Weights... menu
 
 ---
 

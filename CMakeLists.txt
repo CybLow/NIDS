@@ -15,7 +15,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-option(NIDS_BUILD_TESTS "Build unit tests" OFF)
+option(NIDS_BUILD_TESTS "Build unit tests" ON)
 option(NIDS_BUILD_SERVER "Build headless server" OFF)
 option(NIDS_COVERAGE "Enable code coverage instrumentation" OFF)
 
@@ -25,7 +25,7 @@ find_package(Threads REQUIRED)
 find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
-find_package(spdlog CONFIG QUIET)
+find_package(spdlog CONFIG REQUIRED)
 
 set(NIDS_CORE_SOURCES
     src/core/model/CaptureSession.cpp
@@ -56,6 +56,9 @@ set(NIDS_APP_SOURCES
 set(NIDS_UI_SOURCES
     src/ui/MainWindow.cpp
     src/ui/PacketTableModel.cpp
+    src/ui/FlowTableModel.cpp
+    src/ui/DetectionDetailWidget.cpp
+    src/ui/WeightTuningDialog.cpp
     src/ui/HexView.cpp
     src/ui/FilterPanel.cpp
     src/ui/dialogs/ServiceDialog.cpp
@@ -89,10 +92,7 @@ target_link_libraries(NIDS PRIVATE
     nlohmann_json::nlohmann_json
 )
 
-if(spdlog_FOUND)
-    target_link_libraries(NIDS PRIVATE spdlog::spdlog)
-    target_compile_definitions(NIDS PRIVATE NIDS_HAS_SPDLOG)
-endif()
+target_link_libraries(NIDS PRIVATE spdlog::spdlog)
 
 target_compile_definitions(NIDS PRIVATE
     NIDS_HAS_ONNX
@@ -117,6 +117,22 @@ if(NIDS_COVERAGE)
     else()
         message(WARNING "Code coverage is only supported with GCC or Clang")
     endif()
+endif()
+
+# ── Server / Client stubs (Phase 9 — gRPC, currently scaffolding) ─
+if(NIDS_BUILD_SERVER)
+    set(NIDS_SERVER_SOURCES src/server/NidsServer.cpp)
+    set(NIDS_CLIENT_SOURCES src/client/NidsClient.cpp)
+
+    add_library(nids-server-lib STATIC ${NIDS_SERVER_SOURCES} ${NIDS_CORE_SOURCES})
+    target_include_directories(nids-server-lib PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(nids-server-lib PRIVATE Threads::Threads spdlog::spdlog)
+    target_compile_features(nids-server-lib PRIVATE cxx_std_20)
+
+    add_library(nids-client-lib STATIC ${NIDS_CLIENT_SOURCES} ${NIDS_CORE_SOURCES})
+    target_include_directories(nids-client-lib PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(nids-client-lib PRIVATE Threads::Threads spdlog::spdlog)
+    target_compile_features(nids-client-lib PRIVATE cxx_std_20)
 endif()
 
 # ── Install rules ────────────────────────────────────────────────

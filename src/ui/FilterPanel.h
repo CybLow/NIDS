@@ -15,24 +15,33 @@
 
 namespace nids::ui {
 
+/** Widget panel providing capture filter controls (interface, protocol, IP, port). */
 class FilterPanel : public QWidget {
     Q_OBJECT
 
 public:
+    /** Construct with a service registry for protocol/application lookups. */
     explicit FilterPanel(const nids::core::ServiceRegistry& registry,
                          QWidget* parent = nullptr);
 
+    /** Populate the network interface combo box. */
     void setInterfaces(const std::vector<std::string>& interfaces);
+    /** Build a PacketFilter from the current UI field values. */
     [[nodiscard]] nids::core::PacketFilter gatherFilter() const;
+    /** Return the currently selected network interface name. */
     [[nodiscard]] std::string selectedInterface() const;
 
+    /** Enable or disable editing of the filter input fields. */
     void setInputsReadOnly(bool readOnly);
 
 signals:
+    /** Emitted when the user selects a different network interface. */
     void interfaceChanged(const QString& interface);
+    /** Emitted when the start/stop button is clicked. */
     void startStopClicked();
 
 public slots:
+    /** Set the label text of the start/stop button. */
     void setButtonText(const QString& text);
 
 private slots:

@@ -36,7 +36,7 @@ void Configuration::setModelMetadataPath(const fs::path& path) {
     metadataPath_ = path;
 }
 
-std::string Configuration::defaultDumpFile() const { return defaultDumpFile_; }
+const std::string& Configuration::defaultDumpFile() const { return defaultDumpFile_; }
 int64_t Configuration::flowTimeoutUs() const { return flowTimeoutUs_; }
 int64_t Configuration::idleThresholdUs() const { return idleThresholdUs_; }
 
@@ -52,7 +52,7 @@ void Configuration::setIdleThresholdUs(int64_t thresholdUs) {
     idleThresholdUs_ = thresholdUs;
 }
 
-fs::path Configuration::tempDirectory() const {
+fs::path Configuration::tempDirectory() {
     return fs::temp_directory_path();
 }
 
@@ -89,7 +89,7 @@ void Configuration::setWeightHeuristic(float weight) {
     weightHeuristic_ = weight;
 }
 
-std::string Configuration::windowTitle() const { return windowTitle_; }
+const std::string& Configuration::windowTitle() const { return windowTitle_; }
 
 void Configuration::setWindowTitle(const std::string& title) {
     windowTitle_ = title;

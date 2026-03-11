@@ -8,11 +8,22 @@
 
 namespace nids::core {
 
+/** Abstract interface for ML-based packet/flow classification. */
 class IPacketAnalyzer {
 public:
     virtual ~IPacketAnalyzer() = default;
 
+    /**
+     * Load an ML model from the given file path.
+     * @param modelPath Path to the ONNX model file.
+     * @return True if the model was loaded successfully.
+     */
     [[nodiscard]] virtual bool loadModel(const std::string& modelPath) = 0;
+    /**
+     * Classify a flow given its feature vector.
+     * @param features Normalized feature vector (kFlowFeatureCount elements).
+     * @return Predicted attack type.
+     */
     [[nodiscard]] virtual AttackType predict(const std::vector<float>& features) = 0;
 
     /// Enhanced prediction returning confidence scores and full probability distribution.

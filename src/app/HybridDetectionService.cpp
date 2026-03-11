@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <array>
 
 namespace nids::app {
 
@@ -132,25 +133,44 @@ nids::core::DetectionSource HybridDetectionService::determineSource(
     bool hasTiMatch,
     bool hasRuleMatch) noexcept {
 
-    if (mlIsAttack && hasTiMatch && hasRuleMatch) {
-        return nids::core::DetectionSource::Ensemble;
-    }
-    if (mlIsAttack && hasTiMatch) {
-        return nids::core::DetectionSource::MlPlusThreatIntel;
-    }
-    if (mlIsAttack && hasRuleMatch) {
-        return nids::core::DetectionSource::MlPlusHeuristic;
-    }
+    // Encode the three booleans as a 3-bit index: (ml << 2 | ti << 1 | rule)
+    // This replaces 6 chained if-statements with a single table lookup.
+    using DS = nids::core::DetectionSource;
+    static constexpr std::array<DS, 8> kSourceTable = {{
+        /* 0b000: !ml, !ti, !rule */ DS::None,
+        /* 0b001: !ml, !ti,  rule */ DS::HeuristicRule,
+        /* 0b010: !ml,  ti, !rule */ DS::ThreatIntel,
+        /* 0b011: !ml,  ti,  rule */ DS::ThreatIntel,
+        /* 0b100:  ml, !ti, !rule */ DS::MlOnly,
+        /* 0b101:  ml, !ti,  rule */ DS::MlPlusHeuristic,
+        /* 0b110:  ml,  ti, !rule */ DS::MlPlusThreatIntel,
+        /* 0b111:  ml,  ti,  rule */ DS::Ensemble,
+    }};
+
+    const auto index = (static_cast<unsigned>(mlIsAttack) << 2)
+                     | (static_cast<unsigned>(hasTiMatch) << 1)
+                     | static_cast<unsigned>(hasRuleMatch);
+    return kSourceTable[index];
+}
+
+nids::core::AttackType HybridDetectionService::verdictForBenign(
+    const nids::core::PredictionResult& mlResult,
+    bool hasTiMatch,
+    bool hasRuleMatch,
+    float maxRuleSeverity) const noexcept {
+
+    // TI match overrides benign verdict -- this is the key escalation
     if (hasTiMatch) {
-        return nids::core::DetectionSource::ThreatIntel;
+        return nids::core::AttackType::Unknown;
     }
-    if (hasRuleMatch) {
-        return nids::core::DetectionSource::HeuristicRule;
+
+    // High-severity heuristic rule + low ML confidence = escalate
+    if (hasRuleMatch && maxRuleSeverity >= 0.7f
+        && !mlResult.isHighConfidence(confidenceThreshold_)) {
+        return nids::core::AttackType::Unknown;
     }
-    if (mlIsAttack) {
-        return nids::core::DetectionSource::MlOnly;
-    }
-    return nids::core::DetectionSource::None;
+
+    return nids::core::AttackType::Benign;
 }
 
 nids::core::AttackType HybridDetectionService::determineVerdict(
@@ -159,44 +179,18 @@ nids::core::AttackType HybridDetectionService::determineVerdict(
     bool hasRuleMatch,
     float maxRuleSeverity) const noexcept {
 
-    // Case 1: ML says attack with high confidence -- trust ML
-    if (mlResult.isAttack() && mlResult.isHighConfidence(confidenceThreshold_)) {
-        return mlResult.classification;
-    }
-
-    // Case 2: ML says attack with low confidence
+    // ML says attack (any confidence) -- trust the classification
     if (mlResult.isAttack()) {
-        // TI or rules corroborate -- keep ML classification
-        if (hasTiMatch || hasRuleMatch) {
-            return mlResult.classification;
-        }
-        // No corroboration -- still report ML classification but with low confidence
         return mlResult.classification;
     }
 
-    // Case 3: ML says benign
+    // ML says benign -- apply escalation logic
     if (mlResult.classification == nids::core::AttackType::Benign) {
-        // TI match overrides benign verdict -- this is the key escalation
-        if (hasTiMatch) {
-            return nids::core::AttackType::Unknown;  // Suspicious, not classifiable
-        }
-
-        // High-severity heuristic rule + low ML confidence = escalate
-        if (hasRuleMatch && maxRuleSeverity >= 0.7f
-            && !mlResult.isHighConfidence(confidenceThreshold_)) {
-            return nids::core::AttackType::Unknown;  // Suspicious
-        }
-
-        // Otherwise trust ML
-        return nids::core::AttackType::Benign;
+        return verdictForBenign(mlResult, hasTiMatch, hasRuleMatch, maxRuleSeverity);
     }
 
-    // Case 4: Unknown ML result -- defer to TI/rules
-    if (hasTiMatch) {
-        return nids::core::AttackType::Unknown;  // Suspicious
-    }
-
-    return mlResult.classification;
+    // Unknown ML result -- defer to TI
+    return hasTiMatch ? nids::core::AttackType::Unknown : mlResult.classification;
 }
 
 } // namespace nids::app

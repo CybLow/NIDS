@@ -18,10 +18,18 @@ nids::core::FlowMetadata toFlowMetadata(const nids::core::FlowInfo& info) {
     meta.dstPort = info.dstPort;
 
     switch (info.protocol) {
-        case 6:  meta.protocol = "TCP";  break;
-        case 17: meta.protocol = "UDP";  break;
-        case 1:  meta.protocol = "ICMP"; break;
-        default: meta.protocol = "OTHER"; break;
+        case 6:
+            meta.protocol = "TCP";
+            break;
+        case 17:
+            meta.protocol = "UDP";
+            break;
+        case 1:
+            meta.protocol = "ICMP";
+            break;
+        default:
+            meta.protocol = "OTHER";
+            break;
     }
 
     meta.totalFwdPackets = info.totalFwdPackets;
@@ -43,17 +51,19 @@ nids::core::FlowMetadata toFlowMetadata(const nids::core::FlowInfo& info) {
 AnalysisService::AnalysisService(
     std::unique_ptr<nids::core::IPacketAnalyzer> analyzer,
     std::unique_ptr<nids::core::IFlowExtractor> extractor,
+    std::unique_ptr<nids::core::IFeatureNormalizer> normalizer,
     QObject* parent)
     : QObject(parent)
     , analyzer_(std::move(analyzer))
-    , extractor_(std::move(extractor)) {}
+    , extractor_(std::move(extractor))
+    , normalizer_(std::move(normalizer)) {}
 
 bool AnalysisService::loadModel(const std::string& modelPath) {
     return analyzer_->loadModel(modelPath);
 }
 
 bool AnalysisService::loadNormalization(const std::string& metadataPath) {
-    return normalizer_.loadMetadata(metadataPath);
+    return normalizer_->loadMetadata(metadataPath);
 }
 
 void AnalysisService::setHybridDetection(HybridDetectionService* service) noexcept {
@@ -86,7 +96,7 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
         // Normalize features before prediction to match training data distribution.
         // If normalization metadata was not loaded, the normalizer returns raw features
         // with a warning (graceful degradation).
-        auto normalized = normalizer_.normalize(allFeatures[idx]);
+        auto normalized = normalizer_->normalize(allFeatures[idx]);
 
         if (hybridService_ != nullptr) {
             // Full hybrid detection: ML + TI + heuristic rules
@@ -112,11 +122,16 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
             session.setDetectionResult(idx, mlOnlyResult);
         }
 
+        // cppcheck-suppress shadowFunction  // Qt signal emission, not a shadowing variable
         emit analysisProgress(i + 1, total);
     }
 
     spdlog::info("Analysis complete: {} flows processed", total);
     emit analysisFinished();
+}
+
+const std::vector<nids::core::FlowInfo>& AnalysisService::lastFlowMetadata() const noexcept {
+    return extractor_->flowMetadata();
 }
 
 } // namespace nids::app

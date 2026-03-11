@@ -6,34 +6,56 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <optional>
 
 namespace nids::infra {
 
+namespace {
+
+/// Validate the JSON structure and extract the normalization section.
+/// Returns std::nullopt on any validation failure (logs the error).
+[[nodiscard]] std::optional<nlohmann::json> extractNormalizationSection(
+    const std::string& metadataPath) {
+
+    std::ifstream file(metadataPath);
+    if (!file.is_open()) {
+        spdlog::error("FeatureNormalizer: cannot open metadata file '{}'", metadataPath);
+        return std::nullopt;
+    }
+
+    auto json = nlohmann::json::parse(file);
+
+    if (!json.contains("normalization")) {
+        spdlog::error("FeatureNormalizer: metadata file missing 'normalization' key");
+        return std::nullopt;
+    }
+
+    const auto& norm = json["normalization"];
+
+    if (!norm.contains("means") || !norm.contains("stds")) {
+        spdlog::error("FeatureNormalizer: normalization section missing 'means' or 'stds'");
+        return std::nullopt;
+    }
+
+    if (!norm.contains("clip_value")) {
+        spdlog::error("FeatureNormalizer: normalization section missing 'clip_value'");
+        return std::nullopt;
+    }
+
+    return norm;
+}
+
+} // anonymous namespace
+
 bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
     try {
-        std::ifstream file(metadataPath);
-        if (!file.is_open()) {
-            spdlog::error("FeatureNormalizer: cannot open metadata file '{}'", metadataPath);
+        auto normOpt = extractNormalizationSection(metadataPath);
+        if (!normOpt) {
             loaded_ = false;
             return false;
         }
 
-        auto json = nlohmann::json::parse(file);
-
-        if (!json.contains("normalization")) {
-            spdlog::error("FeatureNormalizer: metadata file missing 'normalization' key");
-            loaded_ = false;
-            return false;
-        }
-
-        const auto& norm = json["normalization"];
-
-        if (!norm.contains("means") || !norm.contains("stds")) {
-            spdlog::error("FeatureNormalizer: normalization section missing 'means' or 'stds'");
-            loaded_ = false;
-            return false;
-        }
-
+        const auto& norm = *normOpt;
         auto meansJson = norm["means"].get<std::vector<double>>();
         auto stdsJson = norm["stds"].get<std::vector<double>>();
 
@@ -58,11 +80,6 @@ bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
             stds_[i] = (std::abs(stdVal) < 1e-8f) ? 1.0f : stdVal;
         }
 
-        if (!norm.contains("clip_value")) {
-            spdlog::error("FeatureNormalizer: normalization section missing 'clip_value'");
-            loaded_ = false;
-            return false;
-        }
         clipValue_ = norm["clip_value"].get<float>();
 
         loaded_ = true;
@@ -83,12 +100,12 @@ bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
 }
 
 std::vector<float> FeatureNormalizer::normalize(const std::vector<float>& features) const {
-    if (!loaded_) [[unlikely]] {
+    if (!loaded_) {
         spdlog::warn("FeatureNormalizer: metadata not loaded, returning raw features");
         return features;
     }
 
-    if (features.size() != means_.size()) [[unlikely]] {
+    if (features.size() != means_.size()) {
         spdlog::warn(
             "FeatureNormalizer: feature count mismatch (got {}, expected {}), "
             "returning raw features",

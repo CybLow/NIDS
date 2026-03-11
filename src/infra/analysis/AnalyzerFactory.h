@@ -11,7 +11,9 @@
 
 namespace nids::infra {
 
+/** Supported ML inference backends. */
 enum class AnalyzerBackend {
+    /** ONNX Runtime backend. */
     Onnx
 };
 

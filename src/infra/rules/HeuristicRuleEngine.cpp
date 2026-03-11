@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <string_view>
 
 namespace nids::infra {
 
@@ -36,6 +37,11 @@ constexpr std::array<std::uint16_t, 5> kAuthPorts = {
     5900,  // VNC
 };
 
+/// Service names corresponding 1:1 with kAuthPorts.
+constexpr std::array<std::string_view, 5> kAuthServiceNames = {
+    "FTP", "SSH", "Telnet", "RDP", "VNC"
+};
+
 /// Thresholds
 constexpr double kSynFloodRatio = 5.0;          // SYN/ACK ratio threshold
 constexpr std::uint64_t kSynFloodMinSyns = 50;  // Minimum SYN count to trigger
@@ -55,6 +61,17 @@ constexpr std::size_t kPortScanThreshold = 20;    // Distinct ports from same so
 
 [[nodiscard]] bool isAuthPort(std::uint16_t port) {
     return std::ranges::find(kAuthPorts, port) != kAuthPorts.end();
+}
+
+/// Look up the service name for an authentication port.
+/// Returns "Auth" if the port is not in kAuthPorts (should not happen if called after isAuthPort).
+[[nodiscard]] std::string_view authServiceName(std::uint16_t port) {
+    auto it = std::ranges::find(kAuthPorts, port);
+    if (it != kAuthPorts.end()) {
+        auto idx = static_cast<std::size_t>(std::distance(kAuthPorts.begin(), it));
+        return kAuthServiceNames[idx];
+    }
+    return "Auth";
 }
 
 } // anonymous namespace
@@ -225,20 +242,12 @@ HeuristicRuleEngine::checkBruteForce(const nids::core::FlowMetadata& flow) {
     }
 
     // High packet rate to an authentication port suggests brute force
-    std::string serviceName;
-    switch (flow.dstPort) {
-        case 21:   serviceName = "FTP";    break;
-        case 22:   serviceName = "SSH";    break;
-        case 23:   serviceName = "Telnet"; break;
-        case 3389: serviceName = "RDP";    break;
-        case 5900: serviceName = "VNC";    break;
-        default:   serviceName = "Auth";   break;
-    }
+    auto serviceName = authServiceName(flow.dstPort);
 
     return nids::core::HeuristicRuleResult{
         .ruleName = "brute_force",
         .description = "High packet rate (" + std::to_string(pktRate)
-            + " pkt/s) to " + serviceName + " port "
+            + " pkt/s) to " + std::string(serviceName) + " port "
             + std::to_string(flow.dstPort) + " -- potential brute force",
         .severity = std::min(1.0f, static_cast<float>(pktRate / (kBruteForceRate * 10)))
     };

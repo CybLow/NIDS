@@ -1,11 +1,11 @@
 # Stage 1: Build
-FROM ubuntu:22.04 AS builder
+FROM ubuntu:24.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
+    gcc-13 g++-13 \
+    cmake ninja-build \
     git \
     libpcap-dev \
     qt6-base-dev \
@@ -30,20 +30,21 @@ RUN /opt/vcpkg/vcpkg install --triplet x64-linux
 
 COPY . .
 
-RUN mkdir -p build && cd build && \
-    cmake .. \
+RUN cmake -B build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=gcc-13 \
+        -DCMAKE_CXX_COMPILER=g++-13 \
         -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
         -DNIDS_BUILD_TESTS=OFF && \
-    make -j$(nproc)
+    cmake --build build --parallel
 
 # Stage 2: Runtime
-FROM ubuntu:22.04 AS runtime
+FROM ubuntu:24.04 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpcap0.8 \
+    libpcap0.8t64 \
     libqt6widgets6 \
     libqt6gui6 \
     libqt6core6 \
@@ -52,7 +53,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY --from=builder /app/build/NIDS /app/NIDS
-COPY --from=builder /app/src/model/model.onnx /app/model/model.onnx
+COPY --from=builder /app/models/model.onnx /app/model/model.onnx
 
 RUN useradd -m -s /bin/bash nids
 USER nids

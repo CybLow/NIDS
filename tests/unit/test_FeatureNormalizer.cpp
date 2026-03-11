@@ -2,6 +2,7 @@
 #include "infra/analysis/FeatureNormalizer.h"
 #include "infra/flow/NativeFlowExtractor.h"  // kFlowFeatureCount
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -237,4 +238,99 @@ TEST_F(FeatureNormalizerTest, loadMetadata_failedReload_clearsLoadedState) {
     // Reload with bad file
     EXPECT_FALSE(normalizer.loadMetadata("nonexistent.json"));
     EXPECT_FALSE(normalizer.isLoaded());
+}
+
+// ── Full 77-feature normalization ────────────────────────────────────
+
+TEST_F(FeatureNormalizerTest, normalize_full77Features_succeeds) {
+    auto path = writeValidMetadata("full77.json", kFlowFeatureCount);
+    FeatureNormalizer normalizer;
+    ASSERT_TRUE(normalizer.loadMetadata(path));
+
+    std::vector<float> input(kFlowFeatureCount);
+    for (std::size_t i = 0; i < kFlowFeatureCount; ++i) {
+        input[i] = static_cast<float>(i) * 2.0f;
+    }
+
+    auto result = normalizer.normalize(input);
+    ASSERT_EQ(result.size(), kFlowFeatureCount);
+
+    // Verify each element: (input[i] - mean[i]) / std[i] with clip
+    // mean[i] = i, std[i] = 1+i, clip = 10
+    for (std::size_t i = 0; i < kFlowFeatureCount; ++i) {
+        float expected = (input[i] - static_cast<float>(i))
+                       / (1.0f + static_cast<float>(i));
+        expected = std::clamp(expected, -10.0f, 10.0f);
+        EXPECT_FLOAT_EQ(result[i], expected) << "Mismatch at feature " << i;
+    }
+}
+
+// ── Negative inputs ──────────────────────────────────────────────────
+
+TEST_F(FeatureNormalizerTest, normalize_negativeInputs_handledCorrectly) {
+    auto path = writeMetadata("neg.json",
+        R"({"normalization":{"means":[0.0,0.0],"stds":[1.0,1.0],"clip_value":5.0}})");
+    FeatureNormalizer normalizer;
+    ASSERT_TRUE(normalizer.loadMetadata(path));
+
+    auto result = normalizer.normalize({-3.0f, -100.0f});
+    ASSERT_EQ(result.size(), 2u);
+    EXPECT_FLOAT_EQ(result[0], -3.0f);
+    EXPECT_FLOAT_EQ(result[1], -5.0f);  // Clipped to -5.0
+}
+
+// ── Non-array JSON types for means/stds ──────────────────────────────
+
+TEST_F(FeatureNormalizerTest, loadMetadata_meansNotArray_returnsFalse) {
+    auto path = writeMetadata("bad_type.json",
+        R"({"normalization":{"means":"not_an_array","stds":[1.0],"clip_value":10.0}})");
+    FeatureNormalizer normalizer;
+    EXPECT_FALSE(normalizer.loadMetadata(path));
+}
+
+TEST_F(FeatureNormalizerTest, loadMetadata_stdsNotArray_returnsFalse) {
+    auto path = writeMetadata("bad_type2.json",
+        R"({"normalization":{"means":[1.0],"stds":42,"clip_value":10.0}})");
+    FeatureNormalizer normalizer;
+    EXPECT_FALSE(normalizer.loadMetadata(path));
+}
+
+TEST_F(FeatureNormalizerTest, loadMetadata_clipValueNotNumber_returnsFalse) {
+    auto path = writeMetadata("bad_clip.json",
+        R"({"normalization":{"means":[1.0],"stds":[1.0],"clip_value":"ten"}})");
+    FeatureNormalizer normalizer;
+    EXPECT_FALSE(normalizer.loadMetadata(path));
+}
+
+// ── Zero-value inputs ────────────────────────────────────────────────
+
+TEST_F(FeatureNormalizerTest, normalize_allZeroInputs_normalizedCorrectly) {
+    auto path = writeMetadata("zeros.json",
+        R"({"normalization":{"means":[5.0,10.0],"stds":[2.0,4.0],"clip_value":10.0}})");
+    FeatureNormalizer normalizer;
+    ASSERT_TRUE(normalizer.loadMetadata(path));
+
+    auto result = normalizer.normalize({0.0f, 0.0f});
+    ASSERT_EQ(result.size(), 2u);
+    EXPECT_FLOAT_EQ(result[0], -2.5f);  // (0 - 5) / 2
+    EXPECT_FLOAT_EQ(result[1], -2.5f);  // (0 - 10) / 4
+}
+
+// ── Normalize with wrong feature count ───────────────────────────────
+
+TEST_F(FeatureNormalizerTest, normalize_featureCountMismatch_returnsRaw) {
+    // Load valid 2-feature metadata
+    auto path = writeMetadata("two.json",
+        R"({"normalization":{"means":[1.0,2.0],"stds":[1.0,1.0],"clip_value":10.0}})");
+    FeatureNormalizer normalizer;
+    ASSERT_TRUE(normalizer.loadMetadata(path));
+    ASSERT_EQ(normalizer.featureCount(), 2u);
+
+    // Pass 3 features instead of 2 → returns raw features unchanged
+    std::vector<float> raw = {5.0f, 10.0f, 15.0f};
+    auto result = normalizer.normalize(raw);
+    ASSERT_EQ(result.size(), 3u);
+    EXPECT_FLOAT_EQ(result[0], 5.0f);
+    EXPECT_FLOAT_EQ(result[1], 10.0f);
+    EXPECT_FLOAT_EQ(result[2], 15.0f);
 }

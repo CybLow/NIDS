@@ -83,7 +83,7 @@ void PcapCaptureWorker::processPacket(const struct pcap_pkthdr* pkthdr,
     nids::core::PacketInfo info;
 
     auto* ethHeader = reinterpret_cast<const EthernetHeader*>(packet);
-    if (getEtherType(ethHeader) == kEtherTypeIPv4) [[likely]] {
+    if (getEtherType(ethHeader) == kEtherTypeIPv4) {
         auto* ipHeader = reinterpret_cast<const IPv4Header*>(packet + kEthernetHeaderSize);
         info.ipSource = getIpSrcStr(ipHeader);
         info.ipDestination = getIpDstStr(ipHeader);
@@ -92,9 +92,9 @@ void PcapCaptureWorker::processPacket(const struct pcap_pkthdr* pkthdr,
         auto ipHeaderLen = getIpIhl(ipHeader);
 
         // Validate IP header length (minimum 20 bytes, must fit in captured packet)
-        if (ipHeaderLen < 20 || (kEthernetHeaderSize + ipHeaderLen) > pkthdr->caplen) [[unlikely]] {
+        if (ipHeaderLen < 20 || (kEthernetHeaderSize + ipHeaderLen) > pkthdr->caplen) {
             info.protocol = "Malformed";
-        } else if (proto == kIpProtoTcp) [[likely]] {
+        } else if (proto == kIpProtoTcp) {
             auto* tcpHeader = reinterpret_cast<const TcpHeader*>(
                 reinterpret_cast<const std::uint8_t*>(ipHeader) + ipHeaderLen);
             info.protocol = "TCP";
@@ -108,7 +108,7 @@ void PcapCaptureWorker::processPacket(const struct pcap_pkthdr* pkthdr,
             info.portSource = std::to_string(getUdpSrcPort(udpHeader));
             info.portDestination = std::to_string(getUdpDstPort(udpHeader));
             info.application = serviceRegistry_.resolveApplication("", "", info.portDestination);
-        } else if (proto == kIpProtoIcmp) [[unlikely]] {
+        } else if (proto == kIpProtoIcmp) {
             info.protocol = "ICMP";
         } else {
             info.protocol = "Unknown";
@@ -133,14 +133,16 @@ PcapCapture::PcapCapture(QObject* parent)
 
     connect(&workerThread_, &QThread::finished, worker_, &QObject::deleteLater);
     connect(worker_, &PcapCaptureWorker::packetCaptured, this, [this](const nids::core::PacketInfo& info) {
-        if (callback_) callback_(info);
+        if (callback_)
+            callback_(info);
         emit packetReceived(info);
     }, Qt::QueuedConnection);
     connect(worker_, &PcapCaptureWorker::captureFinished, this, [this]() {
         capturing_.store(false);
     }, Qt::QueuedConnection);
     connect(worker_, &PcapCaptureWorker::captureError, this, [this](const QString& message) {
-        if (errorCallback_) errorCallback_(message.toStdString());
+        if (errorCallback_)
+            errorCallback_(message.toStdString());
     }, Qt::QueuedConnection);
 
     workerThread_.start();
@@ -159,14 +161,16 @@ bool PcapCapture::initialize(const std::string& interface, const std::string& bp
 }
 
 void PcapCapture::startCapture(const std::string& dumpFile) {
-    if (capturing_.load()) return;
+    if (capturing_.load())
+        return;
     capturing_.store(true);
     worker_->configure(interface_, bpfFilter_, dumpFile);
     QMetaObject::invokeMethod(worker_, "doCapture", Qt::QueuedConnection);
 }
 
 void PcapCapture::stopCapture() {
-    if (!capturing_.load()) return;
+    if (!capturing_.load())
+        return;
     QMetaObject::invokeMethod(worker_, "requestStop", Qt::QueuedConnection);
 }
 

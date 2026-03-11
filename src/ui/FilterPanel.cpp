@@ -3,6 +3,9 @@
 
 #include <QGridLayout>
 
+#include <algorithm>
+#include <array>
+
 namespace nids::ui {
 
 FilterPanel::FilterPanel(const nids::core::ServiceRegistry& registry, QWidget* parent)
@@ -17,7 +20,9 @@ FilterPanel::FilterPanel(const nids::core::ServiceRegistry& registry, QWidget* p
 void FilterPanel::setupLayout() {
     auto* layout = new QGridLayout(this);
 
-    auto makeLabel = [this](const QString& text) { return new QLabel(text, this); };
+    auto makeLabel = [this](const QString& text) {
+        return new QLabel(text, this);
+    };
 
     layout->addWidget(makeLabel("Network Card"), 0, 0);
     networkCardCombo_ = new QComboBox(this);
@@ -130,33 +135,31 @@ void FilterPanel::setButtonText(const QString& text) {
 }
 
 void FilterPanel::validateInputs() {
-    auto isValid = [](const QRegularExpression& re, const QLineEdit* edit) {
-        return !edit->text().isEmpty() && re.match(edit->text()).hasMatch();
+    // Each field is OK if it's either valid or empty.
+    // The button is enabled if every field is OK.
+    struct FieldCheck {
+        const QRegularExpression* regex;
+        const QLineEdit* edit;
     };
-    auto isEmpty = [](const QLineEdit* edit) { return edit->text().isEmpty(); };
 
-    bool sipValid = isValid(ipRegex_, sourceIpEdit_);
-    bool spValid = isValid(portRegex_, sourcePortEdit_);
-    bool dipValid = isValid(ipRegex_, destIpEdit_);
-    bool dpValid = isValid(portRegex_, destPortEdit_);
-    bool sipEmpty = isEmpty(sourceIpEdit_);
-    bool spEmpty = isEmpty(sourcePortEdit_);
-    bool dipEmpty = isEmpty(destIpEdit_);
-    bool dpEmpty = isEmpty(destPortEdit_);
+    const std::array<FieldCheck, 4> fields = {{
+        {&ipRegex_, sourceIpEdit_},
+        {&portRegex_, sourcePortEdit_},
+        {&ipRegex_, destIpEdit_},
+        {&portRegex_, destPortEdit_},
+    }};
 
-    // Enable if: all valid, all empty, or any valid subset with remaining empty
-    bool allValid = sipValid && spValid && dipValid && dpValid;
-    bool allEmpty = sipEmpty && spEmpty && dipEmpty && dpEmpty;
+    bool allOk = std::ranges::all_of(fields, [](const FieldCheck& f) {
+        const auto& text = f.edit->text();
+        return text.isEmpty() || f.regex->match(text).hasMatch();
+    });
 
-    auto fieldOk = [](bool valid, bool empty) { return valid || empty; };
-    bool eachOk = fieldOk(sipValid, sipEmpty) && fieldOk(spValid, spEmpty)
-                  && fieldOk(dipValid, dipEmpty) && fieldOk(dpValid, dpEmpty);
-
-    startStopButton_->setEnabled(allValid || allEmpty || eachOk);
+    startStopButton_->setEnabled(allOk);
 }
 
 void FilterPanel::onApplicationChanged(int index) {
-    if (index == -1) return;
+    if (index == -1)
+        return;
 
     QString selected = applicationCombo_->itemText(index);
     if (selected == "Other...") {
@@ -192,15 +195,18 @@ void FilterPanel::updateApplicationFromPort() {
             applicationCombo_->setCurrentIndex(applicationCombo_->findText(name));
         } else {
             int existing = applicationCombo_->findText(lastAddedService_);
-            if (existing != -1) applicationCombo_->removeItem(existing);
+            if (existing != -1)
+                applicationCombo_->removeItem(existing);
             applicationCombo_->addItem(name);
             applicationCombo_->setCurrentIndex(applicationCombo_->count() - 1);
             lastAddedService_ = name;
         }
     };
 
-    if (dstOk) update(dstPort);
-    else if (srcOk) update(srcPort);
+    if (dstOk)
+        update(dstPort);
+    else if (srcOk)
+        update(srcPort);
 }
 
 } // namespace nids::ui

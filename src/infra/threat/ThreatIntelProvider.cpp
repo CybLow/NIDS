@@ -6,11 +6,49 @@
 #include <charconv>
 #include <filesystem>
 #include <fstream>
+#include <ranges>
 #include <string>
 
 namespace fs = std::filesystem;
 
 namespace nids::infra {
+
+namespace {
+
+/// Strip leading and trailing whitespace in-place. Returns false if the line is blank.
+bool stripWhitespace(std::string& line) {
+    auto start = line.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos)
+        return false;
+    auto end = line.find_last_not_of(" \t\r\n");
+    if (start > 0 || end < line.size() - 1) {
+        line = line.substr(start, end - start + 1);
+    }
+    return true;
+}
+
+/// Extract the IP/CIDR portion from a feed line that may contain
+/// delimiters like ';', ',' or spaces (e.g., "IP;port", "IP,description").
+void extractIpField(std::string& line) {
+    if (auto pos = line.find(';'); pos != std::string::npos) {
+        line.resize(pos);
+    }
+    if (auto pos = line.find(','); pos != std::string::npos) {
+        line.resize(pos);
+    }
+    if (auto pos = line.find(' '); pos != std::string::npos) {
+        line.resize(pos);
+    }
+    // Strip trailing whitespace after truncation
+    auto end = line.find_last_not_of(" \t\r\n");
+    if (end == std::string::npos) {
+        line.clear();
+    } else {
+        line.resize(end + 1);
+    }
+}
+
+} // anonymous namespace
 
 std::size_t ThreatIntelProvider::loadFeeds(const std::string& feedDirectory) {
     if (!fs::exists(feedDirectory) || !fs::is_directory(feedDirectory)) {
@@ -39,6 +77,7 @@ std::size_t ThreatIntelProvider::loadFeeds(const std::string& feedDirectory) {
         if (loaded > 0) {
             totalLoaded += loaded;
             ++feedCount_;
+            feedNames_.push_back(feedName);
             spdlog::info("Loaded {} entries from threat feed '{}'", loaded, feedName);
         }
     }
@@ -53,6 +92,28 @@ std::size_t ThreatIntelProvider::loadFeeds(const std::string& feedDirectory) {
     return totalLoaded;
 }
 
+std::size_t ThreatIntelProvider::parseAndStoreEntry(const std::string& entry,
+                                                     const std::string& feedName) {
+    // CIDR range (contains '/')
+    if (entry.find('/') != std::string::npos) {
+        std::uint32_t network = 0;
+        std::uint32_t mask = 0;
+        if (parseCidr(entry, network, mask)) {
+            cidrRanges_.push_back({network, mask, feedName});
+            return 1;
+        }
+        return 0;
+    }
+
+    // Individual IP
+    auto ip = parseIpv4(entry);
+    if (ip != 0) {
+        ipEntries_[ip] = feedName;
+        return 1;
+    }
+    return 0;
+}
+
 std::size_t ThreatIntelProvider::loadFeedFile(const std::string& filePath,
                                               const std::string& feedName) {
     std::ifstream file(filePath);
@@ -65,56 +126,18 @@ std::size_t ThreatIntelProvider::loadFeedFile(const std::string& filePath,
     std::string line;
 
     while (std::getline(file, line)) {
-        // Strip leading/trailing whitespace
-        auto start = line.find_first_not_of(" \t\r\n");
-        if (start == std::string::npos) {
-            continue;  // blank line
-        }
-        auto end = line.find_last_not_of(" \t\r\n");
-        line = line.substr(start, end - start + 1);
+        if (!stripWhitespace(line))
+            continue;
 
         // Skip comments (lines starting with # or ;)
-        if (line.empty() || line[0] == '#' || line[0] == ';') {
+        if (line[0] == '#' || line[0] == ';')
             continue;
-        }
 
-        // Some feeds have IP;port or IP,description format -- extract just the IP/CIDR
-        auto semicolonPos = line.find(';');
-        if (semicolonPos != std::string::npos) {
-            line = line.substr(0, semicolonPos);
-        }
-        auto commaPos = line.find(',');
-        if (commaPos != std::string::npos) {
-            line = line.substr(0, commaPos);
-        }
-        auto spacePos = line.find(' ');
-        if (spacePos != std::string::npos) {
-            line = line.substr(0, spacePos);
-        }
-
-        // Strip again after truncation
-        end = line.find_last_not_of(" \t\r\n");
-        if (end == std::string::npos) {
+        extractIpField(line);
+        if (line.empty())
             continue;
-        }
-        line = line.substr(0, end + 1);
 
-        // Check if it's a CIDR range
-        if (line.find('/') != std::string::npos) {
-            std::uint32_t network = 0;
-            std::uint32_t mask = 0;
-            if (parseCidr(line, network, mask)) {
-                cidrRanges_.push_back({network, mask, feedName});
-                ++count;
-            }
-        } else {
-            // Individual IP
-            auto ip = parseIpv4(line);
-            if (ip != 0) {
-                ipEntries_[ip] = feedName;
-                ++count;
-            }
-        }
+        count += parseAndStoreEntry(line, feedName);
     }
 
     return count;
@@ -140,10 +163,11 @@ nids::core::ThreatIntelLookup ThreatIntelProvider::lookup(std::uint32_t ip) cons
 }
 
 nids::core::ThreatIntelLookup ThreatIntelProvider::lookupCidr(std::uint32_t ip) const {
-    for (const auto& range : cidrRanges_) {
-        if ((ip & range.mask) == range.network) {
-            return {true, range.feedName};
-        }
+    auto it = std::ranges::find_if(cidrRanges_, [ip](const CidrRange& range) {
+        return (ip & range.mask) == range.network;
+    });
+    if (it != cidrRanges_.end()) {
+        return {true, it->feedName};
     }
     return {};
 }
@@ -154,6 +178,10 @@ std::size_t ThreatIntelProvider::entryCount() const noexcept {
 
 std::size_t ThreatIntelProvider::feedCount() const noexcept {
     return feedCount_;
+}
+
+std::vector<std::string> ThreatIntelProvider::feedNames() const {
+    return feedNames_;
 }
 
 std::uint32_t ThreatIntelProvider::parseIpv4(std::string_view ip) noexcept {

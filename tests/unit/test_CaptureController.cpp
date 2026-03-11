@@ -228,7 +228,8 @@ TEST_F(CaptureControllerTest, destructor_stopsCapture) {
     EXPECT_CALL(*mockPtr, setPacketCallback(_));
     EXPECT_CALL(*mockPtr, setErrorCallback(_));
     EXPECT_CALL(*mockPtr, isCapturing())
-        .WillOnce(Return(true))   // destructor check
+        .WillOnce(Return(true))   // destructor: if (isCapturing())
+        .WillOnce(Return(true))   // stopCapture: if (!isCapturing()) guard
         .WillRepeatedly(Return(false));
     EXPECT_CALL(*mockPtr, stopCapture()).Times(1);
 

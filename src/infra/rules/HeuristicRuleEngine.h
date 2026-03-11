@@ -15,6 +15,7 @@
 
 namespace nids::infra {
 
+/** Heuristic rule engine that evaluates flows against predefined anomaly rules. */
 class HeuristicRuleEngine : public nids::core::IRuleEngine {
 public:
     HeuristicRuleEngine() = default;

@@ -9,13 +9,16 @@
 
 namespace nids::ui {
 
+/** Modal dialog for selecting a network service from a list. */
 class ServiceDialog : public QDialog {
     Q_OBJECT
 
 public:
+    /** Construct with the set of available service names. */
     explicit ServiceDialog(const std::set<std::string>& services,
                            QWidget* parent = nullptr);
 
+    /** Return the service name selected by the user, or empty if cancelled. */
     [[nodiscard]] QString getSelectedService() const;
 
 private slots:

@@ -6,6 +6,7 @@
 #include "core/services/IPacketCapture.h"
 #include "core/services/IPacketAnalyzer.h"
 #include "core/services/IFlowExtractor.h"
+#include "core/services/IFeatureNormalizer.h"
 #include "core/model/CaptureSession.h"
 #include "core/model/AttackType.h"
 #include "infra/flow/NativeFlowExtractor.h"  // kFlowFeatureCount
@@ -41,11 +42,32 @@ public:
 
 class MockExtractor : public IFlowExtractor {
 public:
+    MockExtractor() {
+        ON_CALL(*this, flowMetadata())
+            .WillByDefault(::testing::ReturnRef(emptyMetadata_));
+    }
+
     MOCK_METHOD(std::vector<std::vector<float>>, extractFeatures, (const std::string&), (override));
     MOCK_METHOD(const std::vector<FlowInfo>&, flowMetadata, (), (const, noexcept, override));
 
 private:
     std::vector<FlowInfo> emptyMetadata_;
+};
+
+/// Pass-through normalizer mock: returns features unchanged.
+class MockNormalizer : public IFeatureNormalizer {
+public:
+    MOCK_METHOD(bool, loadMetadata, (const std::string&), (override));
+    MOCK_METHOD(std::vector<float>, normalize, (const std::vector<float>&), (const, override));
+    MOCK_METHOD(bool, isLoaded, (), (const, noexcept, override));
+    MOCK_METHOD(std::size_t, featureCount, (), (const, noexcept, override));
+
+    static std::unique_ptr<MockNormalizer> createPassThrough() {
+        auto mock = std::make_unique<MockNormalizer>();
+        ON_CALL(*mock, normalize(_))
+            .WillByDefault([](const std::vector<float>& f) { return f; });
+        return mock;
+    }
 };
 
 // ── Fixture ──────────────────────────────────────────────────────────
@@ -122,7 +144,8 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
         .WillOnce(Return(AttackType::Benign))
         .WillOnce(Return(AttackType::SynFlood));
 
-    AnalysisService analysisService(std::move(analyzer), std::move(extractor));
+    AnalysisService analysisService(std::move(analyzer), std::move(extractor),
+                                    MockNormalizer::createPassThrough());
 
     QSignalSpy startedSpy(&analysisService, &AnalysisService::analysisStarted);
     QSignalSpy finishedSpy(&analysisService, &AnalysisService::analysisFinished);
@@ -176,7 +199,8 @@ TEST_F(PipelineTest, analysisWithAllAttackTypes) {
             return attackTypeFromIndex(callIndex++);
         }));
 
-    AnalysisService service(std::move(analyzer), std::move(extractor));
+    AnalysisService service(std::move(analyzer), std::move(extractor),
+                            MockNormalizer::createPassThrough());
 
     CaptureSession session;
     service.analyzeCapture("all_types.pcap", session);

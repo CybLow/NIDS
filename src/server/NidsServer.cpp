@@ -12,7 +12,8 @@ NidsServer::~NidsServer() {
 }
 
 void NidsServer::start() {
-    if (running_.load()) return;
+    if (running_.load())
+        return;
     running_.store(true);
 
     spdlog::info("NIDS Server starting on {}", config_.listenAddress);
@@ -20,7 +21,8 @@ void NidsServer::start() {
 }
 
 void NidsServer::stop() {
-    if (!running_.load()) return;
+    if (!running_.load())
+        return;
     running_.store(false);
     spdlog::info("NIDS Server stopped");
 }

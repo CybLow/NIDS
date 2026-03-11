@@ -224,3 +224,112 @@ TEST(ConfigLoader, emptyJsonSucceeds) {
 
     fs::remove(tmpPath);
 }
+
+TEST(ConfigLoader, existingButUnreadableFileReturnsFalse) {
+    auto& config = Configuration::instance();
+
+    // Create a temporary file, then remove read permission
+    auto tmpPath = fs::temp_directory_path() / "nids_test_config_noread.json";
+    {
+        std::ofstream out(tmpPath);
+        out << R"({"model": {"path": "test.onnx"}})";
+    }
+    // Remove all permissions so ifstream cannot open it
+    fs::permissions(tmpPath, fs::perms::none);
+
+    EXPECT_FALSE(nids::infra::loadConfigFromFile(tmpPath, config));
+
+    // Restore permissions and cleanup
+    fs::permissions(tmpPath, fs::perms::owner_all);
+    fs::remove(tmpPath);
+}
+
+// ── ConfigLoader: threat_intel.directory override ────────────────────
+
+TEST(ConfigLoader, validJsonOverridesThreatIntelDirectory) {
+    auto& config = Configuration::instance();
+    auto origDir = config.threatIntelDirectory();
+
+    auto tmpPath = fs::temp_directory_path() / "nids_test_config_ti.json";
+    {
+        std::ofstream out(tmpPath);
+        out << R"({
+            "threat_intel": {
+                "directory": "/opt/nids/feeds"
+            }
+        })";
+    }
+
+    EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+    EXPECT_EQ(config.threatIntelDirectory(), "/opt/nids/feeds");
+
+    // Restore and cleanup
+    config.setThreatIntelDirectory(origDir);
+    fs::remove(tmpPath);
+}
+
+// ── ConfigLoader: model.onnx_intra_op_threads override ───────────────
+
+TEST(ConfigLoader, validJsonOverridesOnnxThreads) {
+    auto& config = Configuration::instance();
+    auto origThreads = config.onnxIntraOpThreads();
+
+    auto tmpPath = fs::temp_directory_path() / "nids_test_config_threads.json";
+    {
+        std::ofstream out(tmpPath);
+        out << R"({
+            "model": {
+                "onnx_intra_op_threads": 8
+            }
+        })";
+    }
+
+    EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+    EXPECT_EQ(config.onnxIntraOpThreads(), 8);
+
+    // Restore and cleanup
+    config.setOnnxIntraOpThreads(origThreads);
+    fs::remove(tmpPath);
+}
+
+// ── ConfigLoader: all sections combined ──────────────────────────────
+
+TEST(ConfigLoader, validJsonOverridesMultipleSections) {
+    auto& config = Configuration::instance();
+    auto origModel = config.modelPath();
+    auto origDump = config.defaultDumpFile();
+    auto origTitle = config.windowTitle();
+    auto origMl = config.weightMl();
+
+    auto tmpPath = fs::temp_directory_path() / "nids_test_config_multi.json";
+    {
+        std::ofstream out(tmpPath);
+        out << R"({
+            "model": {
+                "path": "/tmp/test.onnx"
+            },
+            "capture": {
+                "dump_file": "test_dump.pcap"
+            },
+            "hybrid_detection": {
+                "weight_ml": 0.5
+            },
+            "ui": {
+                "window_title": "Multi Test"
+            }
+        })";
+    }
+
+    EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+    EXPECT_EQ(config.modelPath(), fs::path("/tmp/test.onnx"));
+    EXPECT_EQ(config.defaultDumpFile(), "test_dump.pcap");
+    EXPECT_FLOAT_EQ(config.weightMl(), 0.5f);
+    EXPECT_EQ(config.windowTitle(), "Multi Test");
+
+    // Restore and cleanup
+    config.setModelPath(origModel);
+    config.setDefaultDumpFile(origDump);
+    config.setWeightMl(origMl);
+    config.setWindowTitle(origTitle);
+    fs::remove(tmpPath);
+}

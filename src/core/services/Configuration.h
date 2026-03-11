@@ -14,66 +14,92 @@
 
 namespace nids::core {
 
+/** Centralized application configuration singleton. */
 class Configuration {
 public:
     /// Access the singleton instance.
     [[nodiscard]] static Configuration& instance();
 
-    // -- Model --
-
-    [[nodiscard]] std::filesystem::path modelPath() const;
-    [[nodiscard]] std::filesystem::path modelMetadataPath() const;
-
-    void setModelPath(const std::filesystem::path& path);
-    void setModelMetadataPath(const std::filesystem::path& path);
-
-    // -- Capture --
-
-    [[nodiscard]] std::string defaultDumpFile() const;
-    [[nodiscard]] int64_t flowTimeoutUs() const;
-    [[nodiscard]] int64_t idleThresholdUs() const;
-
-    void setDefaultDumpFile(const std::string& file);
-    void setFlowTimeoutUs(int64_t timeoutUs);
-    void setIdleThresholdUs(int64_t thresholdUs);
-
-    // -- Analysis --
-
-    [[nodiscard]] std::filesystem::path tempDirectory() const;
-    [[nodiscard]] int onnxIntraOpThreads() const;
-
-    void setOnnxIntraOpThreads(int threads);
-
-    // -- Threat Intelligence --
-
-    [[nodiscard]] std::filesystem::path threatIntelDirectory() const;
-    void setThreatIntelDirectory(const std::filesystem::path& path);
-
-    // -- Hybrid Detection --
-
-    [[nodiscard]] float mlConfidenceThreshold() const noexcept;
-    [[nodiscard]] float weightMl() const noexcept;
-    [[nodiscard]] float weightThreatIntel() const noexcept;
-    [[nodiscard]] float weightHeuristic() const noexcept;
-
-    void setMlConfidenceThreshold(float threshold);
-    void setWeightMl(float weight);
-    void setWeightThreatIntel(float weight);
-    void setWeightHeuristic(float weight);
-
-    // -- UI --
-
-    [[nodiscard]] std::string windowTitle() const;
-    void setWindowTitle(const std::string& title);
-
-private:
-    Configuration();
-
-    // Non-copyable, non-movable
+    // Non-copyable, non-movable (Meyers singleton)
     Configuration(const Configuration&) = delete;
     Configuration& operator=(const Configuration&) = delete;
     Configuration(Configuration&&) = delete;
     Configuration& operator=(Configuration&&) = delete;
+
+    // -- Model --
+
+    /** Get the path to the ONNX ML model file. */
+    [[nodiscard]] std::filesystem::path modelPath() const;
+    /** Get the path to the model metadata (normalizer parameters) file. */
+    [[nodiscard]] std::filesystem::path modelMetadataPath() const;
+
+    /** Set the path to the ONNX ML model file. */
+    void setModelPath(const std::filesystem::path& path);
+    /** Set the path to the model metadata file. */
+    void setModelMetadataPath(const std::filesystem::path& path);
+
+    // -- Capture --
+
+    /** Get the default pcap dump file path. */
+    [[nodiscard]] const std::string& defaultDumpFile() const;
+    /** Get the flow timeout in microseconds. Flows idle beyond this are exported. */
+    [[nodiscard]] int64_t flowTimeoutUs() const;
+    /** Get the idle threshold in microseconds for flow expiry. */
+    [[nodiscard]] int64_t idleThresholdUs() const;
+
+    /** Set the default pcap dump file path. */
+    void setDefaultDumpFile(const std::string& file);
+    /** Set the flow timeout in microseconds. */
+    void setFlowTimeoutUs(int64_t timeoutUs);
+    /** Set the idle threshold in microseconds. */
+    void setIdleThresholdUs(int64_t thresholdUs);
+
+    // -- Analysis --
+
+    /** Get the platform temporary directory for intermediate files. */
+    [[nodiscard]] static std::filesystem::path tempDirectory();
+    /** Get the number of ONNX Runtime intra-op parallelism threads. */
+    [[nodiscard]] int onnxIntraOpThreads() const;
+
+    /** Set the number of ONNX Runtime intra-op parallelism threads. */
+    void setOnnxIntraOpThreads(int threads);
+
+    // -- Threat Intelligence --
+
+    /** Get the directory containing threat intelligence feed files. */
+    [[nodiscard]] std::filesystem::path threatIntelDirectory() const;
+    /** Set the directory containing threat intelligence feed files. */
+    void setThreatIntelDirectory(const std::filesystem::path& path);
+
+    // -- Hybrid Detection --
+
+    /** Get the ML confidence threshold below which TI/rules take precedence. */
+    [[nodiscard]] float mlConfidenceThreshold() const noexcept;
+    /** Get the scoring weight for the ML detection layer. */
+    [[nodiscard]] float weightMl() const noexcept;
+    /** Get the scoring weight for the threat intelligence layer. */
+    [[nodiscard]] float weightThreatIntel() const noexcept;
+    /** Get the scoring weight for the heuristic rules layer. */
+    [[nodiscard]] float weightHeuristic() const noexcept;
+
+    /** Set the ML confidence threshold. */
+    void setMlConfidenceThreshold(float threshold);
+    /** Set the scoring weight for the ML detection layer. */
+    void setWeightMl(float weight);
+    /** Set the scoring weight for the threat intelligence layer. */
+    void setWeightThreatIntel(float weight);
+    /** Set the scoring weight for the heuristic rules layer. */
+    void setWeightHeuristic(float weight);
+
+    // -- UI --
+
+    /** Get the main window title string. */
+    [[nodiscard]] const std::string& windowTitle() const;
+    /** Set the main window title string. */
+    void setWindowTitle(const std::string& title);
+
+private:
+    Configuration();
 
     std::filesystem::path modelPath_;
     std::filesystem::path metadataPath_;

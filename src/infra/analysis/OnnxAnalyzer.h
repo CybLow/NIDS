@@ -18,8 +18,10 @@
 
 namespace nids::infra {
 
+/** ONNX Runtime-based packet analyzer for ML inference. */
 class OnnxAnalyzer : public nids::core::IPacketAnalyzer {
 public:
+    /** Construct analyzer and initialize the ONNX Runtime environment. */
     OnnxAnalyzer();
     ~OnnxAnalyzer() override;
 

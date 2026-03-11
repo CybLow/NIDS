@@ -23,6 +23,7 @@
 
 namespace nids::infra {
 
+/** Threat intelligence provider backed by plain-text IP blocklist feeds. */
 class ThreatIntelProvider : public nids::core::IThreatIntelligence {
 public:
     ThreatIntelProvider() = default;
@@ -32,6 +33,7 @@ public:
     [[nodiscard]] nids::core::ThreatIntelLookup lookup(std::uint32_t ip) const override;
     [[nodiscard]] std::size_t entryCount() const noexcept override;
     [[nodiscard]] std::size_t feedCount() const noexcept override;
+    [[nodiscard]] std::vector<std::string> feedNames() const override;
 
     /// Load a single feed file. Returns the number of entries loaded.
     [[nodiscard]] std::size_t loadFeedFile(const std::string& filePath,
@@ -58,6 +60,9 @@ private:
     /// Check if an IP matches any loaded CIDR range.
     [[nodiscard]] nids::core::ThreatIntelLookup lookupCidr(std::uint32_t ip) const;
 
+    /// Parse a single feed entry (IP or CIDR) and store it. Returns 1 on success, 0 on failure.
+    std::size_t parseAndStoreEntry(const std::string& entry, const std::string& feedName);
+
     /// Individual IPs mapped to their feed name.
     std::unordered_map<std::uint32_t, std::string> ipEntries_;
 
@@ -66,6 +71,9 @@ private:
 
     /// Number of distinct feeds loaded.
     std::size_t feedCount_ = 0;
+
+    /// Names of all loaded feeds, in load order.
+    std::vector<std::string> feedNames_;
 };
 
 } // namespace nids::infra
