@@ -3,7 +3,6 @@
   "version": "0.2.0",
   "description": "Network Intrusion Detection System with AI-powered attack classification",
   "dependencies": [
-    "onnxruntime",
     "nlohmann-json",
     "spdlog",
     {

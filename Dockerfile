@@ -1,7 +1,8 @@
 # Stage 1: Build
 FROM ubuntu:24.04 AS builder
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    ONNXRUNTIME_VERSION=1.20.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc-13 g++-13 \
@@ -16,6 +17,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tar \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
+
+# Install ONNX Runtime from pre-built binaries
+RUN curl -sSfL -o /tmp/onnxruntime.tgz \
+        "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz" && \
+    tar -xzf /tmp/onnxruntime.tgz -C /usr/local --strip-components=1 && \
+    ldconfig && rm /tmp/onnxruntime.tgz
 
 # Install vcpkg for dependency management
 WORKDIR /opt
@@ -49,6 +56,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libqt6gui6 \
     libqt6core6 \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy ONNX Runtime shared libs from builder
+COPY --from=builder /usr/local/lib/libonnxruntime* /usr/local/lib/
+RUN ldconfig
 
 WORKDIR /app
 

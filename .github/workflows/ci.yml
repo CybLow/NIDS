@@ -14,6 +14,7 @@ env:
   VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
   VCPKG_DISABLE_METRICS: 1
   VCPKG_COMMIT: '01f602195983451bc83e72f4214af2cbc495aa94'
+  ONNXRUNTIME_VERSION: '1.20.1'
 
 jobs:
   # ── Stage 1: Build matrix (GCC + Clang) ──────────────────────────
@@ -46,6 +47,13 @@ jobs:
             qt6-base-dev \
             libpcap-dev \
             curl zip unzip tar pkg-config
+
+      - name: Install ONNX Runtime
+        run: |
+          curl -sSfL -o /tmp/onnxruntime.tgz \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz"
+          sudo tar -xzf /tmp/onnxruntime.tgz -C /usr/local --strip-components=1
+          sudo ldconfig
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
@@ -116,6 +124,13 @@ jobs:
             libpcap-dev \
             curl zip unzip tar pkg-config
 
+      - name: Install ONNX Runtime
+        run: |
+          curl -sSfL -o /tmp/onnxruntime.tgz \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz"
+          sudo tar -xzf /tmp/onnxruntime.tgz -C /usr/local --strip-components=1
+          sudo ldconfig
+
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
@@ -173,6 +188,13 @@ jobs:
             qt6-base-dev \
             libpcap-dev \
             curl zip unzip tar pkg-config
+
+      - name: Install ONNX Runtime
+        run: |
+          curl -sSfL -o /tmp/onnxruntime.tgz \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz"
+          sudo tar -xzf /tmp/onnxruntime.tgz -C /usr/local --strip-components=1
+          sudo ldconfig
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
@@ -243,6 +265,13 @@ jobs:
             libpcap-dev \
             cppcheck \
             curl zip unzip tar pkg-config
+
+      - name: Install ONNX Runtime
+        run: |
+          curl -sSfL -o /tmp/onnxruntime.tgz \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz"
+          sudo tar -xzf /tmp/onnxruntime.tgz -C /usr/local --strip-components=1
+          sudo ldconfig
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
@@ -336,6 +365,13 @@ jobs:
             lcov \
             curl zip unzip tar pkg-config python3-pip
           pip3 install --break-system-packages gcovr
+
+      - name: Install ONNX Runtime
+        run: |
+          curl -sSfL -o /tmp/onnxruntime.tgz \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz"
+          sudo tar -xzf /tmp/onnxruntime.tgz -C /usr/local --strip-components=1
+          sudo ldconfig
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11

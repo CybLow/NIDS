@@ -15,7 +15,8 @@ FROM ubuntu:24.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive \
     VCPKG_DISABLE_METRICS=1 \
-    VCPKG_ROOT=/opt/vcpkg
+    VCPKG_ROOT=/opt/vcpkg \
+    ONNXRUNTIME_VERSION=1.20.1
 
 # -- System dependencies (build + lint + coverage tools) --
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -33,6 +34,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates curl zip unzip tar pkg-config \
     && pip3 install --break-system-packages gcovr \
     && rm -rf /var/lib/apt/lists/*
+
+# -- Install ONNX Runtime from pre-built binaries --
+RUN curl -sSfL -o /tmp/onnxruntime.tgz \
+        "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz" && \
+    tar -xzf /tmp/onnxruntime.tgz -C /usr/local --strip-components=1 && \
+    ldconfig && rm /tmp/onnxruntime.tgz
 
 # -- vcpkg bootstrap --
 RUN git clone --depth 1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}" \
