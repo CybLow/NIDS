@@ -1,0 +1,52 @@
+# Dockerfile.ci — CI builder image for NIDS
+#
+# Multi-stage image that:
+#  1. Installs all build and analysis dependencies (gcc, clang-tidy, cppcheck, gcovr)
+#  2. Bootstraps vcpkg and pre-installs project dependencies
+#  3. Provides entrypoints for build, test, lint, coverage, and scan stages
+#
+# Usage:
+#   docker build -f Dockerfile.ci --target builder -t nids-ci:builder .
+#   docker run --rm -v $PWD:/workspace nids-ci:builder cmake --build build --parallel
+#
+# See docker-compose.ci.yml for orchestrated usage.
+
+FROM ubuntu:24.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    VCPKG_DISABLE_METRICS=1 \
+    VCPKG_ROOT=/opt/vcpkg
+
+# -- System dependencies (build + lint + coverage tools) --
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Compilers
+    gcc-13 g++-13 clang-17 clang-tidy-17 clang-tools-17 \
+    # Build system
+    cmake ninja-build make \
+    # Libraries
+    qt6-base-dev libpcap-dev \
+    # Static analysis
+    cppcheck \
+    # Coverage
+    lcov python3-pip \
+    # vcpkg bootstrap
+    git ca-certificates curl zip unzip tar pkg-config \
+    && pip3 install --break-system-packages gcovr \
+    && rm -rf /var/lib/apt/lists/*
+
+# -- vcpkg bootstrap --
+RUN git clone --depth 1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}" \
+    && "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
+
+# -- Pre-install vcpkg deps for cache efficiency --
+WORKDIR /workspace
+COPY vcpkg.json .
+RUN "${VCPKG_ROOT}/vcpkg" install --triplet x64-linux
+
+# -- Default compiler aliases --
+ENV CC=gcc-13 CXX=g++-13
+
+COPY . .
+
+# -- Default: interactive shell --
+CMD ["/bin/bash"]

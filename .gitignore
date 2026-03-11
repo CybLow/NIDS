@@ -28,6 +28,8 @@ compile_commands.json
 .idea/
 .vscode/
 .cursor/
+.clangd
+.sonarlint/
 *.swp
 *.swo
 *~
@@ -50,9 +52,7 @@ vcpkg_installed/
 *.zip
 
 # ── ML model artifacts (produced by training pipeline) ───────────
-models/evaluation/
-models/training_summary.json
-models/model_metadata.json
+models/
 
 # ── Python ───────────────────────────────────────────────────────
 __pycache__/
@@ -74,6 +74,10 @@ cppcheck-report.xml
 gcc-warnings.txt
 clang-tidy-report.txt
 sonarqube-data/
+
+# ── Coverage artifacts (generated, not committed) ────────────────
+coverage-cobertura.xml
+coverage.info
 
 # ── OS junk ──────────────────────────────────────────────────────
 .DS_Store
