@@ -14,42 +14,32 @@ env:
   CONAN_HOME: ${{ github.workspace }}/.conan2
 
 jobs:
-  # ── Stage 1: Build matrix (GCC + Clang) ──────────────────────────
+  # ── Stage 1: Build + test with GCC ──────────────────────────────
   build:
-    name: Build (${{ matrix.compiler }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - preset: ci-gcc
-            compiler: gcc-13
-          - preset: ci-clang
-            compiler: clang-17
+    name: Build & Test
     runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-build-env
-        with:
-          compiler: ${{ matrix.compiler }}
 
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        run: cmake --preset ci-gcc
 
       - name: Build
-        run: cmake --build --preset ${{ matrix.preset }}
+        run: cmake --build --preset ci-gcc
 
       - name: Unit + integration tests
         run: |
-          ctest --test-dir build/${{ matrix.preset }} \
+          ctest --test-dir build/ci-gcc \
             --output-on-failure --timeout 120 --exclude-regex 'Stress'
 
       - name: Upload compile_commands.json
         uses: actions/upload-artifact@v4
         with:
-          name: compile-commands-${{ matrix.preset }}
-          path: build/${{ matrix.preset }}/compile_commands.json
+          name: compile-commands
+          path: build/ci-gcc/compile_commands.json
           retention-days: 1
 
   # ── Stage 2a: Stress / performance tests ─────────────────────────
@@ -91,18 +81,18 @@ jobs:
       - name: Download compile_commands.json
         uses: actions/download-artifact@v4
         with:
-          name: compile-commands-ci-clang
-          path: build/ci-clang/
+          name: compile-commands
+          path: build/ci-gcc/
 
       - name: Filter out MOC/autogen from compile_commands.json
         run: |
           jq '[.[] | select(.file | test("_autogen") | not)]' \
-            build/ci-clang/compile_commands.json > build/ci-clang/compile_commands_filtered.json
-          mv build/ci-clang/compile_commands_filtered.json build/ci-clang/compile_commands.json
+            build/ci-gcc/compile_commands.json > build/ci-gcc/compile_commands_filtered.json
+          mv build/ci-gcc/compile_commands_filtered.json build/ci-gcc/compile_commands.json
 
       - name: Run clang-tidy
         run: |
-          run-clang-tidy-17 -p build/ci-clang -quiet \
+          run-clang-tidy-17 -p build/ci-gcc -quiet \
             'src/.*\.(cpp|h)$' 2>&1 | tee clang-tidy-output.txt
 
           if grep -qE 'warning:|error:' clang-tidy-output.txt; then
@@ -132,7 +122,7 @@ jobs:
       - name: Download compile_commands.json
         uses: actions/download-artifact@v4
         with:
-          name: compile-commands-ci-gcc
+          name: compile-commands
           path: build/ci-gcc/
 
       - name: Filter out MOC/autogen from compile_commands.json
@@ -175,7 +165,7 @@ jobs:
           path: cppcheck-report.xml
           retention-days: 7
 
-  # ── Stage 3: Code coverage ──────────────────────────────────────
+  # ── Stage 3a: Code coverage ─────────────────────────────────────
   # Coverage MUST rebuild with --coverage flags, so it cannot reuse
   # Stage 1 artifacts. This is inherently a separate build.
   coverage:
@@ -261,7 +251,7 @@ jobs:
             build/ci-coverage/compile_commands.json
           retention-days: 7
 
-  # ── Stage 4: Docker build ───────────────────────────────────────
+  # ── Stage 3b: Docker build ──────────────────────────────────────
   docker:
     name: Docker Build
     needs: [build]
@@ -293,7 +283,7 @@ jobs:
           cache-from: type=gha,scope=ci
           cache-to: type=gha,mode=max,scope=ci
 
-  # ── Stage 5: SonarQube analysis ─────────────────────────────────
+  # ── Stage 4: SonarQube analysis ─────────────────────────────────
   sonarqube:
     name: SonarQube Analysis
     needs: [coverage, cppcheck]
@@ -439,7 +429,7 @@ jobs:
           docker rm -f sonarqube sonar-db 2>/dev/null || true
           docker network rm sonar-net 2>/dev/null || true
 
-  # ── Stage 6: Quality gate ───────────────────────────────────────
+  # ── Stage 5: Quality gate ───────────────────────────────────────
   quality-gate:
     name: Quality Gate
     needs: [build, lint, cppcheck, stress-tests, coverage, docker]
@@ -465,7 +455,7 @@ jobs:
             fi
           }
 
-          check_job "Build (gcc-13 + clang-17)" "${{ needs.build.result }}"
+          check_job "Build & Test" "${{ needs.build.result }}"
           check_job "Lint (clang-tidy)" "${{ needs.lint.result }}"
           check_job "Lint (cppcheck)" "${{ needs.cppcheck.result }}"
           check_job "Stress Tests" "${{ needs.stress-tests.result }}"

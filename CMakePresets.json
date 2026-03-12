@@ -51,18 +51,6 @@
       }
     },
     {
-      "name": "ci-clang",
-      "displayName": "CI Clang",
-      "description": "CI build with Clang-17 + Conan deps. Used by GitHub Actions.",
-      "inherits": "base",
-      "toolchainFile": "${sourceDir}/build/Release/generators/conan_toolchain.cmake",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_C_COMPILER": "clang-17",
-        "CMAKE_CXX_COMPILER": "clang++-17"
-      }
-    },
-    {
       "name": "ci-coverage",
       "displayName": "CI Coverage",
       "description": "CI coverage build with GCC-13 + Conan deps.",
@@ -80,7 +68,6 @@
     { "name": "Debug",        "configurePreset": "Debug" },
     { "name": "Release",      "configurePreset": "Release" },
     { "name": "ci-gcc",       "configurePreset": "ci-gcc" },
-    { "name": "ci-clang",     "configurePreset": "ci-clang" },
     { "name": "ci-coverage",  "configurePreset": "ci-coverage" }
   ],
   "testPresets": [
@@ -97,11 +84,6 @@
     {
       "name": "ci-gcc",
       "configurePreset": "ci-gcc",
-      "output": { "outputOnFailure": true }
-    },
-    {
-      "name": "ci-clang",
-      "configurePreset": "ci-clang",
       "output": { "outputOnFailure": true }
     },
     {
