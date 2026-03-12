@@ -443,8 +443,9 @@ jobs:
           QG=$(curl -sf -u "$SQ_AUTH" "http://localhost:9000/api/qualitygates/project_status?projectKey=nids" 2>/dev/null | \
             python3 -c "import json,sys; print(json.load(sys.stdin)['projectStatus']['status'])" 2>/dev/null || echo "UNKNOWN")
           echo "Quality gate: $QG"
-          [ "$QG" != "OK" ] && [ "$QG" != "NONE" ] && \
+          if [ "$QG" != "OK" ] && [ "$QG" != "NONE" ]; then
             echo "::warning::SonarQube quality gate: $QG (non-blocking)"
+          fi
 
       - name: Cleanup containers
         if: always()
