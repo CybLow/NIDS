@@ -355,37 +355,60 @@ jobs:
         run: |
           SQ="http://localhost:9000"
           AUTH="admin:admin"
-          curl -sf -u "$AUTH" -X POST "$SQ/api/users/change_password" \
-            -d "login=admin&previousPassword=admin&password=NidsCI2026!" || true
+
+          # Change default admin password (required by SonarQube before API usage)
+          echo "Changing admin password..."
+          curl -s -u "$AUTH" -X POST "$SQ/api/users/change_password" \
+            -d "login=admin&previousPassword=admin&password=NidsCI2026!" \
+            -w "\nHTTP %{http_code}\n"
           AUTH="admin:NidsCI2026!"
 
-          TOKEN=$(curl -sf -u "$AUTH" -X POST "$SQ/api/user_tokens/generate" \
-            -d "name=ci-token&type=GLOBAL_ANALYSIS_TOKEN" 2>/dev/null | \
+          # Generate analysis token
+          echo "Generating analysis token..."
+          TOKEN_RESP=$(curl -s -u "$AUTH" -X POST "$SQ/api/user_tokens/generate" \
+            -d "name=ci-token" -w "\nHTTP %{http_code}\n")
+          echo "$TOKEN_RESP" | tail -1
+          TOKEN=$(echo "$TOKEN_RESP" | head -1 | \
             python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::Failed to generate SonarQube token, using basic auth"
+          else
+            echo "Token generated successfully"
+          fi
           echo "SONAR_TOKEN=$TOKEN" >> "$GITHUB_ENV"
           echo "SQ_AUTH=$AUTH" >> "$GITHUB_ENV"
 
-          curl -sf -u "$AUTH" -X POST "$SQ/api/projects/create" -d "project=nids&name=NIDS" || true
+          # Create project and quality gate
+          curl -s -u "$AUTH" -X POST "$SQ/api/projects/create" \
+            -d "project=nids&name=NIDS" -w " HTTP %{http_code}\n" || true
 
-          QG_ID=$(curl -sf -u "$AUTH" -X POST "$SQ/api/qualitygates/create" -d "name=NIDS" 2>/dev/null | \
+          QG_ID=$(curl -s -u "$AUTH" -X POST "$SQ/api/qualitygates/create" \
+            -d "name=NIDS" 2>/dev/null | \
             python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
           if [ -n "$QG_ID" ]; then
-            curl -sf -u "$AUTH" -X POST "$SQ/api/qualitygates/create_condition" \
-              -d "gateName=NIDS&metric=new_coverage&op=LT&error=65" || true
-            curl -sf -u "$AUTH" -X POST "$SQ/api/qualitygates/create_condition" \
-              -d "gateName=NIDS&metric=new_violations&op=GT&error=0" || true
-            curl -sf -u "$AUTH" -X POST "$SQ/api/qualitygates/create_condition" \
-              -d "gateName=NIDS&metric=new_duplicated_lines_density&op=GT&error=3" || true
-            curl -sf -u "$AUTH" -X POST "$SQ/api/qualitygates/select" \
-              -d "gateName=NIDS&projectKey=nids" || true
+            curl -s -u "$AUTH" -X POST "$SQ/api/qualitygates/create_condition" \
+              -d "gateName=NIDS&metric=new_coverage&op=LT&error=65" > /dev/null || true
+            curl -s -u "$AUTH" -X POST "$SQ/api/qualitygates/create_condition" \
+              -d "gateName=NIDS&metric=new_violations&op=GT&error=0" > /dev/null || true
+            curl -s -u "$AUTH" -X POST "$SQ/api/qualitygates/create_condition" \
+              -d "gateName=NIDS&metric=new_duplicated_lines_density&op=GT&error=3" > /dev/null || true
+            curl -s -u "$AUTH" -X POST "$SQ/api/qualitygates/select" \
+              -d "gateName=NIDS&projectKey=nids" > /dev/null || true
           fi
 
       - name: Run SonarQube scan
         run: |
+          # Build auth args: prefer token, fall back to basic auth
+          if [ -n "$SONAR_TOKEN" ]; then
+            AUTH_ENV="-e SONAR_TOKEN=$SONAR_TOKEN"
+          else
+            AUTH_ENV="-e SONAR_LOGIN=admin -e SONAR_PASSWORD=NidsCI2026!"
+          fi
+
           docker run --rm --network=host \
             -v "${{ github.workspace }}:/usr/src" \
             -e SONAR_HOST_URL="http://localhost:9000" \
-            -e SONAR_TOKEN="$SONAR_TOKEN" \
+            $AUTH_ENV \
             -e SONAR_SCANNER_OPTS="-Dsonar.scm.disabled=true" \
             sonarsource/sonar-scanner-cli:latest \
             -Dsonar.projectKey=nids \
