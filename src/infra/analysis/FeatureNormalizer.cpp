@@ -42,7 +42,7 @@ namespace {
         return std::nullopt;
     }
 
-    return norm;
+    return std::make_optional(norm);
 }
 
 } // anonymous namespace

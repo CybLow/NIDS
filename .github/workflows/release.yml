@@ -10,8 +10,7 @@ permissions:
   packages: write
 
 env:
-  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
-  VCPKG_DISABLE_METRICS: 1
+  CONAN_HOME: ${{ github.workspace }}/.conan2
 
 jobs:
   build-release:
@@ -41,54 +40,49 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             gcc-13 g++-13 \
             cmake ninja-build \
-            qt6-base-dev \
             libpcap-dev \
-            curl zip unzip tar pkg-config
+            python3-pip \
+            '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev \
+            libxi-dev libxkbcommon-dev libxkbcommon-x11-dev libegl1-mesa-dev
           if [ "${{ matrix.package }}" = "rpm" ]; then
             sudo apt-get install -y --no-install-recommends rpm
           fi
 
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
+      - name: Install Conan
+        run: pip3 install --break-system-packages conan
 
-      - name: Cache vcpkg binary cache
+      - name: Cache Conan packages
         uses: actions/cache@v4
         with:
-          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-release-${{ hashFiles('vcpkg.json') }}
+          path: ${{ env.CONAN_HOME }}
+          key: conan-release-${{ hashFiles('conanfile.py') }}
           restore-keys: |
-            vcpkg-release-
+            conan-release-
 
-      - name: Create vcpkg binary cache dir
-        run: mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+      - name: Install Conan dependencies
+        run: conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
 
       - name: Configure
-        run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=gcc-13 \
-            -DCMAKE_CXX_COMPILER=g++-13 \
-            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
-            -DNIDS_BUILD_TESTS=ON
+        run: cmake --preset ci-gcc
 
       - name: Build
-        run: cmake --build build --parallel
+        run: cmake --build --preset ci-gcc
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure --timeout 120
+        run: |
+          ctest --test-dir build/ci-gcc \
+            --output-on-failure --timeout 120
 
       - name: Package
         run: |
-          cd build
+          cd build/ci-gcc
           cpack -G ${{ matrix.generator }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: package-${{ matrix.package }}
-          path: build/nids-*
+          path: build/ci-gcc/nids-*
 
   docker-release:
     name: Docker Release
@@ -115,6 +109,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: docker/app/Dockerfile
           push: true
           platforms: linux/amd64
           tags: |

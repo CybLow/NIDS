@@ -1,0 +1,19 @@
+# Conan 2 profile: Windows MSVC 2022 (Visual Studio 17)
+#
+# Used for Windows development and CI.
+# Requires: Visual Studio 2022 Build Tools with C++ workload.
+#
+# Usage:
+#   conan install . -pr:h conan/profiles/windows-msvc17 -s build_type=Release --build=missing
+
+[settings]
+os=Windows
+arch=x86_64
+compiler=msvc
+compiler.version=193
+compiler.runtime=dynamic
+compiler.cppstd=20
+build_type=Release
+
+[conf]
+tools.cmake.cmaketoolchain:generator=Ninja

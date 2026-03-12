@@ -4,129 +4,185 @@
 
 - **CMake** >= 3.20
 - **C++20** compiler (GCC 13+, Clang 17+, MSVC 2022+)
-- **Qt6** (Core, Gui, Widgets)
-- **libpcap** (Linux/macOS) or **Npcap SDK** (Windows)
-- **vcpkg** (recommended for automatic dependency management)
+- **Qt6** (Core, Gui, Widgets) -- system package
+- **libpcap** (Linux/macOS) or **Npcap SDK** (Windows) -- system package
+- **Python 3** + pip (for Conan package manager)
+- **Conan 2** (installed via pip)
+- **Ninja** (build system)
 
-vcpkg automatically provides: ONNX Runtime, spdlog, nlohmann-json, GoogleTest.
+Conan 2 manages: spdlog, nlohmann_json, GoogleTest.
+ONNX Runtime is fetched automatically via CMake FetchContent (pre-built binaries).
 
 ## Linux (Ubuntu/Debian)
 
-### System Dependencies
+### Automated Setup (Recommended)
 
 ```bash
+git clone https://github.com/CybLow/NIDS.git
+cd NIDS
+./scripts/dev/setup-dev.sh
+```
+
+The script:
+1. Detects your distro (Fedora, Ubuntu, Debian)
+2. Installs system packages (GCC, CMake, Ninja, Qt6, libpcap)
+3. Installs Conan 2 via pip
+4. Runs `conan install` for Debug + Release using the in-repo profile
+
+After setup:
+
+```bash
+cmake --preset Debug
+cmake --build --preset Debug
+ctest --preset Debug
+```
+
+### Manual Setup
+
+#### System Dependencies
+
+```bash
+# Ubuntu 24.04+
 sudo apt update && sudo apt install -y \
-    cmake g++ ninja-build \
+    gcc g++ cmake ninja-build \
     qt6-base-dev qt6-base-dev-tools \
     libpcap-dev \
-    curl zip unzip tar pkg-config
+    python3 python3-pip \
+    curl tar pkg-config
+
+# Fedora 43+
+sudo dnf install -y \
+    gcc gcc-c++ cmake ninja-build \
+    qt6-qtbase-devel \
+    libpcap-devel \
+    python3 python3-pip \
+    git curl tar pkg-config
 ```
 
-### vcpkg (Recommended)
-
-vcpkg handles ONNX Runtime, spdlog, nlohmann-json, and GoogleTest automatically:
+#### Conan 2
 
 ```bash
-git clone https://github.com/microsoft/vcpkg
-cd vcpkg && ./bootstrap-vcpkg.sh
-cd ..
+pip3 install conan
 ```
 
-Build NIDS:
+#### Install Dependencies
 
 ```bash
-cmake -B build -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake \
-    -DNIDS_BUILD_TESTS=ON
-
-cmake --build build --parallel
+# Using in-repo profile (recommended):
+conan install . -pr:h conan/profiles/linux-gcc13 -s build_type=Debug --build=missing
+conan install . -pr:h conan/profiles/linux-gcc13 -s build_type=Release --build=missing
 ```
 
-### Manual Installation (Alternative)
+#### Build
 
-If not using vcpkg, install dependencies individually:
+The project provides committed presets in `CMakePresets.json`:
 
-#### ONNX Runtime
+| Preset         | Use case                                    |
+|----------------|---------------------------------------------|
+| `Debug`        | Dev build (Debug + sanitizers, cross-platform) |
+| `Release`      | Dev build (Release, cross-platform)         |
+| `ci-gcc`       | CI (GCC)                                    |
+| `ci-clang`     | CI (Clang)                                  |
+| `ci-coverage`  | CI (coverage)                               |
 
-Download from [GitHub Releases](https://github.com/microsoft/onnxruntime/releases):
+Conan also generates `CMakeUserPresets.json` with `conan-debug`/`conan-release`
+presets for direct CLI use, but prefer the committed presets above.
 
 ```bash
-wget https://github.com/microsoft/onnxruntime/releases/download/v1.23.0/onnxruntime-linux-x64-1.23.0.tgz
-tar xzf onnxruntime-linux-x64-1.23.0.tgz
-sudo cp -r onnxruntime-linux-x64-1.23.0/include/* /usr/local/include/
-sudo cp -r onnxruntime-linux-x64-1.23.0/lib/* /usr/local/lib/
-sudo ldconfig
+# Debug (with ASan/UBSan):
+cmake --preset Debug
+cmake --build --preset Debug
+
+# Release:
+cmake --preset Release
+cmake --build --preset Release
 ```
 
-#### spdlog
+#### Run Tests
 
 ```bash
-sudo apt install -y libspdlog-dev
+ctest --preset Debug    # or Release
 ```
 
-#### GoogleTest
+## Linux (Fedora)
 
-On Ubuntu 22.04+, `libgtest-dev` only provides sources. Build from source for CMake
-`find_package(GTest CONFIG REQUIRED)` to work:
+### Automated Setup
 
 ```bash
-sudo apt install -y libgtest-dev cmake
-cd /usr/src/googletest
-sudo cmake -B build -DCMAKE_INSTALL_PREFIX=/usr/local
-sudo cmake --build build -j$(nproc)
-sudo cmake --install build
+./scripts/dev/setup-dev.sh
 ```
 
-Or install via vcpkg: `vcpkg install gtest`
+### Manual Setup
+
+Same as Ubuntu above, but use `dnf` instead of `apt` for system packages.
+The in-repo Conan profile (`conan/profiles/linux-gcc13`) uses `compiler.version=13`
+for binary cache compatibility. This works with any GCC version >= 13 (the ABI is
+forward-compatible).
 
 ## Windows
 
-### Prerequisites
+### Automated Setup
+
+```powershell
+.\scripts\dev\setup-dev.ps1
+```
+
+The script:
+1. Installs Visual Studio 2022 Build Tools, CMake, Ninja, Python via winget
+2. Installs Npcap SDK (prompts if not found)
+3. Installs Qt6 via aqtinstall
+4. Installs Conan 2 via pip
+5. Runs `conan install` for Debug + Release
+
+### Manual Setup
+
+#### Prerequisites
 
 1. **Visual Studio 2022** with C++ workload (for C++20 support)
 2. **CMake** >= 3.20
-3. **vcpkg** (recommended)
+3. **Ninja** build system
+4. **Python 3** + pip
 
-### Using vcpkg
-
-```powershell
-git clone https://github.com/microsoft/vcpkg
-cd vcpkg && bootstrap-vcpkg.bat
-cd ..
-```
-
-Build with vcpkg manifest mode (dependencies auto-installed from `vcpkg.json`):
-
-```powershell
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=vcpkg\scripts\buildsystems\vcpkg.cmake
-cmake --build build --config Release
-```
-
-### Npcap SDK
+#### Npcap SDK
 
 1. Download from https://npcap.com/#download
 2. Install Npcap runtime
 3. Download the SDK and extract to `C:\npcap-sdk`
 4. Set environment variable: `NPCAP_SDK=C:\npcap-sdk`
 
+#### Qt6
+
+Install via the Qt Online Installer or aqtinstall:
+
+```powershell
+pip install aqtinstall
+python -m aqt install-qt windows desktop 6.8.0 win64_msvc2022_64 -O C:\Qt
+set CMAKE_PREFIX_PATH=C:\Qt\6.8.0\msvc2022_64
+```
+
+#### Conan 2 + Build
+
+```powershell
+pip install conan
+
+# Install dependencies (from project root):
+conan install . -pr:h conan/profiles/windows-msvc17 -s build_type=Debug --build=missing
+conan install . -pr:h conan/profiles/windows-msvc17 -s build_type=Release --build=missing
+
+# Build (from Developer Command Prompt):
+cmake --preset Release
+cmake --build --preset Release
+```
+
 ## macOS
 
 ```bash
-brew install cmake qt@6 libpcap ninja
-```
+brew install cmake qt@6 libpcap ninja python3
+pip3 install conan
 
-Then use vcpkg for remaining dependencies:
-
-```bash
-git clone https://github.com/microsoft/vcpkg
-./vcpkg/bootstrap-vcpkg.sh
-
-cmake -B build -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake
-
-cmake --build build --parallel
+conan install . -pr:h conan/profiles/linux-gcc13 -s build_type=Release --build=missing
+cmake --preset Release
+cmake --build --preset Release
 ```
 
 ## Docker
@@ -135,15 +191,47 @@ No local dependencies needed:
 
 ```bash
 xhost +local:docker
-docker compose up --build
+docker compose -f docker/app/compose.yml up --build
 ```
+
+## Devcontainer (VS Code / CLion)
+
+The project includes a `.devcontainer/` directory with a pre-configured development
+container. Open the project in VS Code and click "Reopen in Container", or use
+CLion's Remote Development with Docker.
+
+The container includes all build tools, linters, and Conan pre-configured.
+
+## How Presets Work
+
+The project uses CMake presets for reproducible builds:
+
+- **`CMakePresets.json`** (committed) -- Developer presets (`Debug`, `Release`)
+  and CI presets (`ci-gcc`, `ci-clang`, `ci-coverage`). These are the primary
+  presets for all workflows.
+- **`CMakeUserPresets.json`** (gitignored, generated by Conan) -- Contains
+  `conan-debug` and `conan-release` presets with Conan toolchain paths. These are
+  a CLI fallback; prefer the committed presets above.
+
+Conan generates `CMakeUserPresets.json` when you run `conan install`. The committed
+presets in `CMakePresets.json` inherit from these to pick up `find_package()` paths.
+
+## Conan Profiles
+
+In-repo profiles are in `conan/profiles/`:
+
+| Profile              | Use case                              |
+|----------------------|---------------------------------------|
+| `linux-gcc13`        | Local Linux dev (any GCC >= 13)       |
+| `linux-ci`           | GitHub Actions CI (Ubuntu 24.04)      |
+| `windows-msvc17`     | Windows MSVC 2022                     |
 
 ## Model Setup
 
 ### Pre-trained Model
 
 If a pre-trained `model.onnx` is included in the repository, no additional setup is
-needed. The model is loaded from `src/model/model.onnx` by default.
+needed. The model is loaded from `models/model.onnx` by default.
 
 ### Training a New Model
 
@@ -152,34 +240,22 @@ See [docs/model-training.md](docs/model-training.md) for the full training pipel
 Quick version:
 
 ```bash
-pip install -r scripts/requirements.txt
-python scripts/download_dataset.py
-python scripts/preprocess.py
-python scripts/train_model.py
-python scripts/export_onnx.py
-```
-
-### Converting a Legacy Keras Model
-
-If you have an existing Keras model (`.keras` or `.h5`):
-
-```bash
-pip install tensorflow tf2onnx onnxruntime
-python scripts/convert_model.py --input src/model/model.keras --output src/model/model.onnx
+pip install -r scripts/ml/requirements.txt
+python scripts/ml/download_dataset.py
+python scripts/ml/preprocess.py
+python scripts/ml/train_model.py
+python scripts/ml/export_onnx.py
 ```
 
 ## Verifying Installation
 
 ```bash
-cmake -B build -G Ninja \
-    -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake \
-    -DNIDS_BUILD_TESTS=ON
-
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
+cmake --preset Debug
+cmake --build --preset Debug
+ctest --preset Debug
 ```
 
 All three test targets should pass:
-- `nids_tests` — Core and infrastructure unit tests
-- `nids_qt_tests` — Qt-dependent tests (requires Qt6)
-- `nids_onnx_tests` — ONNX analyzer tests (requires ONNX Runtime)
+- `nids_tests` -- Core and infrastructure unit tests
+- `nids_qt_tests` -- Qt-dependent tests (requires Qt6)
+- `nids_onnx_tests` -- ONNX analyzer tests (requires ONNX Runtime)

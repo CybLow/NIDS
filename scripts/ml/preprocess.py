@@ -19,7 +19,7 @@ Steps:
    10. Save processed data (.npy) and normalization parameters (.json)
 
 Usage:
-    python scripts/preprocess.py \\
+    python scripts/ml/preprocess.py \\
         --input-dir scripts/data/ \\
         --output-dir scripts/data/processed/
 
@@ -1441,7 +1441,9 @@ def main() -> None:
     # 8. Save metadata
     save_metadata(output_dir, norm_params, class_weights, LABEL_MAP, split_sizes)
 
-    print(f"\nDone! Next step: python scripts/train_model.py --data-dir {output_dir}/")
+    print(
+        f"\nDone! Next step: python scripts/ml/train_model.py --data-dir {output_dir}/"
+    )
 
 
 if __name__ == "__main__":

@@ -21,7 +21,6 @@ GENERATE_XML           = NO
 HTML_OUTPUT            = html
 HTML_COLORSTYLE        = AUTO_LIGHT
 HAVE_DOT               = NO
-CLASS_DIAGRAMS         = YES
 COLLABORATION_GRAPH    = NO
 INCLUDE_GRAPH          = NO
 INCLUDED_BY_GRAPH      = NO

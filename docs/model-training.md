@@ -12,13 +12,13 @@ NIDS for network traffic classification.
 Install Python dependencies:
 
 ```bash
-pip install -r scripts/requirements.txt
+pip install -r scripts/ml/requirements.txt
 ```
 
 ## Step 1: Download the LSNM2024 Dataset
 
 ```bash
-python scripts/download_dataset.py
+python scripts/ml/download_dataset.py
 ```
 
 This downloads the dataset from Mendeley Data (~2 GB) and verifies the SHA-256 checksum.
@@ -27,7 +27,7 @@ Files are saved to `data/raw/`.
 ## Step 2: Preprocess
 
 ```bash
-python scripts/preprocess.py
+python scripts/ml/preprocess.py
 ```
 
 Preprocessing steps:
@@ -47,7 +47,7 @@ Output files:
 ## Step 3: Train the Model
 
 ```bash
-python scripts/train_model.py
+python scripts/ml/train_model.py
 ```
 
 ### Architecture: CNN-BiLSTM
@@ -89,7 +89,7 @@ The best model checkpoint is saved to `models/best_model.pt`.
 ## Step 4: Export to ONNX
 
 ```bash
-python scripts/export_onnx.py
+python scripts/ml/export_onnx.py
 ```
 
 This wraps the trained model with a softmax output layer and exports to ONNX format:
@@ -106,7 +106,7 @@ and the ONNX model to ensure outputs match within tolerance.
 ## Step 5: Evaluate
 
 ```bash
-python scripts/evaluate.py
+python scripts/ml/evaluate.py
 ```
 
 Generates:
@@ -141,7 +141,7 @@ cmake --install build --prefix /usr/local
 ## Retraining Tips
 
 - To train on a custom dataset, ensure CSV columns match the 77 flow features produced
-  by `NativeFlowExtractor`. Update the label mapping in `preprocess.py` if attack
+  by `NativeFlowExtractor`. Update the label mapping in `scripts/ml/preprocess.py` if attack
   classes differ.
 - GPU training: ensure CUDA and cuDNN are installed. PyTorch auto-detects GPU.
 - For larger datasets, increase batch size and reduce learning rate.

@@ -20,7 +20,7 @@ Cross-references: [ADR-004](adr/004-model-benchmark-analysis.md),
 - [x] Native C++ flow feature extraction (77 bidirectional flow features)
 - [x] Hybrid detection system (ML + Threat Intelligence + Heuristic Rules)
 - [x] `FeatureNormalizer` (z-score normalization with clip values)
-- [x] Threat feed update script (`scripts/update_threat_feeds.sh`)
+- [x] Threat feed update script (`scripts/ops/update_threat_feeds.sh`)
 - [x] ADR-004 (model benchmark analysis) and ADR-005 (hybrid detection design)
 - [x] Rewritten `docs/architecture.md` with detection philosophy and hybrid data flow
 - [x] GitHub Actions CI/CD
@@ -281,7 +281,7 @@ remote monitoring.
 
 ### 11.1 — Doxygen setup
 
-- Create `Doxyfile` at project root
+- Create `Doxyfile` in `docs/`
 - Ensure all public APIs in `core/` and `app/` have `/** ... */` documentation
 - Generate HTML docs, optionally host via GitHub Pages
 

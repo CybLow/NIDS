@@ -6,7 +6,7 @@
 # ThreatIntelProvider at startup.
 #
 # Usage:
-#   ./scripts/update_threat_feeds.sh [output_dir]
+#   ./scripts/ops/update_threat_feeds.sh [output_dir]
 #
 # Default output directory: data/threat_intel/ (relative to project root)
 

@@ -1,0 +1,66 @@
+name: Setup NIDS Build Environment
+description: Install system dependencies, Conan 2, and project packages
+
+inputs:
+  compiler:
+    description: Compiler to install (gcc-13, clang-17)
+    required: false
+    default: gcc-13
+  extra-packages:
+    description: Additional apt packages (space-separated)
+    required: false
+    default: ""
+  extra-pip:
+    description: Additional pip packages (space-separated)
+    required: false
+    default: ""
+  build-type:
+    description: Conan build type (Debug, Release)
+    required: false
+    default: Release
+
+runs:
+  using: composite
+  steps:
+    - name: Install system dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        PACKAGES="cmake ninja-build libpcap-dev python3-pip"
+        PACKAGES="$PACKAGES '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev"
+        PACKAGES="$PACKAGES libxi-dev libxkbcommon-dev libxkbcommon-x11-dev libegl1-mesa-dev"
+
+        case "${{ inputs.compiler }}" in
+          gcc-13)   PACKAGES="$PACKAGES gcc-13 g++-13" ;;
+          clang-17) PACKAGES="$PACKAGES clang-17 clang-tidy-17 clang-tools-17" ;;
+        esac
+
+        if [ -n "${{ inputs.extra-packages }}" ]; then
+          PACKAGES="$PACKAGES ${{ inputs.extra-packages }}"
+        fi
+
+        sudo apt-get install -y --no-install-recommends $PACKAGES
+
+    - name: Install Conan
+      shell: bash
+      run: |
+        PIP_PACKAGES="conan"
+        if [ -n "${{ inputs.extra-pip }}" ]; then
+          PIP_PACKAGES="$PIP_PACKAGES ${{ inputs.extra-pip }}"
+        fi
+        pip3 install --break-system-packages $PIP_PACKAGES
+
+    - name: Cache Conan packages
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.conan2
+        key: conan-${{ inputs.compiler }}-${{ inputs.build-type }}-${{ hashFiles('conanfile.py') }}
+        restore-keys: |
+          conan-${{ inputs.compiler }}-${{ inputs.build-type }}-
+          conan-${{ inputs.compiler }}-
+
+    - name: Install Conan dependencies
+      shell: bash
+      run: |
+        conan install . -pr:h conan/profiles/linux-ci \
+          -s build_type=${{ inputs.build-type }} --build=missing

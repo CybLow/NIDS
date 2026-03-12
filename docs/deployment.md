@@ -69,19 +69,19 @@ sudo rpm -i nids-*.rpm
 ### Quick Start
 
 ```bash
-docker compose up --build
+docker compose -f docker/app/compose.yml up --build
 ```
 
 ### Docker with GUI (X11 Forwarding)
 
-The `docker-compose.yml` is configured for X11 forwarding:
+The `docker/app/compose.yml` is configured for X11 forwarding:
 
 ```bash
 # Allow local X connections
 xhost +local:docker
 
 # Start NIDS
-docker compose up --build
+docker compose -f docker/app/compose.yml up --build
 ```
 
 ### Docker Compose Configuration

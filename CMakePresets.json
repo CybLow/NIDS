@@ -1,0 +1,113 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "NIDS_BUILD_TESTS": "ON"
+      }
+    },
+
+    {
+      "name": "Debug",
+      "displayName": "Debug",
+      "description": "Development build with sanitizers (ASan/UBSan on Linux).",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/build/Debug/generators/conan_toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "Release",
+      "displayName": "Release",
+      "description": "Optimised build.",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/build/Release/generators/conan_toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+
+    {
+      "name": "ci-gcc",
+      "displayName": "CI GCC",
+      "description": "CI build with GCC-13 + Conan deps. Used by GitHub Actions.",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/build/Release/generators/conan_toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc-13",
+        "CMAKE_CXX_COMPILER": "g++-13"
+      }
+    },
+    {
+      "name": "ci-clang",
+      "displayName": "CI Clang",
+      "description": "CI build with Clang-17 + Conan deps. Used by GitHub Actions.",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/build/Release/generators/conan_toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-17",
+        "CMAKE_CXX_COMPILER": "clang++-17"
+      }
+    },
+    {
+      "name": "ci-coverage",
+      "displayName": "CI Coverage",
+      "description": "CI coverage build with GCC-13 + Conan deps.",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/build/Debug/generators/conan_toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc-13",
+        "CMAKE_CXX_COMPILER": "g++-13",
+        "NIDS_COVERAGE": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "Debug",        "configurePreset": "Debug" },
+    { "name": "Release",      "configurePreset": "Release" },
+    { "name": "ci-gcc",       "configurePreset": "ci-gcc" },
+    { "name": "ci-clang",     "configurePreset": "ci-clang" },
+    { "name": "ci-coverage",  "configurePreset": "ci-coverage" }
+  ],
+  "testPresets": [
+    {
+      "name": "Debug",
+      "configurePreset": "Debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "Release",
+      "configurePreset": "Release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "ci-gcc",
+      "configurePreset": "ci-gcc",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "ci-clang",
+      "configurePreset": "ci-clang",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "ci-coverage",
+      "configurePreset": "ci-coverage",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

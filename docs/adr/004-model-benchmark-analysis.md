@@ -360,4 +360,4 @@ deployment model.
 - `models/model.onnx` + `models/model.onnx.data` + `models/model_metadata.json`
   updated with Run 2 artifacts.
 - No changes to `AttackType.h` or C++ code required.
-- Training notebook (`scripts/train_nids.ipynb`) finalized with stdout-to-file logging.
+- Training notebook (`scripts/ml/train_nids.ipynb`) finalized with stdout-to-file logging.

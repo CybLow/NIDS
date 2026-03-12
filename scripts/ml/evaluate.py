@@ -2,7 +2,7 @@
 """Evaluate a trained CNN-BiLSTM model: confusion matrix, per-class metrics, ROC curves.
 
 Usage:
-    python scripts/evaluate.py --checkpoint models/best_model.pt --data-dir data/processed/
+    python scripts/ml/evaluate.py --checkpoint models/best_model.pt --data-dir data/processed/
 """
 
 import argparse
@@ -89,7 +89,9 @@ def plot_confusion_matrix(
     row_sums = cm.sum(axis=1, keepdims=True)
     # Avoid division by zero for classes absent from the test set
     cm_normalized = np.divide(
-        cm.astype(float), row_sums, out=np.zeros_like(cm, dtype=float),
+        cm.astype(float),
+        row_sums,
+        out=np.zeros_like(cm, dtype=float),
         where=row_sums != 0,
     )
 
@@ -239,7 +241,11 @@ def main() -> None:
     # from the test split)
     all_labels = list(range(n_classes))
     report = classification_report(
-        y_true, y_pred, labels=all_labels, target_names=class_names, digits=4,
+        y_true,
+        y_pred,
+        labels=all_labels,
+        target_names=class_names,
+        digits=4,
         zero_division=0,
     )
     print("\nClassification Report:")
@@ -252,8 +258,13 @@ def main() -> None:
 
     # Per-class metrics as JSON
     report_dict = classification_report(
-        y_true, y_pred, labels=all_labels, target_names=class_names, digits=6,
-        output_dict=True, zero_division=0,
+        y_true,
+        y_pred,
+        labels=all_labels,
+        target_names=class_names,
+        digits=6,
+        output_dict=True,
+        zero_division=0,
     )
     metrics_path = args.output_dir / "metrics.json"
     with open(metrics_path, "w") as f:
@@ -295,8 +306,10 @@ def main() -> None:
             print(f"Macro AUC-ROC: {macro_auc:.4f}")
             if len(present) < n_classes:
                 absent = [class_names[i] for i in range(n_classes) if i not in present]
-                print(f"  (excluded {len(absent)} classes with no test samples: "
-                      f"{', '.join(absent)})")
+                print(
+                    f"  (excluded {len(absent)} classes with no test samples: "
+                    f"{', '.join(absent)})"
+                )
         else:
             print("Macro AUC-ROC: N/A (fewer than 2 classes in test set)")
     except ValueError as e:

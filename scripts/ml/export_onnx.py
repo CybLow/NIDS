@@ -6,7 +6,7 @@ outputs class probabilities (batch, n_classes). This matches the OnnxAnalyzer
 input format in the C++ codebase.
 
 Usage:
-    python scripts/export_onnx.py --checkpoint models/best_model.pt --output src/model/model.onnx
+    python scripts/ml/export_onnx.py --checkpoint models/best_model.pt --output src/model/model.onnx
 """
 
 import argparse

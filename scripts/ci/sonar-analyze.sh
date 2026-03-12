@@ -2,12 +2,12 @@
 # sonar-analyze.sh — Run static analysis, optional coverage, and upload to SonarQube
 #
 # Usage:
-#   ./scripts/sonar-analyze.sh                  # cppcheck + sonar scan (no coverage)
-#   ./scripts/sonar-analyze.sh --with-coverage   # build with coverage, test, generate
-#                                                # Cobertura XML, then cppcheck + scan
-#   ./scripts/sonar-analyze.sh --cppcheck-only   # cppcheck only
-#   ./scripts/sonar-analyze.sh --scan-only       # sonar scan only
-#   ./scripts/sonar-analyze.sh --coverage-only   # coverage build + Cobertura XML only
+#   ./scripts/ci/sonar-analyze.sh                  # cppcheck + sonar scan (no coverage)
+#   ./scripts/ci/sonar-analyze.sh --with-coverage   # build with coverage, test, generate
+#                                                    # Cobertura XML, then cppcheck + scan
+#   ./scripts/ci/sonar-analyze.sh --cppcheck-only   # cppcheck only
+#   ./scripts/ci/sonar-analyze.sh --scan-only       # sonar scan only
+#   ./scripts/ci/sonar-analyze.sh --coverage-only   # coverage build + Cobertura XML only
 #
 # Prerequisites:
 #   - Podman (rootless) running with socket enabled

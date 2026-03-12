@@ -279,7 +279,7 @@ Default weights: ML=0.5, TI=0.3, Heuristic=0.2. Configurable via `Configuration`
 | CINS Score | Bad actor IPs | Updated hourly |
 | Blocklist.de | Reported attack IPs | Updated frequently |
 
-Updated via `scripts/update_threat_feeds.sh`, loaded at startup from
+Updated via `scripts/ops/update_threat_feeds.sh`, loaded at startup from
 `data/threat_intel/`.
 
 ### Heuristic rules (7 rules)

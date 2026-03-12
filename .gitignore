@@ -28,7 +28,6 @@ compile_commands.json
 .idea/
 .vscode/
 .cursor/
-.clangd
 .sonarlint/
 *.swp
 *.swo
@@ -37,10 +36,10 @@ compile_commands.json
 # ── OpenCode ─────────────────────────────────────────────────────
 .opencode/
 
-# ── vcpkg (not used — system packages via dnf) ──────────────────
-vcpkg_installed/
+# ── Conan artifacts ─────────────────────────────────────────────
+CMakeUserPresets.json
 
-# ── Large / binary files (global — never commit anywhere) ────────
+# ── Large / binary files (never commit anywhere) ────────────────
 *.onnx
 *.onnx.data
 *.pt
@@ -74,6 +73,12 @@ cppcheck-report.xml
 gcc-warnings.txt
 clang-tidy-report.txt
 sonarqube-data/
+
+# ── Generated documentation (Doxygen output) ────────────────────
+docs/api/
+
+# ── Downloaded threat intelligence feeds (fetched at runtime) ────
+data/threat_intel/
 
 # ── Coverage artifacts (generated, not committed) ────────────────
 coverage-cobertura.xml

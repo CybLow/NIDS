@@ -15,7 +15,7 @@ The number of input features (77 bidirectional flow features) and output
 classes (16 for LSNM2024) are determined dynamically from the preprocessed data.
 
 Usage:
-    python scripts/train_model.py --data-dir scripts/data/processed/ --output-dir models/
+    python scripts/ml/train_model.py --data-dir scripts/data/processed/ --output-dir models/
 """
 
 import argparse
@@ -445,7 +445,9 @@ def main() -> None:
         json.dump(summary, f, indent=2)
     print(f"\nTraining summary saved to: {summary_path}")
     print(f"Best model saved to: {best_model_path}")
-    print(f"\nNext step: python scripts/export_onnx.py --checkpoint {best_model_path}")
+    print(
+        f"\nNext step: python scripts/ml/export_onnx.py --checkpoint {best_model_path}"
+    )
 
 
 if __name__ == "__main__":

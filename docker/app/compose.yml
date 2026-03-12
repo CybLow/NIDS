@@ -3,16 +3,16 @@ version: "3.8"
 services:
   nids:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: docker/app/Dockerfile
     container_name: nids
     network_mode: host
     cap_add:
       - NET_RAW
       - NET_ADMIN
     volumes:
-      - ./data/reports:/app/reports
-      - ./data/captures:/app/captures
+      - ../../data/reports:/app/reports
+      - ../../data/captures:/app/captures
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     environment:
       - DISPLAY=${DISPLAY}

@@ -81,7 +81,7 @@ Implement a three-layer hybrid detection system:
   - Blocklist.de reported IPs
 - Storage: `std::unordered_set<std::uint32_t>` for individual IPs (O(1) lookup),
   sorted vector of CIDR ranges with binary search for prefix matching.
-- Refresh: `scripts/update_threat_feeds.sh` downloads latest feeds to
+- Refresh: `scripts/ops/update_threat_feeds.sh` downloads latest feeds to
   `data/threat_intel/`. Loaded at startup.
 
 ### Layer 3: Heuristic Rules (new)
@@ -167,7 +167,7 @@ Configurable via `Configuration` singleton.
 - `app/HybridDetectionService.cpp`
 
 ### Scripts
-- `scripts/update_threat_feeds.sh` -- Downloads latest threat intel feeds
+- `scripts/ops/update_threat_feeds.sh` -- Downloads latest threat intel feeds
 
 ### Data
 - `data/threat_intel/` -- Directory for downloaded feed files

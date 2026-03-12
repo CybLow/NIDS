@@ -15,7 +15,7 @@ on the LSNM2024 dataset. Built with C++20, Qt6, and ONNX Runtime.
   force, RCE, SQL injection, XSS, port scanning, and more)
 - **ONNX Runtime Inference**: Fast CPU inference with optional GPU acceleration via
   CUDA/TensorRT
-- **Native Flow Extraction**: 77 bidirectional flow features computed in C++ — no
+- **Native Flow Extraction**: 77 bidirectional flow features computed in C++ -- no
   external tools required
 - **Real-time Packet Capture**: Live capture with BPF filtering via libpcap
 - **Application Detection**: Port-to-service mapping for 100+ protocols
@@ -42,72 +42,85 @@ and [AGENTS.md](AGENTS.md) for coding standards.
 
 ## Quick Start
 
-### Docker (easiest)
+### Automated Setup (Recommended)
+
+```bash
+git clone https://github.com/CybLow/NIDS.git
+cd NIDS
+./scripts/dev/setup-dev.sh
+```
+
+This installs all system dependencies, Conan 2, and runs `conan install` for both
+Debug and Release. After completion:
+
+```bash
+# Debug build (with ASan/UBSan):
+cmake --preset Debug
+cmake --build --preset Debug
+ctest --preset Debug
+
+# Release build:
+cmake --preset Release
+cmake --build --preset Release
+
+# Run (requires root or CAP_NET_RAW):
+sudo ./build/Debug/NIDS
+```
+
+### Docker (No Local Dependencies)
 
 ```bash
 xhost +local:docker
-docker compose up --build
+docker compose -f docker/app/compose.yml up --build
 ```
 
-### Build from Source
+### Manual Setup
 
-```bash
-# Install system dependencies (Ubuntu 22.04+)
-sudo apt install -y cmake g++ ninja-build qt6-base-dev libpcap-dev
+See [INSTALL.md](INSTALL.md) for detailed per-platform instructions.
 
-# Clone and build with vcpkg
-git clone https://github.com/CybLow/NIDS.git
-cd NIDS
-git clone https://github.com/microsoft/vcpkg
-./vcpkg/bootstrap-vcpkg.sh
+## Dependency Management
 
-cmake -B build -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake
-
-cmake --build build --parallel
-
-# Run (requires root or CAP_NET_RAW)
-sudo ./build/NIDS
-```
-
-See [INSTALL.md](INSTALL.md) for detailed platform-specific instructions.
+| Dependency      | Source                                   |
+|-----------------|------------------------------------------|
+| spdlog          | Conan 2 (`conanfile.py`)                 |
+| nlohmann_json   | Conan 2 (`conanfile.py`)                 |
+| GoogleTest      | Conan 2 (`conanfile.py`)                 |
+| ONNX Runtime    | CMake FetchContent (pre-built binaries)  |
+| Qt6             | System package                           |
+| libpcap / Npcap | System package                           |
 
 ## Build Options
 
 | Option              | Default | Description                          |
 |---------------------|---------|--------------------------------------|
-| `NIDS_BUILD_TESTS`  | OFF     | Build unit and integration tests     |
+| `NIDS_BUILD_TESTS`  | ON      | Build unit and integration tests     |
 | `NIDS_BUILD_SERVER` | OFF     | Build headless gRPC server           |
 | `NIDS_COVERAGE`     | OFF     | Enable gcov/lcov code coverage       |
 
 ## Running Tests
 
 ```bash
-cmake -B build -G Ninja \
-    -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake \
-    -DNIDS_BUILD_TESTS=ON
-
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
+cmake --preset Debug
+cmake --build --preset Debug
+ctest --preset Debug
 ```
 
 Three test executables are built:
-- `nids_tests` — Core/infra unit tests (no Qt/ONNX dependencies)
-- `nids_qt_tests` — Qt-dependent tests (CaptureController, AnalysisService, pipeline)
-- `nids_onnx_tests` — ONNX Runtime tests (OnnxAnalyzer, AnalyzerFactory)
+- `nids_tests` -- Core/infra unit tests (no Qt/ONNX dependencies)
+- `nids_qt_tests` -- Qt-dependent tests (CaptureController, AnalysisService, pipeline)
+- `nids_onnx_tests` -- ONNX Runtime tests (OnnxAnalyzer, AnalyzerFactory)
 
 ## Model Training
 
 The CNN-BiLSTM model can be retrained on the LSNM2024 dataset:
 
 ```bash
-pip install -r scripts/requirements.txt
-python scripts/download_dataset.py
-python scripts/preprocess.py
-python scripts/train_model.py
-python scripts/export_onnx.py
-python scripts/evaluate.py
+pip install -r scripts/ml/requirements.txt
+python scripts/ml/download_dataset.py
+python scripts/ml/preprocess.py
+python scripts/ml/train_model.py
+python scripts/ml/export_onnx.py
+python scripts/ml/evaluate.py
 ```
 
 See [docs/model-training.md](docs/model-training.md) for the full training guide.
@@ -138,14 +151,29 @@ See [docs/model-training.md](docs/model-training.md) for the full training guide
 ```
 NIDS/
   CMakeLists.txt              Root build configuration
-  vcpkg.json                  Dependency manifest
-  Dockerfile                  Multi-stage Docker build
-  docker-compose.yml          Container orchestration
+  conanfile.py                Conan 2 dependency recipe
+  CMakePresets.json           Developer + CI build presets
+  conan/profiles/             In-repo Conan profiles (linux, windows)
+  scripts/
+    dev/                      Developer environment setup
+    ml/                       ML training pipeline
+    ci/                       CI / static analysis tooling
+    ops/                      Runtime operational scripts
+  .devcontainer/              VS Code / CLion devcontainer
+  docker/
+    app/
+      Dockerfile              Multi-stage Docker build
+      compose.yml             Production compose stack
+    ci/
+      Dockerfile              CI builder image
+      compose.yml             Local CI simulation stack
   AGENTS.md                   Coding standards and architecture guide
   INSTALL.md                  Detailed installation instructions
-  proto/nids.proto            gRPC service definition
-  cmake/FindPCAP.cmake        Cross-platform PCAP finder
-  .github/workflows/          CI/CD (build, test, lint, release)
+  cmake/
+    FetchOnnxRuntime.cmake    Downloads pre-built ONNX Runtime binaries
+    FindPCAP.cmake            Cross-platform PCAP finder
+    NidsTargetDefaults.cmake  Shared compiler flags (ASan/UBSan in Debug)
+  .github/workflows/          CI/CD (build, test, lint, coverage, release)
   src/
     main.cpp                  Application entry point
     core/                     Domain layer
@@ -168,7 +196,7 @@ NIDS/
       FilterPanel             Capture filter controls
     server/                   gRPC server daemon (scaffold)
     client/                   gRPC client (scaffold)
-  scripts/                    Python training pipeline
+  scripts/                    Setup + Python training pipeline
   tests/
     unit/                     Unit tests (GoogleTest + GoogleMock)
     integration/              Integration tests
@@ -181,12 +209,12 @@ NIDS/
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — System design, layers, patterns, data flow
-- [Roadmap](docs/roadmap.md) — All planned work, prioritized by phase
-- [Model Training](docs/model-training.md) — How to train, export, and deploy the model
-- [Deployment](docs/deployment.md) — Docker, bare metal, packaging, systemd
-- [Installation](INSTALL.md) — Build dependencies for all platforms
-- [Coding Standards](AGENTS.md) — C++20/Qt6 conventions, banned patterns, design rules
+- [Architecture](docs/architecture.md) -- System design, layers, patterns, data flow
+- [Roadmap](docs/roadmap.md) -- All planned work, prioritized by phase
+- [Model Training](docs/model-training.md) -- How to train, export, and deploy the model
+- [Deployment](docs/deployment.md) -- Docker, bare metal, packaging, systemd
+- [Installation](INSTALL.md) -- Build dependencies for all platforms
+- [Coding Standards](AGENTS.md) -- C++20/Qt6 conventions, banned patterns, design rules
 
 ### Architecture Decision Records
 - [ADR-001: Replace frugally-deep with ONNX Runtime](docs/adr/001-replace-fdeep-with-onnx.md)
@@ -204,6 +232,7 @@ NIDS/
 - [x] GitHub Actions CI/CD
 - [x] CPack packaging (DEB/RPM/TGZ)
 - [x] Hybrid detection (ML + Threat Intelligence + Heuristic Rules)
+- [x] Conan 2 package management (replaced vcpkg)
 - [ ] Cleanup, config JSON loading, and test foundation (Phase 6)
 - [ ] UI for hybrid detection results (Phase 7)
 - [ ] Real-time per-flow detection (Phase 8)

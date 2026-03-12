@@ -1,0 +1,21 @@
+{
+  "name": "NIDS Dev",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "postCreateCommand": "scripts/dev/setup-dev.sh --no-install",
+  "remoteUser": "dev",
+  "remoteEnv": {
+    "CC": "gcc-13",
+    "CXX": "g++-13"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "customizations": {
+    "jetbrains": {
+      "backend": "CLion"
+    }
+  }
+}

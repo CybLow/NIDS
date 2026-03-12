@@ -1,4 +1,4 @@
-# docker-compose.ci.yml — Full CI stack for NIDS
+# docker-compose.ci.yml -- Full CI stack for NIDS
 #
 # Provides a self-contained CI environment with:
 #   - nids-builder:   Build, test, lint, and coverage container
@@ -7,32 +7,27 @@
 #
 # Usage (local CI simulation):
 #   # Start SonarQube stack:
-#   docker compose -f docker-compose.ci.yml up -d sonarqube
+#   docker compose -f docker/ci/compose.yml up -d sonarqube
 #
-#   # Run full pipeline (build + test + lint + coverage + scan):
-#   docker compose -f docker-compose.ci.yml run --rm nids-pipeline
+#   # Run full pipeline:
+#   docker compose -f docker/ci/compose.yml run --rm nids-pipeline
 #
 #   # Run individual stages:
-#   docker compose -f docker-compose.ci.yml run --rm nids-build
-#   docker compose -f docker-compose.ci.yml run --rm nids-test
-#   docker compose -f docker-compose.ci.yml run --rm nids-lint
-#   docker compose -f docker-compose.ci.yml run --rm nids-coverage
-#   docker compose -f docker-compose.ci.yml run --rm nids-scan
-#
-# Environment variables:
-#   SONAR_TOKEN — SonarQube authentication token (required for scan stage)
-#   SONAR_URL   — Override SonarQube URL (default: http://localhost:9000)
+#   docker compose -f docker/ci/compose.yml run --rm nids-build
+#   docker compose -f docker/ci/compose.yml run --rm nids-test
+#   docker compose -f docker/ci/compose.yml run --rm nids-lint
+#   docker compose -f docker/ci/compose.yml run --rm nids-coverage
+#   docker compose -f docker/ci/compose.yml run --rm nids-scan
 
 services:
   # ── Builder base (shared config, not run directly) ─────────────────
   nids-builder:
     build:
-      context: .
-      dockerfile: Dockerfile.ci
+      context: ../..
+      dockerfile: docker/ci/Dockerfile
     working_dir: /workspace
     volumes:
-      - .:/workspace:z
-      - vcpkg-cache:/opt/vcpkg/installed
+      - ../..:/workspace:z
     environment:
       CC: gcc-13
       CXX: g++-13
@@ -47,15 +42,9 @@ services:
       - stages
     command: >
       bash -c "
-        cmake -B build-ci -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_C_COMPILER=gcc-13
-          -DCMAKE_CXX_COMPILER=g++-13
-          -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          -DNIDS_BUILD_TESTS=ON
-          -DNIDS_COVERAGE=ON
-        && cmake --build build-ci --parallel
+        conan install . -pr:h conan/profiles/linux-ci -s build_type=Debug --build=missing
+        && cmake --preset ci-coverage
+        && cmake --build --preset ci-coverage
       "
 
   # ── Stage 2: Unit + Integration + Stress tests ─────────────────────
@@ -66,7 +55,7 @@ services:
       - stages
     command: >
       bash -c "
-        ctest --test-dir build-ci --output-on-failure --timeout 120 -j$(nproc)
+        ctest --test-dir build/ci-coverage --output-on-failure --timeout 120 -j$$(nproc)
       "
 
   # ── Stage 3: clang-tidy lint ───────────────────────────────────────
@@ -77,7 +66,7 @@ services:
       - stages
     command: >
       bash -c "
-        run-clang-tidy-17 -p build-ci -quiet 'src/.*\\.(cpp|h)$$' 2>&1 | tee /tmp/ct.txt
+        run-clang-tidy-17 -p build/ci-coverage -quiet 'src/.*\\.(cpp|h)$$' 2>&1 | tee /tmp/ct.txt
         && ! grep -qE 'warning:|error:' /tmp/ct.txt
       "
 
@@ -89,14 +78,14 @@ services:
       - stages
     command: >
       bash -c "
-        cppcheck --project=build-ci/compile_commands.json
+        cppcheck --project=build/ci-coverage/compile_commands.json
           --enable=all --std=c++20
           --suppress=missingIncludeSystem
           --suppress=unusedFunction
           --suppress=unmatchedSuppression
           --inline-suppr
           --xml --xml-version=2 2> cppcheck-report.xml
-        && cppcheck --project=build-ci/compile_commands.json
+        && cppcheck --project=build/ci-coverage/compile_commands.json
           --enable=all --std=c++20
           --suppress=missingIncludeSystem
           --suppress=unusedFunction
@@ -113,7 +102,7 @@ services:
       - stages
     command: >
       bash -c "
-        gcovr --root /workspace build-ci
+        gcovr --root /workspace build/ci-coverage
           --cobertura coverage-cobertura.xml
           --exclude-unreachable-branches
           --exclude-throw-branches
@@ -133,7 +122,7 @@ services:
     image: docker.io/sonarsource/sonar-scanner-cli:latest
     network_mode: host
     volumes:
-      - .:/usr/src:z
+      - ../..:/usr/src:z
     environment:
       SONAR_HOST_URL: ${SONAR_URL:-http://localhost:9000}
       SONAR_TOKEN: ${SONAR_TOKEN}
@@ -162,39 +151,31 @@ services:
       bash -c "
         set -euo pipefail
 
-        echo '╔══════════════════════════════════════╗'
-        echo '║   NIDS CI Pipeline — Full Run        ║'
-        echo '╚══════════════════════════════════════╝'
+        echo '== NIDS CI Pipeline =='
 
-        echo '── Stage 1/6: Configure + Build ──'
-        cmake -B build-ci -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_C_COMPILER=gcc-13
-          -DCMAKE_CXX_COMPILER=g++-13
-          -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          -DNIDS_BUILD_TESTS=ON
-          -DNIDS_COVERAGE=ON
-        cmake --build build-ci --parallel
+        echo '-- Stage 1/6: Configure + Build --'
+        conan install . -pr:h conan/profiles/linux-ci -s build_type=Debug --build=missing
+        cmake --preset ci-coverage
+        cmake --build --preset ci-coverage
 
-        echo '── Stage 2/6: Tests (unit + integration + stress) ──'
-        ctest --test-dir build-ci --output-on-failure --timeout 120 -j$$(nproc)
+        echo '-- Stage 2/6: Tests --'
+        ctest --test-dir build/ci-coverage --output-on-failure --timeout 120 -j$$(nproc)
 
-        echo '── Stage 3/6: clang-tidy ──'
-        run-clang-tidy-17 -p build-ci -quiet 'src/.*\\.(cpp|h)$$' 2>&1 | tee /tmp/ct.txt
+        echo '-- Stage 3/6: clang-tidy --'
+        run-clang-tidy-17 -p build/ci-coverage -quiet 'src/.*\\.(cpp|h)$$' 2>&1 | tee /tmp/ct.txt
         if grep -qE 'warning:|error:' /tmp/ct.txt; then
           echo 'FAIL: clang-tidy found issues'
           grep -E 'warning:|error:' /tmp/ct.txt | grep -v 'warnings generated'
           exit 1
         fi
 
-        echo '── Stage 4/6: cppcheck ──'
+        echo '-- Stage 4/6: cppcheck --'
         cppcheck --xml --xml-version=2
           --enable=all --std=c++20
           --suppress=missingInclude --suppress=missingIncludeSystem
           --suppress=unusedFunction --suppress=unknownMacro
           --inline-suppr --language=c++ -I src src/ 2> cppcheck-report.xml
-        cppcheck --project=build-ci/compile_commands.json
+        cppcheck --project=build/ci-coverage/compile_commands.json
           --enable=all --std=c++20
           --suppress=missingIncludeSystem --suppress=unusedFunction
           --suppress=unmatchedSuppression --inline-suppr 2>&1 | tee /tmp/cc.txt
@@ -203,28 +184,25 @@ services:
           exit 1
         fi
 
-        echo '── Stage 5/6: Coverage ──'
-        gcovr --root /workspace build-ci
+        echo '-- Stage 5/6: Coverage --'
+        gcovr --root /workspace build/ci-coverage
           --cobertura coverage-cobertura.xml
           --exclude-unreachable-branches --exclude-throw-branches
           --filter 'src/'
         sed -i 's|<source>[^<]*</source>|<source>.</source>|g' coverage-cobertura.xml
 
-        echo '── Stage 6/6: SonarQube Scan ──'
+        echo '-- Stage 6/6: SonarQube Scan --'
         if [[ -n \"\$${SONAR_TOKEN:-}\" ]]; then
           echo 'Launching sonar-scanner...'
-          # Scanner runs as a separate container via depends_on; skip if no token
         else
-          echo 'SONAR_TOKEN not set — skipping SonarQube scan'
+          echo 'SONAR_TOKEN not set -- skipping SonarQube scan'
         fi
 
         echo ''
-        echo '╔══════════════════════════════════════╗'
-        echo '║   ✓ All CI stages passed             ║'
-        echo '╚══════════════════════════════════════╝'
+        echo '== All CI stages passed =='
       "
 
-  # ── SonarQube (reuses dev instance config) ─────────────────────────
+  # ── SonarQube ──────────────────────────────────────────────────────
   sonarqube:
     image: docker.io/sonarqube:26.3.0.120487-community
     container_name: nids-ci-sonarqube
@@ -274,7 +252,6 @@ services:
       - stages
 
 volumes:
-  vcpkg-cache:
   ci_sonarqube_data:
   ci_sonarqube_extensions:
   ci_sonarqube_logs:

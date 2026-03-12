@@ -12,7 +12,7 @@ Source: Mendeley Data
     https://data.mendeley.com/datasets/7pzyfvv9jn/1
 
 Usage:
-    python scripts/download_dataset.py [--output-dir data/]
+    python scripts/ml/download_dataset.py [--output-dir data/]
 """
 
 import argparse
@@ -219,7 +219,7 @@ def main() -> None:
                 "Please download the dataset manually from Mendeley Data:\n"
                 f"  {MANUAL_DOWNLOAD_URL}\n\n"
                 "Then re-run with:\n"
-                f"  python scripts/download_dataset.py --url <direct-file-url>\n"
+                f"  python scripts/ml/download_dataset.py --url <direct-file-url>\n"
                 "or place the extracted CSV files directly in the data/ directory.",
                 file=sys.stderr,
             )
@@ -281,7 +281,7 @@ def main() -> None:
         print("\nNo CSV files found. Check the archive contents manually.")
 
     print(f"\nDataset ready in: {output_dir.resolve()}")
-    print("Next step: python scripts/preprocess.py --input-dir data/")
+    print("Next step: python scripts/ml/preprocess.py --input-dir data/")
 
 
 if __name__ == "__main__":

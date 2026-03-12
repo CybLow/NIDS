@@ -69,6 +69,6 @@ Attack types:
 1. `AttackType.h` rewritten with 17 enum values (15 attacks + Benign + Unknown).
 2. `attackTypeToString()` and `attackTypeFromIndex()` updated for all 16 model classes.
 3. `NativeFlowExtractor` produces 77 named CIC-compatible features.
-4. Preprocessing script (`scripts/preprocess.py`) handles feature selection and
+4. Preprocessing script (`scripts/ml/preprocess.py`) handles feature selection and
    normalization, storing the mapping in `model_metadata.json`.
 5. All tests updated to use new enum values.
