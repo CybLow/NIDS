@@ -34,33 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            gcc-13 g++-13 \
-            cmake ninja-build \
-            libpcap-dev \
-            python3-pip \
-            '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev \
-            libxi-dev libxkbcommon-dev libxkbcommon-x11-dev libegl1-mesa-dev
-          if [ "${{ matrix.package }}" = "rpm" ]; then
-            sudo apt-get install -y --no-install-recommends rpm
-          fi
-
-      - name: Install Conan
-        run: pip3 install --break-system-packages conan
-
-      - name: Cache Conan packages
-        uses: actions/cache@v4
+      - uses: ./.github/actions/setup-build-env
         with:
-          path: ${{ env.CONAN_HOME }}
-          key: conan-release-${{ hashFiles('conanfile.py') }}
-          restore-keys: |
-            conan-release-
-
-      - name: Install Conan dependencies
-        run: conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
+          extra-packages: ${{ matrix.package == 'rpm' && 'rpm' || '' }}
 
       - name: Configure
         run: cmake --preset ci-gcc
