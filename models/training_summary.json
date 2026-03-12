@@ -1,0 +1,46 @@
+{
+  "best_epoch": 62,
+  "best_val_loss": 0.623794,
+  "best_val_f1": 0.807579,
+  "test_loss": 0.622405,
+  "test_accuracy": 0.87782,
+  "test_macro_f1": 0.80591,
+  "test_weighted_f1": 0.880328,
+  "test_macro_auc": 0.989833,
+  "total_params": 391056,
+  "n_features": 77,
+  "n_classes": 16,
+  "hyperparameters": {
+    "cnn_channels": [
+      64,
+      128
+    ],
+    "cnn_kernel": 3,
+    "lstm_hidden": 128,
+    "dense_widths": [
+      256,
+      128
+    ],
+    "drop_cnn": 0.2,
+    "drop_lstm": 0.3,
+    "drop_dense": [
+      0.4,
+      0.3
+    ],
+    "batch_size": 512,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "label_smoothing": 0.05,
+    "lr_factor": 0.5,
+    "lr_patience": 3,
+    "grad_clip_norm": 1.0,
+    "max_epochs": 100,
+    "patience": 10,
+    "sampler_cap_ratio": 50.0,
+    "use_amp": true
+  },
+  "training_time_sec": 1515.3,
+  "device": "cuda",
+  "seed": 42,
+  "pytorch_version": "2.10.0+cu128"
+}

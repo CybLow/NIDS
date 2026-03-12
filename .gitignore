@@ -39,8 +39,7 @@ compile_commands.json
 # ── Conan artifacts ─────────────────────────────────────────────
 CMakeUserPresets.json
 
-# ── Large / binary files (never commit anywhere) ────────────────
-*.onnx
+# ── Large / binary files (never commit) ──────────────────────────
 *.onnx.data
 *.pt
 *.pth
@@ -49,9 +48,6 @@ CMakeUserPresets.json
 *.npy
 *.npz
 *.zip
-
-# ── ML model artifacts (produced by training pipeline) ───────────
-models/
 
 # ── Python ───────────────────────────────────────────────────────
 __pycache__/

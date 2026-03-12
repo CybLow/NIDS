@@ -50,9 +50,8 @@ COPY --from=builder /app/build/ci-gcc/NIDS /app/NIDS
 COPY --from=builder /app/build/ci-gcc/_deps/onnxruntime-src/lib/*.so* /usr/local/lib/
 RUN ldconfig
 
-# Model directory -- mount the ONNX model at runtime:
-#   docker run -v /path/to/model.onnx:/app/model/model.onnx nids
-RUN mkdir -p /app/model
+# Copy the trained model
+COPY --from=builder /app/models/model.onnx /app/models/model.onnx
 
 RUN useradd -m -s /bin/bash nids
 USER nids

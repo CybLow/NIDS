@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && pip3 install --break-system-packages conan gcovr \
     && rm -rf /var/lib/apt/lists/*
 
+# Set compiler before Conan install (toolchain needs CC/CXX)
+ENV CC=gcc-13 CXX=g++-13
+
 # Pre-install Conan deps for cache efficiency using in-repo profile
 WORKDIR /workspace
 COPY conanfile.py CMakePresets.json ./
@@ -28,8 +31,6 @@ COPY conan/ conan/
 RUN conan profile detect --force && \
     conan install . -pr:h conan/profiles/linux-ci -s build_type=Debug --build=missing && \
     conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
-
-ENV CC=gcc-13 CXX=g++-13
 
 COPY . .
 

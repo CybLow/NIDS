@@ -135,6 +135,12 @@ jobs:
           name: compile-commands-ci-gcc
           path: build/ci-gcc/
 
+      - name: Filter out MOC/autogen from compile_commands.json
+        run: |
+          jq '[.[] | select(.file | test("_autogen") | not)]' \
+            build/ci-gcc/compile_commands.json > build/ci-gcc/compile_commands_filtered.json
+          mv build/ci-gcc/compile_commands_filtered.json build/ci-gcc/compile_commands.json
+
       - name: Run cppcheck
         run: |
           cppcheck --project=build/ci-gcc/compile_commands.json \
