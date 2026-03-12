@@ -359,9 +359,9 @@ jobs:
           # Change default admin password (required by SonarQube before API usage)
           echo "Changing admin password..."
           curl -s -u "$AUTH" -X POST "$SQ/api/users/change_password" \
-            -d "login=admin&previousPassword=admin&password=NidsCI2026!" \
+            -d "login=admin&previousPassword=admin&password=NidsCI2026!Secure" \
             -w "\nHTTP %{http_code}\n"
-          AUTH="admin:NidsCI2026!"
+          AUTH="admin:NidsCI2026!Secure"
 
           # Generate analysis token
           echo "Generating analysis token..."
@@ -402,7 +402,7 @@ jobs:
           if [ -n "$SONAR_TOKEN" ]; then
             AUTH_ENV="-e SONAR_TOKEN=$SONAR_TOKEN"
           else
-            AUTH_ENV="-e SONAR_LOGIN=admin -e SONAR_PASSWORD=NidsCI2026!"
+            AUTH_ENV="-e SONAR_LOGIN=admin -e SONAR_PASSWORD=NidsCI2026!Secure"
           fi
 
           docker run --rm --network=host \
