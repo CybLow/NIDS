@@ -25,7 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /workspace
 COPY conanfile.py CMakePresets.json ./
 COPY conan/ conan/
-RUN conan install . -pr:h conan/profiles/linux-ci -s build_type=Debug --build=missing && \
+RUN conan profile detect --force && \
+    conan install . -pr:h conan/profiles/linux-ci -s build_type=Debug --build=missing && \
     conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
 
 ENV CC=gcc-13 CXX=g++-13

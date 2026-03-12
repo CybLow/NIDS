@@ -24,7 +24,8 @@ COPY conan/ conan/
 
 # Install Conan deps using in-repo profile
 ENV CC=gcc-13 CXX=g++-13
-RUN conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
+RUN conan profile detect --force && \
+    conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
 
 COPY . .
 
