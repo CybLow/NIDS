@@ -91,6 +91,7 @@ target_link_libraries(nids_stress_tests PRIVATE
     nids_core
     nids_infra
     nids_app
+    spdlog::spdlog
 )
 
 nids_set_target_defaults(nids_stress_tests)
