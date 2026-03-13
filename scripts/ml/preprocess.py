@@ -346,7 +346,7 @@ class FlowStats:
     cur_bwd_bulk_bytes: int = 0
     last_packet_was_fwd: bool = False
 
-    def to_feature_vector(self, dst_port: int) -> list[float]:
+    def to_feature_vector(self, dst_port: int) -> list[float]:  # NOSONAR
         """Compute the 77-element feature vector.
 
         Must produce identical output to C++ FlowStats::toFeatureVector().
@@ -623,7 +623,7 @@ def _parse_arp_info(info: str) -> tuple[str, str] | None:
     return None
 
 
-def _parse_packet_row(row: pd.Series) -> ParsedPacket | None:
+def _parse_packet_row(row: pd.Series) -> ParsedPacket | None:  # NOSONAR
     """Parse a single CSV row into a ParsedPacket.
 
     Returns None if the row cannot be parsed.
@@ -751,7 +751,7 @@ class FlowAggregator:
         self.active_flows: dict[FlowKey, FlowStats] = {}
         self.completed_flows: list[tuple[FlowKey, FlowStats]] = []
 
-    def process_packet(self, pkt: ParsedPacket) -> None:
+    def process_packet(self, pkt: ParsedPacket) -> None:  # NOSONAR
         """Process a single packet, matching C++ processPacket() logic."""
         timestamp_us = pkt.timestamp_us
         header_bytes = pkt.ip_header_len + pkt.transport_header_len
@@ -1033,7 +1033,6 @@ def _resolve_label(raw_label: str) -> int:
 def _load_and_aggregate_csv(
     csv_path: Path,
     label: str,
-    input_dir: Path,
 ) -> tuple[list[list[float]], list[int]]:
     """Load a single CSV file, aggregate packets into flows, return features + labels.
 
@@ -1123,12 +1122,12 @@ def load_and_process_dataset(input_dir: Path) -> tuple[np.ndarray, np.ndarray]:
                     label = str(unique_labels[0]).strip()
                 else:
                     label = "Benign"
-                    print(f"    WARNING: Multiple labels found, defaulting to Benign")
+                    print("    WARNING: Multiple labels found, defaulting to Benign")
             else:
                 label = "Benign"
-                print(f"    WARNING: Cannot determine label, defaulting to Benign")
+                print("    WARNING: Cannot determine label, defaulting to Benign")
 
-        features, labels = _load_and_aggregate_csv(csv_path, label, input_dir)
+        features, labels = _load_and_aggregate_csv(csv_path, label)
         all_features.extend(features)
         all_labels.extend(labels)
 
@@ -1170,9 +1169,9 @@ def clean_features(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray
 
 
 def normalize_features(
-    X_train: np.ndarray,
-    X_val: np.ndarray,
-    X_test: np.ndarray,
+    x_train: np.ndarray,
+    x_val: np.ndarray,
+    x_test: np.ndarray,
     clip_value: float = 10.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
     """Fit StandardScaler on training set, transform all splits.
@@ -1182,15 +1181,15 @@ def normalize_features(
     counts and byte volumes can produce values 100-800x the standard deviation).
     """
     scaler = StandardScaler()
-    X_train_norm = scaler.fit_transform(X_train).astype(np.float32)
-    X_val_norm = scaler.transform(X_val).astype(np.float32)
-    X_test_norm = scaler.transform(X_test).astype(np.float32)
+    x_train_norm = scaler.fit_transform(x_train).astype(np.float32)
+    x_val_norm = scaler.transform(x_val).astype(np.float32)
+    x_test_norm = scaler.transform(x_test).astype(np.float32)
 
     # Clip extreme outliers post-normalization
-    n_clipped_train = int((np.abs(X_train_norm) > clip_value).sum())
-    X_train_norm = np.clip(X_train_norm, -clip_value, clip_value)
-    X_val_norm = np.clip(X_val_norm, -clip_value, clip_value)
-    X_test_norm = np.clip(X_test_norm, -clip_value, clip_value)
+    n_clipped_train = int((np.abs(x_train_norm) > clip_value).sum())
+    x_train_norm = np.clip(x_train_norm, -clip_value, clip_value)
+    x_val_norm = np.clip(x_val_norm, -clip_value, clip_value)
+    x_test_norm = np.clip(x_test_norm, -clip_value, clip_value)
 
     # Guard near-zero stds: replace any std < 1e-8 with 1.0 so that C++
     # inference (which does (x - mean) / std) never divides by ~0.
@@ -1224,13 +1223,13 @@ def normalize_features(
         f"StandardScaler fitted on training set"
     )
     if n_clipped_train > 0:
-        total_cells = X_train_norm.shape[0] * X_train_norm.shape[1]
+        total_cells = x_train_norm.shape[0] * x_train_norm.shape[1]
         pct = 100.0 * n_clipped_train / total_cells
         print(
             f"  Clipped {n_clipped_train:,} values ({pct:.4f}%) to "
             f"[{-clip_value}, {clip_value}]"
         )
-    return X_train_norm, X_val_norm, X_test_norm, norm_params
+    return x_train_norm, x_val_norm, x_test_norm, norm_params
 
 
 def compute_class_weights(y: np.ndarray, n_classes: int) -> dict[int, float]:
@@ -1378,22 +1377,22 @@ def main() -> None:
         print(f"WARNING: Classes with 0 samples (no flows extracted): {empty_names}\n")
 
     # Separate rare-class samples
-    X_rare = X[rare_mask]
+    x_rare = X[rare_mask]
     y_rare = y[rare_mask]
-    X_common = X[~rare_mask]
+    x_common = X[~rare_mask]
     y_common = y[~rare_mask]
 
     test_val_ratio = args.val_ratio + args.test_ratio
-    X_train_common, X_temp, y_train_common, y_temp = train_test_split(
-        X_common,
+    x_train_common, x_temp, y_train_common, y_temp = train_test_split(
+        x_common,
         y_common,
         test_size=test_val_ratio,
         random_state=args.seed,
         stratify=y_common,
     )
     relative_test_ratio = args.test_ratio / test_val_ratio
-    X_val, X_test, y_val, y_test = train_test_split(
-        X_temp,
+    x_val, x_test, y_val, y_test = train_test_split(
+        x_temp,
         y_temp,
         test_size=relative_test_ratio,
         random_state=args.seed,
@@ -1401,17 +1400,17 @@ def main() -> None:
     )
 
     # Merge rare-class samples into training set
-    if len(X_rare) > 0:
-        X_train = np.concatenate([X_train_common, X_rare], axis=0)
+    if len(x_rare) > 0:
+        x_train = np.concatenate([x_train_common, x_rare], axis=0)
         y_train = np.concatenate([y_train_common, y_rare], axis=0)
     else:
-        X_train = X_train_common
+        x_train = x_train_common
         y_train = y_train_common
 
     split_sizes = {
-        "train": len(X_train),
-        "val": len(X_val),
-        "test": len(X_test),
+        "train": len(x_train),
+        "val": len(x_val),
+        "test": len(x_test),
     }
     print(
         f"Split sizes: train={split_sizes['train']:,}, "
@@ -1419,7 +1418,7 @@ def main() -> None:
     )
 
     # 5. Normalize
-    X_train, X_val, X_test, norm_params = normalize_features(X_train, X_val, X_test)
+    x_train, x_val, x_test, norm_params = normalize_features(x_train, x_val, x_test)
 
     # 6. Compute class weights
     class_weights = compute_class_weights(y_train, n_classes)
@@ -1430,9 +1429,9 @@ def main() -> None:
     print()
 
     # 7. Save processed data
-    np.save(output_dir / "X_train.npy", X_train)
-    np.save(output_dir / "X_val.npy", X_val)
-    np.save(output_dir / "X_test.npy", X_test)
+    np.save(output_dir / "X_train.npy", x_train)
+    np.save(output_dir / "X_val.npy", x_val)
+    np.save(output_dir / "X_test.npy", x_test)
     np.save(output_dir / "y_train.npy", y_train)
     np.save(output_dir / "y_val.npy", y_val)
     np.save(output_dir / "y_test.npy", y_test)

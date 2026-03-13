@@ -128,32 +128,32 @@ def create_dataloaders(
     Returns:
         train_loader, val_loader, test_loader, n_features, n_classes
     """
-    X_train = np.load(data_dir / "X_train.npy")
-    X_val = np.load(data_dir / "X_val.npy")
-    X_test = np.load(data_dir / "X_test.npy")
+    x_train = np.load(data_dir / "X_train.npy")
+    x_val = np.load(data_dir / "X_val.npy")
+    x_test = np.load(data_dir / "X_test.npy")
     y_train = np.load(data_dir / "y_train.npy")
     y_val = np.load(data_dir / "y_val.npy")
     y_test = np.load(data_dir / "y_test.npy")
 
-    n_features = X_train.shape[1]
+    n_features = x_train.shape[1]
     n_classes = int(y_train.max()) + 1
 
     print(
-        f"Data loaded: {X_train.shape[0]} train, {X_val.shape[0]} val, {X_test.shape[0]} test"
+        f"Data loaded: {x_train.shape[0]} train, {x_val.shape[0]} val, {x_test.shape[0]} test"
     )
     print(f"Features: {n_features}, Classes: {n_classes}")
 
     # Convert to tensors
     train_dataset = TensorDataset(
-        torch.tensor(X_train, dtype=torch.float32),
+        torch.tensor(x_train, dtype=torch.float32),
         torch.tensor(y_train, dtype=torch.long),
     )
     val_dataset = TensorDataset(
-        torch.tensor(X_val, dtype=torch.float32),
+        torch.tensor(x_val, dtype=torch.float32),
         torch.tensor(y_val, dtype=torch.long),
     )
     test_dataset = TensorDataset(
-        torch.tensor(X_test, dtype=torch.float32),
+        torch.tensor(x_test, dtype=torch.float32),
         torch.tensor(y_test, dtype=torch.long),
     )
 
@@ -228,12 +228,12 @@ def train_one_epoch(
     correct = 0
     total = 0
 
-    for X_batch, y_batch in tqdm(loader, desc="  Train", leave=False):
-        X_batch = X_batch.to(device, non_blocking=True)
+    for x_batch, y_batch in tqdm(loader, desc="  Train", leave=False):
+        x_batch = x_batch.to(device, non_blocking=True)
         y_batch = y_batch.to(device, non_blocking=True)
 
         optimizer.zero_grad()
-        logits = model(X_batch)
+        logits = model(x_batch)
         loss = criterion(logits, y_batch)
         loss.backward()
 
@@ -242,10 +242,10 @@ def train_one_epoch(
 
         optimizer.step()
 
-        total_loss += loss.item() * X_batch.size(0)
+        total_loss += loss.item() * x_batch.size(0)
         preds = logits.argmax(dim=1)
         correct += (preds == y_batch).sum().item()
-        total += X_batch.size(0)
+        total += x_batch.size(0)
 
     return total_loss / total, correct / total
 
@@ -263,17 +263,17 @@ def evaluate(
     correct = 0
     total = 0
 
-    for X_batch, y_batch in tqdm(loader, desc="  Eval ", leave=False):
-        X_batch = X_batch.to(device, non_blocking=True)
+    for x_batch, y_batch in tqdm(loader, desc="  Eval ", leave=False):
+        x_batch = x_batch.to(device, non_blocking=True)
         y_batch = y_batch.to(device, non_blocking=True)
 
-        logits = model(X_batch)
+        logits = model(x_batch)
         loss = criterion(logits, y_batch)
 
-        total_loss += loss.item() * X_batch.size(0)
+        total_loss += loss.item() * x_batch.size(0)
         preds = logits.argmax(dim=1)
         correct += (preds == y_batch).sum().item()
-        total += X_batch.size(0)
+        total += x_batch.size(0)
 
     return total_loss / total, correct / total
 

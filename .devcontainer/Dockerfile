@@ -7,7 +7,7 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# System dependencies (build + lint + debug tools)
+# System dependencies (build + lint + debug tools) and Python tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc-13 g++-13 clang-17 clang-tidy-17 clang-tools-17 \
     cmake ninja-build make \
@@ -19,10 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates curl tar pkg-config \
     gdb lldb-17 \
     bash-completion sudo openssh-server rsync \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python tools
-RUN pip3 install --break-system-packages conan gcovr
+    && rm -rf /var/lib/apt/lists/* \
+    && pip3 install --break-system-packages conan gcovr
 
 # Create non-root user (generic name, works with any IDE)
 ARG USERNAME=dev

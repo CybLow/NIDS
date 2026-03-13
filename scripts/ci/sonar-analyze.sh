@@ -31,10 +31,11 @@ COBERTURA_XML="${PROJECT_ROOT}/coverage-cobertura.xml"
 
 require_sonar_token() {
     if [[ -z "${SONAR_TOKEN:-}" ]]; then
-        echo "ERROR: SONAR_TOKEN environment variable is required"
+        echo "ERROR: SONAR_TOKEN environment variable is required" >&2
         echo "  export SONAR_TOKEN=squ_..."
         exit 1
     fi
+    return 0
 }
 
 run_cppcheck() {
@@ -70,6 +71,7 @@ for e in errors[:10]:
 if len(errors) > 10:
     print(f'    ... and {len(errors) - 10} more')
 " 2>/dev/null || echo "  (install python3 to see issue count)"
+    return 0
 }
 
 run_coverage() {
@@ -112,6 +114,7 @@ branch_rate = float(root.get('branch-rate', 0)) * 100
 print(f'  Line coverage:   {line_rate:.1f}%')
 print(f'  Branch coverage: {branch_rate:.1f}%')
 " 2>/dev/null || echo "  (install python3 to see coverage summary)"
+    return 0
 }
 
 run_scanner() {
@@ -127,6 +130,7 @@ run_scanner() {
     echo ""
     echo "=== Analysis complete ==="
     echo "  Dashboard: ${SONAR_URL}/dashboard?id=nids"
+    return 0
 }
 
 case "${1:-all}" in

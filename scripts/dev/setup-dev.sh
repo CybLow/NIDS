@@ -22,11 +22,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-info()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
-ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
-error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-die()   { error "$@"; exit 1; }
+info()  { echo -e "${BLUE}[INFO]${NC}  $*"; return 0; }
+ok()    { echo -e "${GREEN}[OK]${NC}    $*"; return 0; }
+warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; return 0; }
+error() { echo -e "${RED}[ERROR]${NC} $*" >&2; return 0; }
+die()   { error "$@"; exit 1; return 0; }
 
 # ── Defaults ─────────────────────────────────────────────────────
 SKIP_INSTALL=false
@@ -51,12 +51,13 @@ done
 
 # ── Detect distro ───────────────────────────────────────────────
 detect_distro() {
-    if [ -f /etc/os-release ]; then
+    if [[ -f /etc/os-release ]]; then
         . /etc/os-release
         echo "$ID"
     else
         die "Cannot detect Linux distribution (no /etc/os-release)"
     fi
+    return 0
 }
 
 # ── Install system packages ─────────────────────────────────────
@@ -70,6 +71,7 @@ install_fedora() {
         python3 python3-pip \
         git curl tar pkg-config
     ok "Fedora system packages installed"
+    return 0
 }
 
 install_ubuntu() {
@@ -85,6 +87,7 @@ install_ubuntu() {
         '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev \
         libxi-dev libxkbcommon-dev libxkbcommon-x11-dev libegl1-mesa-dev
     ok "Ubuntu/Debian system packages installed"
+    return 0
 }
 
 install_packages() {
@@ -103,6 +106,7 @@ install_packages() {
                     exit 1
                     ;;
     esac
+    return 0
 }
 
 # ── Install Conan ────────────────────────────────────────────────
@@ -127,6 +131,7 @@ install_conan() {
 
     # Verify
     conan --version || die "Conan installation failed"
+    return 0
 }
 
 # ── Configure Conan with in-repo profile ─────────────────────────
@@ -134,10 +139,11 @@ configure_conan() {
     info "Detecting Conan default profile..."
     conan profile detect --force >/dev/null 2>&1
 
-    if [ ! -f "$CONAN_PROFILE" ]; then
+    if [[ ! -f "$CONAN_PROFILE" ]]; then
         die "In-repo Conan profile not found: $CONAN_PROFILE"
     fi
     ok "Using in-repo Conan profile: $CONAN_PROFILE"
+    return 0
 }
 
 # ── Install Conan dependencies ───────────────────────────────────
@@ -155,6 +161,7 @@ install_conan_deps() {
         --build=missing
 
     ok "Conan dependencies installed for Debug + Release"
+    return 0
 }
 
 # ── Print next steps ─────────────────────────────────────────────
@@ -182,6 +189,7 @@ print_next_steps() {
     echo "  # Run (requires root or CAP_NET_RAW):"
     echo "  sudo ./build/Debug/NIDS"
     echo ""
+    return 0
 }
 
 # ── Main ─────────────────────────────────────────────────────────
@@ -191,7 +199,7 @@ main() {
     info "Project root: $PROJECT_ROOT"
     echo ""
 
-    if [ "$SKIP_INSTALL" = false ]; then
+    if [[ "$SKIP_INSTALL" = false ]]; then
         install_packages
     else
         info "Skipping system package installation (--no-install)"
@@ -201,6 +209,7 @@ main() {
     configure_conan
     install_conan_deps
     print_next_steps
+    return 0
 }
 
 main "$@"

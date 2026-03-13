@@ -42,6 +42,7 @@ download_feed() {
         rm -f "$output"
         FAILED=$((FAILED + 1))
     fi
+    return 0
 }
 
 echo "Downloading feeds:"
@@ -78,7 +79,7 @@ echo "  Failed:     $FAILED"
 echo "  Output:     $OUTPUT_DIR/"
 echo ""
 
-if [ "$FAILED" -gt 0 ]; then
+if [[ "$FAILED" -gt 0 ]]; then
     echo "WARNING: Some feeds failed to download. This is normal if the"
     echo "server is temporarily unavailable. Retry later."
     exit 1
