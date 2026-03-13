@@ -117,7 +117,9 @@ if(TARGET onnxruntime::onnxruntime)
 
     nids_set_target_defaults(nids_onnx_tests)
     nids_test_coverage(nids_onnx_tests)
-    gtest_discover_tests(nids_onnx_tests)
+    gtest_discover_tests(nids_onnx_tests
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
 else()
     message(STATUS "onnxruntime target not available -- skipping ONNX analyzer tests")
 endif()

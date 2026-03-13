@@ -19,7 +19,7 @@ public:
                            QWidget* parent = nullptr);
 
     /** Return the service name selected by the user, or empty if cancelled. */
-    [[nodiscard]] QString getSelectedService() const;
+    [[nodiscard]] const QString& getSelectedService() const;
 
 private slots:
     void onOkClicked();

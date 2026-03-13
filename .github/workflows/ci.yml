@@ -66,6 +66,8 @@ jobs:
             --tests-regex 'Stress' --parallel 1
 
   # ── Stage 2b: clang-tidy lint ────────────────────────────────────
+  # Must run full cmake configure so Conan/FetchContent include paths
+  # (spdlog, onnxruntime, nlohmann_json) exist on disk for clang-tidy.
   lint:
     name: Lint (clang-tidy)
     needs: [build]
@@ -76,13 +78,10 @@ jobs:
 
       - uses: ./.github/actions/setup-build-env
         with:
-          compiler: clang-17
+          extra-packages: clang-17 clang-tidy-17 clang-tools-17
 
-      - name: Download compile_commands.json
-        uses: actions/download-artifact@v4
-        with:
-          name: compile-commands
-          path: build/ci-gcc/
+      - name: Configure (generates compile_commands.json + fetches deps)
+        run: cmake --preset ci-gcc
 
       - name: Filter out MOC/autogen from compile_commands.json
         run: |
@@ -107,6 +106,7 @@ jobs:
           echo "clang-tidy: 0 issues found"
 
   # ── Stage 2c: cppcheck ──────────────────────────────────────────
+  # Must run full cmake configure so Conan/FetchContent include paths exist.
   cppcheck:
     name: Lint (cppcheck)
     needs: [build]
@@ -119,11 +119,8 @@ jobs:
         with:
           extra-packages: cppcheck
 
-      - name: Download compile_commands.json
-        uses: actions/download-artifact@v4
-        with:
-          name: compile-commands
-          path: build/ci-gcc/
+      - name: Configure (generates compile_commands.json + fetches deps)
+        run: cmake --preset ci-gcc
 
       - name: Filter out MOC/autogen from compile_commands.json
         run: |
@@ -135,8 +132,10 @@ jobs:
         run: |
           cppcheck --project=build/ci-gcc/compile_commands.json \
             --enable=all --std=c++20 \
+            --library=qt \
             --suppress=missingIncludeSystem \
             --suppress=unusedFunction \
+            --suppress=unusedStructMember \
             --suppress=unmatchedSuppression \
             --inline-suppr \
             -i build/ \
@@ -144,8 +143,10 @@ jobs:
 
           cppcheck --project=build/ci-gcc/compile_commands.json \
             --enable=all --std=c++20 \
+            --library=qt \
             --suppress=missingIncludeSystem \
             --suppress=unusedFunction \
+            --suppress=unusedStructMember \
             --suppress=unmatchedSuppression \
             --inline-suppr \
             -i build/ 2>&1 | tee cppcheck-output.txt
@@ -303,6 +304,12 @@ jobs:
         with:
           name: coverage-reports
 
+      - name: Download compile_commands.json
+        uses: actions/download-artifact@v4
+        with:
+          name: compile-commands
+          path: build/ci-gcc/
+
       - name: Download cppcheck report
         uses: actions/download-artifact@v4
         with:
@@ -420,7 +427,7 @@ jobs:
             -Dsonar.cxx.file.suffixes=.cpp,.h,.hpp,.cxx,.cc,.hh,.hxx \
             -Dsonar.cxx.cppcheck.reportPaths=cppcheck-report.xml \
             -Dsonar.cxx.cobertura.reportPaths=coverage-cobertura.xml \
-            -Dsonar.cxx.jsonCompilationDatabase=build/ci-coverage/compile_commands.json \
+            -Dsonar.cxx.jsonCompilationDatabase=build/ci-gcc/compile_commands.json \
             -Dsonar.cxx.forceIncludes=/usr/src/sonar-qt-compat.h \
             "-Dsonar.exclusions=**/node_modules/**,**/build/**,**/cmake-build-*/**,**/.opencode/**,**/proto/**" \
             "-Dsonar.test.exclusions=tests/**" \

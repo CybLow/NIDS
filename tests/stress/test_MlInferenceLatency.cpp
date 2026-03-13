@@ -35,9 +35,7 @@ std::vector<std::vector<float>> generateFeatures(std::size_t count, unsigned see
     std::vector<std::vector<float>> features(count);
     for (auto& fv : features) {
         fv.resize(static_cast<std::size_t>(kFlowFeatureCount));
-        for (auto& val : fv) {
-            val = dist(rng);
-        }
+        std::generate(fv.begin(), fv.end(), [&]() { return dist(rng); });
         // Set first feature (dst port) to realistic value
         fv[0] = static_cast<float>(rng() % 65536);
     }

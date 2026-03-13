@@ -11,13 +11,13 @@ namespace nids::infra {
 
 struct OnnxAnalyzer::Impl {
     Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "NIDS"};
-    std::unique_ptr<Ort::Session> session;
+    std::unique_ptr<Ort::Session> session{};
     Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(
         OrtArenaAllocator, OrtMemTypeDefault);
-    std::vector<std::string> inputNamesOwned;
-    std::vector<std::string> outputNamesOwned;
-    std::vector<const char*> inputNames;
-    std::vector<const char*> outputNames;
+    std::vector<std::string> inputNamesOwned{};
+    std::vector<std::string> outputNamesOwned{};
+    std::vector<const char*> inputNames{};
+    std::vector<const char*> outputNames{};
     bool loaded = false;
 };
 

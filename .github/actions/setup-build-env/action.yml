@@ -2,10 +2,6 @@ name: Setup NIDS Build Environment
 description: Install system dependencies, Conan 2, and project packages
 
 inputs:
-  compiler:
-    description: Compiler to install (gcc-13, clang-17)
-    required: false
-    default: gcc-13
   extra-packages:
     description: Additional apt packages (space-separated)
     required: false
@@ -44,10 +40,7 @@ runs:
         PACKAGES="$PACKAGES libxkbcommon-x11-dev libegl1-mesa-dev"
 
         # ── Compiler ─────────────────────────────────────────────
-        case "${{ inputs.compiler }}" in
-          gcc-13)   PACKAGES="$PACKAGES gcc-13 g++-13" ;;
-          clang-17) PACKAGES="$PACKAGES clang-17 clang-tidy-17 clang-tools-17" ;;
-        esac
+        PACKAGES="$PACKAGES gcc-13 g++-13"
 
         if [ -n "${{ inputs.extra-packages }}" ]; then
           PACKAGES="$PACKAGES ${{ inputs.extra-packages }}"
@@ -69,10 +62,10 @@ runs:
       uses: actions/cache@v4
       with:
         path: ${{ github.workspace }}/.conan2
-        key: conan-${{ inputs.compiler }}-${{ inputs.build-type }}-${{ hashFiles('conanfile.py') }}
+        key: conan-gcc13-${{ inputs.build-type }}-${{ hashFiles('conanfile.py') }}
         restore-keys: |
-          conan-${{ inputs.compiler }}-${{ inputs.build-type }}-
-          conan-${{ inputs.compiler }}-
+          conan-gcc13-${{ inputs.build-type }}-
+          conan-gcc13-
 
     - name: Install Conan dependencies
       shell: bash

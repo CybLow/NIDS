@@ -42,7 +42,7 @@ void ServiceDialog::onCancelClicked() {
     reject();
 }
 
-QString ServiceDialog::getSelectedService() const {
+const QString& ServiceDialog::getSelectedService() const {
     return selectedService_;
 }
 

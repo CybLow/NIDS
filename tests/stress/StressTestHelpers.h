@@ -16,6 +16,7 @@
 #include "core/services/IThreatIntelligence.h"
 #include "core/services/IRuleEngine.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -229,12 +230,10 @@ public:
         return blacklist_.size();
     }
     [[nodiscard]] core::ThreatIntelLookup lookup(std::string_view ip) const override {
-        for (const auto& entry : blacklist_) {
-            if (entry == ip) {
-                return {true, "test_feed"};
-            }
-        }
-        return {false, ""};
+        bool found = std::ranges::any_of(blacklist_,
+            [ip](const auto& entry) { return entry == ip; });
+        return found ? core::ThreatIntelLookup{true, "test_feed"}
+                     : core::ThreatIntelLookup{false, ""};
     }
     [[nodiscard]] core::ThreatIntelLookup lookup(std::uint32_t /*ip*/) const override {
         return {false, ""};

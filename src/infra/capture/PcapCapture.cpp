@@ -149,7 +149,9 @@ PcapCapture::PcapCapture(QObject* parent)
 }
 
 PcapCapture::~PcapCapture() {
-    stopCapture();
+    // Call the final override directly to avoid virtual dispatch in destructor.
+    // cppcheck-suppress virtualCallInConstructor
+    PcapCapture::stopCapture();
     workerThread_.quit();
     workerThread_.wait();
 }

@@ -266,8 +266,8 @@ void MainWindow::onFlowSelectionChanged() {
 
     int row = indexes.first().row();
     const auto* result = flowModel_->resultAt(row);
-    const auto* metadata = flowModel_->metadataAt(row);
     if (result) {
+        const auto* metadata = flowModel_->metadataAt(row);
         detectionDetail_->setResult(*result, metadata);
     } else {
         detectionDetail_->clearResult();
