@@ -32,11 +32,6 @@ bool NidsClient::stopCapture(const std::string & /*sessionId*/) const {
   return false;
 }
 
-void NidsClient::streamPackets(const std::string & /*sessionId*/,
-                               const PacketCallback & /*callback*/) const {
-  // TODO: implement via gRPC stub (Phase 9)
-}
-
 bool NidsClient::analyzeCapture(const std::string & /*sessionId*/) const {
   // TODO: implement via gRPC stub (Phase 9)
   return false;

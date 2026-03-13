@@ -6,11 +6,15 @@ namespace nids::server {
 
 NidsServer::NidsServer(const ServerConfig &config) : config_(config) {}
 
-NidsServer::~NidsServer() {
+NidsServer::~NidsServer() noexcept {
   try {
     stop();
   } catch (...) {
-    spdlog::error("Exception caught in NidsServer destructor during stop()");
+    try {
+      spdlog::error("Exception caught in NidsServer destructor during stop()");
+    } catch (...) {
+      // Last resort: swallow to guarantee noexcept
+    }
   }
 }
 

@@ -2,6 +2,7 @@
 
 #include <charconv>
 #include <optional>
+#include <string_view>
 
 namespace nids::core {
 
@@ -9,7 +10,7 @@ namespace {
 
 /// Try to parse a port string to int using std::from_chars (no exceptions).
 /// Returns std::nullopt on empty string or parse failure.
-[[nodiscard]] std::optional<int> tryParsePort(const std::string &s) noexcept {
+[[nodiscard]] std::optional<int> tryParsePort(std::string_view s) noexcept {
   if (s.empty())
     return std::nullopt;
   int port = 0;
@@ -42,13 +43,13 @@ std::string
 ServiceRegistry::resolveApplication(const std::string &filterSrcPort,
                                     const std::string &filterDstPort,
                                     const std::string &packetDstPort) const {
-  if (auto port = tryParsePort(filterDstPort)) {
+  if (auto port = tryParsePort(filterDstPort); port.has_value()) {
     return getServiceByPort(*port);
   }
-  if (auto port = tryParsePort(filterSrcPort)) {
+  if (auto port = tryParsePort(filterSrcPort); port.has_value()) {
     return getServiceByPort(*port);
   }
-  if (auto port = tryParsePort(packetDstPort)) {
+  if (auto port = tryParsePort(packetDstPort); port.has_value()) {
     return getServiceByPort(*port);
   }
   return "Unknown";

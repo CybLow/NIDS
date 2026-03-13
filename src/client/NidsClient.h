@@ -82,8 +82,11 @@ public:
   using PacketCallback = std::function<void(const nids::core::PacketInfo &)>;
   /** Stream captured packets from the server, invoking the callback for each.
    */
-  void streamPackets(const std::string &sessionId,
-                     const PacketCallback &callback) const;
+  template <typename Callback>
+  void streamPackets(const std::string & /*sessionId*/,
+                     Callback && /*callback*/) const {
+    // TODO: implement via gRPC stub (Phase 9)
+  }
 
   /** Trigger ML analysis on a completed capture session. */
   [[nodiscard]] bool analyzeCapture(const std::string &sessionId) const;

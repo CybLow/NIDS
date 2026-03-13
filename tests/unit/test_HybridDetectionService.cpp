@@ -51,7 +51,8 @@ protected:
   }
 
   /// Set up mock expectations: no TI match, rule fires with given matches.
-  void expectNoTiMatchWithRules(std::vector<HeuristicRuleResult> ruleMatches) {
+  void
+  expectNoTiMatchWithRules(std::vector<HeuristicRuleResult> ruleMatches) const {
     EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
         .WillOnce(Return(ThreatIntelLookup{false, ""}));
     EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
