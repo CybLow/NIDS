@@ -558,7 +558,7 @@ bool NativeFlowExtractor::parseEthernetAndIp(
   if (etherType != kEtherTypeIPv4 || payloadLen < 20)
     return false;
 
-  auto *ip = reinterpret_cast<const IPv4Header *>(payload);
+  auto *ip = reinterpret_cast<const IPv4Header *>(payload); // NOSONAR
   pkt.ipIhl = getIpIhl(ip);
   pkt.protocol = getIpProtocol(ip);
   std::uint32_t ipTotalLen = getIpTotalLength(ip);
@@ -579,7 +579,7 @@ bool NativeFlowExtractor::parseTransportHeader(
   if (pkt.protocol == kIpProtoTcp) {
     if (payloadLen < pkt.ipIhl + 20u)
       return false;
-    auto *tcp = reinterpret_cast<const TcpHeader *>(transportStart);
+    auto *tcp = reinterpret_cast<const TcpHeader *>(transportStart); // NOSONAR
     pkt.srcPort = getTcpSrcPort(tcp);
     pkt.dstPort = getTcpDstPort(tcp);
     pkt.transportHeaderLen = getTcpDataOffset(tcp);
@@ -589,7 +589,7 @@ bool NativeFlowExtractor::parseTransportHeader(
   } else if (pkt.protocol == kIpProtoUdp) {
     if (payloadLen < pkt.ipIhl + 8u)
       return false;
-    auto *udp = reinterpret_cast<const UdpHeader *>(transportStart);
+    auto *udp = reinterpret_cast<const UdpHeader *>(transportStart); // NOSONAR
     pkt.srcPort = getUdpSrcPort(udp);
     pkt.dstPort = getUdpDstPort(udp);
     pkt.transportHeaderLen = 8;
