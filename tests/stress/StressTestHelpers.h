@@ -17,6 +17,7 @@
 #include "infra/flow/NativeFlowExtractor.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -160,13 +161,12 @@ inline void generatePcap(const std::string &outPath, std::uint32_t packetCount,
     // Pcap packet header (16 bytes): ts_sec, ts_usec, caplen, len
     auto tsSec = static_cast<std::uint32_t>(timestampUs / 1'000'000);
     auto tsUsec = static_cast<std::uint32_t>(timestampUs % 1'000'000);
-    std::uint8_t
-        pktHeader[16]; // NOSONAR - binary pcap header requires fixed-size array
-    std::memcpy(pktHeader + 0, &tsSec, 4);
-    std::memcpy(pktHeader + 4, &tsUsec, 4);
-    std::memcpy(pktHeader + 8, &pktLen, 4);
-    std::memcpy(pktHeader + 12, &pktLen, 4);
-    ofs.write(reinterpret_cast<const char *>(pktHeader), 16);
+    std::array<std::uint8_t, 16> pktHeader{};
+    std::memcpy(pktHeader.data() + 0, &tsSec, 4);
+    std::memcpy(pktHeader.data() + 4, &tsUsec, 4);
+    std::memcpy(pktHeader.data() + 8, &pktLen, 4);
+    std::memcpy(pktHeader.data() + 12, &pktLen, 4);
+    ofs.write(reinterpret_cast<const char *>(pktHeader.data()), 16);
     ofs.write(reinterpret_cast<const char *>(pkt.data()),
               static_cast<std::streamsize>(pktLen));
 

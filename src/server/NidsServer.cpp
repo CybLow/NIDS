@@ -9,7 +9,8 @@ NidsServer::NidsServer(const ServerConfig &config) : config_(config) {}
 NidsServer::~NidsServer() {
   try {
     stop();
-  } catch (...) { // NOSONAR - destructors must not propagate exceptions
+  } catch (...) {
+    spdlog::error("Exception caught in NidsServer destructor during stop()");
   }
 }
 

@@ -2,8 +2,7 @@
 
 #include <filesystem>
 
-namespace fs =
-    std::filesystem; // NOSONAR - namespace alias, not a global variable
+namespace fs = std::filesystem;
 
 namespace nids::core {
 
