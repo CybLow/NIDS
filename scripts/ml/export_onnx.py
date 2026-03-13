@@ -128,7 +128,7 @@ def verify_onnx(
     )
 
     # Run inference with dummy data
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed=42)
     dummy = rng.standard_normal((1, n_features)).astype(np.float32)
     result = session.run([output_info.name], {input_info.name: dummy})
     output = result[0]  # type: ignore[index]
@@ -146,7 +146,7 @@ def verify_onnx(
     print("ONNX Runtime verification passed.")
 
     # Numerical equivalence: PyTorch vs ONNX Runtime
-    test_inputs = rng.standard_normal((32, n_features)).astype(np.float32)
+    test_inputs = np.random.randn(32, n_features).astype(np.float32)
     with torch.no_grad():
         pt_out = pytorch_model(torch.from_numpy(test_inputs)).numpy()
     ort_out = session.run([output_info.name], {input_info.name: test_inputs})[0]

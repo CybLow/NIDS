@@ -59,8 +59,8 @@ inline std::size_t currentRssKb() {
     if (line.compare(0, 6, "VmRSS:") == 0) {
       std::size_t kb = 0;
       // Format: "VmRSS:    12345 kB"
-      if (auto pos = line.find_first_of("0123456789");
-          pos != std::string::npos) {
+      auto pos = line.find_first_of("0123456789");
+      if (pos != std::string::npos) {
         kb = std::stoull(line.substr(pos));
       }
       return kb;
@@ -161,7 +161,7 @@ inline void generatePcap(const std::string &outPath, std::uint32_t packetCount,
     auto tsSec = static_cast<std::uint32_t>(timestampUs / 1'000'000);
     auto tsUsec = static_cast<std::uint32_t>(timestampUs % 1'000'000);
     std::uint8_t
-        pktHeader[16]; // NOSONAR - memcpy into fixed-size pcap header buffer
+        pktHeader[16]; // NOSONAR - binary pcap header requires fixed-size array
     std::memcpy(pktHeader + 0, &tsSec, 4);
     std::memcpy(pktHeader + 4, &tsUsec, 4);
     std::memcpy(pktHeader + 8, &pktLen, 4);
@@ -200,8 +200,7 @@ public:
     result.confidence = 0.85f;
     if (result.classification != core::AttackType::Benign &&
         result.classification != core::AttackType::Unknown) {
-      auto idx = static_cast<std::underlying_type_t<core::AttackType>>(
-          result.classification); // NOSONAR
+      auto idx = static_cast<std::size_t>(result.classification); // NOSONAR
       if (idx < result.probabilities.size()) {
         result.probabilities[idx] = 0.85f;
       }

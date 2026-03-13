@@ -9,8 +9,7 @@ NidsServer::NidsServer(const ServerConfig &config) : config_(config) {}
 NidsServer::~NidsServer() {
   try {
     stop();
-  } catch (...) {
-    // Destructors must not throw — swallow all exceptions
+  } catch (...) { // NOSONAR - destructors must not propagate exceptions
   }
 }
 

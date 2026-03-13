@@ -55,7 +55,7 @@ void PcapCaptureWorker::doCapture() {
 
   capturing_.store(true);
   pcap_loop(handle_.get(), 0, packetCallback,
-            reinterpret_cast<unsigned char *>(this)); // NOSONAR
+            reinterpret_cast<unsigned char *>(this));
 
   dumper_.reset();
   handle_.reset();
@@ -73,7 +73,7 @@ void PcapCaptureWorker::requestStop() {
 void PcapCaptureWorker::packetCallback(unsigned char *userData,
                                        const struct pcap_pkthdr *pkthdr,
                                        const unsigned char *packet) {
-  auto *self = reinterpret_cast<PcapCaptureWorker *>(userData); // NOSONAR
+  auto *self = reinterpret_cast<PcapCaptureWorker *>(userData);
   self->processPacket(pkthdr, packet);
 }
 
@@ -83,7 +83,7 @@ void PcapCaptureWorker::processPacket(const struct pcap_pkthdr *pkthdr,
 
   nids::core::PacketInfo info;
 
-  auto *ethHeader = reinterpret_cast<const EthernetHeader *>(packet); // NOSONAR
+  auto *ethHeader = reinterpret_cast<const EthernetHeader *>(packet);
   if (getEtherType(ethHeader) == kEtherTypeIPv4) {
     auto *ipHeader = reinterpret_cast<const IPv4Header *>(
         packet + kEthernetHeaderSize); // NOSONAR
@@ -135,7 +135,7 @@ void PcapCaptureWorker::processPacket(const struct pcap_pkthdr *pkthdr,
 // --- PcapCapture ---
 
 PcapCapture::PcapCapture(QObject *parent)
-    : QObject(parent), worker_(new PcapCaptureWorker()) { // NOSONAR
+    : QObject(parent), worker_(new PcapCaptureWorker()) {
   worker_->moveToThread(&workerThread_);
 
   connect(&workerThread_, &QThread::finished, worker_, &QObject::deleteLater);

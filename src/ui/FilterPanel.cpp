@@ -18,49 +18,49 @@ FilterPanel::FilterPanel(const nids::core::ServiceRegistry &registry,
 }
 
 void FilterPanel::setupLayout() {
-  auto *layout = new QGridLayout(this); // NOSONAR
+  auto *layout = new QGridLayout(this);
 
   auto makeLabel = [this](const QString &text) {
-    return new QLabel(text, this); // NOSONAR
+    return new QLabel(text, this);
   };
 
   layout->addWidget(makeLabel("Network Card"), 0, 0);
-  networkCardCombo_ = new QComboBox(this); // NOSONAR
+  networkCardCombo_ = new QComboBox(this);
   layout->addWidget(networkCardCombo_, 1, 0);
 
   layout->addWidget(makeLabel("Protocol"), 0, 1);
-  protocolCombo_ = new QComboBox(this); // NOSONAR
+  protocolCombo_ = new QComboBox(this);
   layout->addWidget(protocolCombo_, 1, 1);
 
   layout->addWidget(makeLabel("Application"), 0, 2);
-  applicationCombo_ = new QComboBox(this); // NOSONAR
+  applicationCombo_ = new QComboBox(this);
   layout->addWidget(applicationCombo_, 1, 2);
 
   layout->addWidget(makeLabel("IP Source"), 0, 3);
-  sourceIpEdit_ = new QLineEdit(this); // NOSONAR
+  sourceIpEdit_ = new QLineEdit(this);
   sourceIpEdit_->setMinimumSize(100, 20);
   layout->addWidget(sourceIpEdit_, 1, 3);
 
   layout->addWidget(makeLabel("Port Source"), 0, 4);
-  sourcePortEdit_ = new QLineEdit(this); // NOSONAR
+  sourcePortEdit_ = new QLineEdit(this);
   sourcePortEdit_->setMinimumSize(100, 20);
   layout->addWidget(sourcePortEdit_, 1, 4);
 
   layout->addWidget(makeLabel("IP Destination"), 0, 5);
-  destIpEdit_ = new QLineEdit(this); // NOSONAR
+  destIpEdit_ = new QLineEdit(this);
   destIpEdit_->setMinimumSize(100, 20);
   layout->addWidget(destIpEdit_, 1, 5);
 
   layout->addWidget(makeLabel("Port Destination"), 0, 6);
-  destPortEdit_ = new QLineEdit(this); // NOSONAR
+  destPortEdit_ = new QLineEdit(this);
   destPortEdit_->setMinimumSize(100, 20);
   layout->addWidget(destPortEdit_, 1, 6);
 
   layout->addWidget(makeLabel("Custom Filter"), 2, 0);
-  customFilterEdit_ = new QLineEdit(this); // NOSONAR
+  customFilterEdit_ = new QLineEdit(this);
   layout->addWidget(customFilterEdit_, 2, 1, 1, 6);
 
-  startStopButton_ = new QPushButton("Start", this); // NOSONAR
+  startStopButton_ = new QPushButton("Start", this);
   startStopButton_->setEnabled(false);
   layout->addWidget(startStopButton_, 2, 7);
 
@@ -68,8 +68,8 @@ void FilterPanel::setupLayout() {
       R"(^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$)");
   portRegex_ = QRegularExpression(
       R"(^([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$)");
-  ipValidator_ = new QRegularExpressionValidator(ipRegex_, this);     // NOSONAR
-  portValidator_ = new QRegularExpressionValidator(portRegex_, this); // NOSONAR
+  ipValidator_ = new QRegularExpressionValidator(ipRegex_, this);
+  portValidator_ = new QRegularExpressionValidator(portRegex_, this);
 
   connect(startStopButton_, &QPushButton::clicked, this,
           &FilterPanel::startStopClicked);
@@ -170,27 +170,25 @@ void FilterPanel::onApplicationChanged(int index) {
   if (index == -1)
     return;
 
-  QString selected = applicationCombo_->itemText(index);
-  if (selected != "Other...")
-    return;
-
-  ServiceDialog dialog(serviceRegistry_.getUniqueServices(), this);
-  if (dialog.exec() != QDialog::Accepted)
-    return;
-
-  QString service = dialog.getSelectedService();
-  if (service.isEmpty())
-    return;
-
-  if (int existing = applicationCombo_->findText(lastCustomService_);
-      existing != -1) {
-    applicationCombo_->removeItem(existing);
+  if (QString selected = applicationCombo_->itemText(index);
+      selected == "Other...") {
+    ServiceDialog dialog(serviceRegistry_.getUniqueServices(), this);
+    if (dialog.exec() == QDialog::Accepted) {
+      QString service = dialog.getSelectedService();
+      if (!service.isEmpty()) {
+        if (int existing = applicationCombo_->findText(lastCustomService_);
+            existing != -1) {
+          applicationCombo_->removeItem(existing);
+        }
+        applicationCombo_->blockSignals(true);
+        applicationCombo_->addItem(service);
+        applicationCombo_->setCurrentIndex(
+            applicationCombo_->findText(service));
+        applicationCombo_->blockSignals(false);
+        lastCustomService_ = service;
+      }
+    }
   }
-  applicationCombo_->blockSignals(true);
-  applicationCombo_->addItem(service);
-  applicationCombo_->setCurrentIndex(applicationCombo_->findText(service));
-  applicationCombo_->blockSignals(false);
-  lastCustomService_ = service;
 }
 
 void FilterPanel::updateApplicationFromPort() {

@@ -35,9 +35,11 @@ ServiceRegistry::resolveApplication(const std::string &filterSrcPort,
       return getServiceByPort(std::stoi(packetDstPort));
     }
   } catch (const std::invalid_argument
-               &) { // NOSONAR - expected for non-numeric port strings
-  } catch (const std::out_of_range
-               &) { // NOSONAR - expected for port numbers out of int range
+               &) { // NOSONAR - expected for non-numeric ports
+                    // stoi may fail on non-numeric port strings
+  } catch (
+      const std::out_of_range &) { // NOSONAR - expected for out-of-range ports
+    // stoi may fail on port numbers out of int range
   }
   return "Unknown";
 }

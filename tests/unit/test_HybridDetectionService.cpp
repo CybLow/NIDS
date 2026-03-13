@@ -38,7 +38,7 @@ public:
 // ── Fixture ──────────────────────────────────────────────────────────
 
 class HybridDetectionServiceTest : public ::testing::Test {
-protected: // NOSONAR
+protected:
   MockThreatIntel mockTi_;
   MockRuleEngine mockRules_;
 
@@ -48,6 +48,16 @@ protected: // NOSONAR
     pred.classification = type;
     pred.confidence = confidence;
     return pred;
+  }
+
+  /// Set up mock expectations: no TI match, rule fires with given matches.
+  void expectNoTiMatchWithRules(std::vector<HeuristicRuleResult> ruleMatches) {
+    EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
+        .WillOnce(Return(ThreatIntelLookup{false, ""}));
+    EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
+        .WillOnce(Return(ThreatIntelLookup{false, ""}));
+    EXPECT_CALL(mockRules_, evaluate(_))
+        .WillOnce(Return(std::move(ruleMatches)));
   }
 
   /// Build a benign flow metadata.
@@ -138,15 +148,7 @@ TEST_F(HybridDetectionServiceTest, noTiMatch_staysOriginal) {
 // ── Heuristic rule escalation ────────────────────────────────────────
 
 TEST_F(HybridDetectionServiceTest, highSeverityRule_lowConfBenign_escalates) {
-  EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
-      .WillOnce(Return(ThreatIntelLookup{false, ""}));
-  EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
-      .WillOnce(Return(ThreatIntelLookup{false, ""}));
-
-  std::vector<HeuristicRuleResult> ruleMatches = {
-      {"syn_flood", "SYN flood detected", 0.85f}};
-  EXPECT_CALL(mockRules_, evaluate(_)).WillOnce(Return(ruleMatches));
-
+  expectNoTiMatchWithRules({{"syn_flood", "SYN flood detected", 0.85f}});
   HybridDetectionService service(&mockTi_, &mockRules_);
 
   auto pred = makePrediction(AttackType::Benign, 0.55f); // low confidence
@@ -160,15 +162,7 @@ TEST_F(HybridDetectionServiceTest, highSeverityRule_lowConfBenign_escalates) {
 
 TEST_F(HybridDetectionServiceTest,
        highSeverityRule_highConfBenign_staysBenign) {
-  EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
-      .WillOnce(Return(ThreatIntelLookup{false, ""}));
-  EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
-      .WillOnce(Return(ThreatIntelLookup{false, ""}));
-
-  std::vector<HeuristicRuleResult> ruleMatches = {
-      {"syn_flood", "SYN flood detected", 0.85f}};
-  EXPECT_CALL(mockRules_, evaluate(_)).WillOnce(Return(ruleMatches));
-
+  expectNoTiMatchWithRules({{"syn_flood", "SYN flood detected", 0.85f}});
   HybridDetectionService service(&mockTi_, &mockRules_);
 
   auto pred = makePrediction(AttackType::Benign, 0.95f); // high confidence
@@ -271,17 +265,7 @@ TEST_F(HybridDetectionServiceTest, allThreeLayers_detectionSourceIsEnsemble) {
 // ── Remaining detection source paths ─────────────────────────────────
 
 TEST_F(HybridDetectionServiceTest, detectionSource_heuristicRuleOnly) {
-  // No TI match
-  EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
-      .WillOnce(Return(ThreatIntelLookup{false, ""}));
-  EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
-      .WillOnce(Return(ThreatIntelLookup{false, ""}));
-
-  // Rule fires
-  std::vector<HeuristicRuleResult> ruleMatches = {
-      {"syn_flood", "SYN flood detected", 0.85f}};
-  EXPECT_CALL(mockRules_, evaluate(_)).WillOnce(Return(ruleMatches));
-
+  expectNoTiMatchWithRules({{"syn_flood", "SYN flood detected", 0.85f}});
   HybridDetectionService service(&mockTi_, &mockRules_);
 
   auto pred = makePrediction(AttackType::Benign, 0.55f);
@@ -310,17 +294,7 @@ TEST_F(HybridDetectionServiceTest, detectionSource_threatIntelOnly_noMlAttack) {
 }
 
 TEST_F(HybridDetectionServiceTest, detectionSource_mlPlusHeuristic) {
-  // No TI match
-  EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
-      .WillOnce(Return(ThreatIntelLookup{false, ""}));
-  EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
-      .WillOnce(Return(ThreatIntelLookup{false, ""}));
-
-  // Rule fires
-  std::vector<HeuristicRuleResult> ruleMatches = {
-      {"high_packet_rate", "High rate", 0.7f}};
-  EXPECT_CALL(mockRules_, evaluate(_)).WillOnce(Return(ruleMatches));
-
+  expectNoTiMatchWithRules({{"high_packet_rate", "High rate", 0.7f}});
   HybridDetectionService service(&mockTi_, &mockRules_);
 
   // ML says attack
