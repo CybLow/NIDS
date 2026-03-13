@@ -1,32 +1,85 @@
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
+# ── Build artifacts ───────────────────────────────────────────────
+build/
+build-*/
+cmake-build-*/
+.cache/
+compile_commands.json
 *.o
 *.obj
-
-# Precompiled Headers
+*.lo
+*.slo
+*.d
 *.gch
 *.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
 *.lai
 *.la
 *.a
 *.lib
-
-# Executables
+*.so
+*.dylib
+*.dll
 *.exe
 *.out
 *.app
+*.mod
+*.smod
+
+# ── IDE / editor ─────────────────────────────────────────────────
+.idea/
+.vscode/
+.cursor/
+.sonarlint/
+*.swp
+*.swo
+*~
+
+# ── OpenCode ─────────────────────────────────────────────────────
+.opencode/
+
+# ── Conan artifacts ─────────────────────────────────────────────
+CMakeUserPresets.json
+
+# ── Large / binary files (never commit) ──────────────────────────
+*.onnx.data
+*.pt
+*.pth
+*.keras
+*.h5
+*.npy
+*.npz
+*.zip
+
+# ── Python ───────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.ruff_cache/
+scripts/.venv/
+scripts/data/
+.ipynb_checkpoints/
+
+# ── Test / capture artifacts ─────────────────────────────────────
+*.pcap
+*.csv
+
+# ── SonarQube ────────────────────────────────────────────────────
+.scannerwork/
+cppcheck-report.xml
+gcc-warnings.txt
+clang-tidy-report.txt
+sonarqube-data/
+
+# ── Generated documentation (Doxygen output) ────────────────────
+docs/api/
+
+# ── Downloaded threat intelligence feeds (fetched at runtime) ────
+data/threat_intel/
+
+# ── Coverage artifacts (generated, not committed) ────────────────
+coverage-cobertura.xml
+coverage.info
+
+# ── OS junk ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

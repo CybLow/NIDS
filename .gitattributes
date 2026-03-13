@@ -1,0 +1,31 @@
+# ── Line ending normalization ────────────────────────────────────
+* text=auto
+
+# ── Force text ──────────────────────────────────────────────────
+*.cpp text diff=cpp
+*.h   text diff=cpp
+*.hpp text diff=cpp
+*.cmake text
+*.txt text
+*.md  text
+*.json text
+*.py  text diff=python
+*.qrc text
+*.sh  text eol=lf
+*.bat text eol=crlf
+
+# ── Force binary (never diff) ───────────────────────────────────
+*.onnx binary
+*.onnx.data binary
+*.pt  binary
+*.pth binary
+*.keras binary
+*.h5  binary
+*.npy binary
+*.npz binary
+*.pcap binary
+*.zip binary
+*.png binary
+*.ico binary
+*.jpg binary
+*.jpeg binary

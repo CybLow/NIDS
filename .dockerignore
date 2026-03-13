@@ -1,0 +1,29 @@
+# Build artifacts
+cmake-build-*
+build/
+*.o
+*.so
+*.a
+*.exe
+
+# IDE
+.idea/
+.cursor/
+.vscode/
+
+# VCS
+.git/
+.gitignore
+
+# Data / models (large files)
+data/
+
+# CI artifacts
+coverage.info
+coverage-cobertura.xml
+cppcheck-report.xml
+clang-tidy-report.txt
+.vcpkg-cache/
+
+# OpenCode
+.opencode/

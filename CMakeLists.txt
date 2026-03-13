@@ -1,44 +1,151 @@
-cmake_minimum_required(VERSION ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION})
+cmake_minimum_required(VERSION 3.20)
 
-project(NIDS)
+project(NIDS
+    VERSION 0.2.0
+    DESCRIPTION "Network Intrusion Detection System"
+    LANGUAGES CXX
+)
 
-set(CMAKE_CXX_STANDARD ${CMAKE_LANGUAGE_VERSION})
-include(FindPCAP.cmake)
+# ── Global settings ──────────────────────────────────────────────
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(frugally-deep CONFIG REQUIRED)
-
-add_executable(NIDS
-        src/main.cpp
-        src/packet/PacketCapture.cpp
-        include/packet/PacketCapture.h
-        src/packet/PacketInfo.cpp
-        include/packet/PacketInfo.h
-        src/utils/ListNetworkInterfaces.cpp
-        include/utils/ListNetworkInterfaces.h
-        src/ui/ui.cpp
-        include/ui/ui.h
-        src/packet/PacketCaptureNotifier.cpp
-        include/packet/PacketCaptureNotifier.h
-        src/ui/FullListDialog.cpp
-        include/ui/FullListDialog.h
-        src/packet/PacketFilter.cpp
-        include/packet/PacketFilter.h
-        src/packet/packetToCsv.cpp
-        include/packet/packetToCsv.h
-        src/packet/packetToCsv.cpp
-        include/packet/packetToCsv.h
-        include/packet/PacketFilter.h
-        src/ui/HexAsciiDisplay.cpp
-        include/ui/HexAsciiDisplay.h
-        include/globals.h)
-
-target_link_libraries(NIDS ${PCAP_LIBRARY})
-
-
-find_package(Threads REQUIRED)
-target_link_libraries(NIDS ${CMAKE_THREAD_LIBS_INIT})
-
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-find_package(Qt5 COMPONENTS Core Gui Widgets REQUIRED)
 set(CMAKE_AUTOMOC ON)
-target_link_libraries(NIDS Qt5::Widgets Qt5::Core Qt5::Gui frugally-deep::fdeep)
+set(CMAKE_AUTORCC ON)
+
+# ── Project options ──────────────────────────────────────────────
+option(NIDS_BUILD_TESTS  "Build unit tests"                    ON)
+option(NIDS_BUILD_SERVER "Build headless server"               OFF)
+option(NIDS_COVERAGE     "Enable code coverage instrumentation" OFF)
+
+# ── CMake module path ────────────────────────────────────────────
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+include(NidsTargetDefaults)
+
+# ── Dependencies ─────────────────────────────────────────────────
+# System packages
+find_package(PCAP REQUIRED)
+find_package(Threads REQUIRED)
+find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
+
+# Pre-built binary (FetchContent)
+include(FetchOnnxRuntime)
+
+# Conan-managed packages
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+
+# ── Layer libraries ──────────────────────────────────────────────
+add_subdirectory(src/core)
+add_subdirectory(src/infra)
+add_subdirectory(src/app)
+add_subdirectory(src/ui)
+
+# ── Main executable ──────────────────────────────────────────────
+add_executable(NIDS src/main.cpp)
+
+target_link_libraries(NIDS PRIVATE
+    nids_ui
+    nids_app
+    nids_infra
+    nids_core
+    spdlog::spdlog
+    Qt::Widgets
+)
+
+nids_set_target_defaults(NIDS)
+
+# ── Server / Client stubs (future gRPC scaffolding) ──────────────
+if(NIDS_BUILD_SERVER)
+    add_library(nids-server-lib STATIC
+        src/server/NidsServer.cpp
+    )
+    target_link_libraries(nids-server-lib PRIVATE
+        nids_core
+        Threads::Threads
+        spdlog::spdlog
+    )
+    nids_set_target_defaults(nids-server-lib)
+
+    add_library(nids-client-lib STATIC
+        src/client/NidsClient.cpp
+    )
+    target_link_libraries(nids-client-lib PRIVATE
+        nids_core
+        Threads::Threads
+        spdlog::spdlog
+    )
+    nids_set_target_defaults(nids-client-lib)
+
+    install(TARGETS nids-server-lib nids-client-lib
+        ARCHIVE DESTINATION lib
+    )
+endif()
+
+# ── Install rules ────────────────────────────────────────────────
+include(GNUInstallDirs)
+
+install(TARGETS NIDS RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+install(FILES models/model.onnx
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/nids/model OPTIONAL)
+install(FILES models/model_metadata.json
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/nids/model OPTIONAL)
+
+install(DIRECTORY data/threat_intel/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/nids/threat_intel
+    FILES_MATCHING PATTERN "*.txt" PATTERN "*.csv" PATTERN "*.list"
+    PATTERN ".gitkeep" EXCLUDE)
+
+if(UNIX)
+    install(PROGRAMS scripts/ops/update_threat_feeds.sh
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/nids/scripts OPTIONAL)
+endif()
+
+# ── Packaging (CPack) ───────────────────────────────────────────
+set(CPACK_PACKAGE_NAME "nids")
+set(CPACK_PACKAGE_VENDOR "NIDS Project")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+set(CPACK_PACKAGE_CONTACT "nids-dev@users.noreply.github.com")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+
+if(WIN32)
+    set(CPACK_GENERATOR "NSIS;ZIP")
+    set(CPACK_NSIS_DISPLAY_NAME "NIDS ${PROJECT_VERSION}")
+    set(CPACK_NSIS_PACKAGE_NAME "NIDS")
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/src/ui/logo.png")
+elseif(APPLE)
+    set(CPACK_GENERATOR "DragNDrop;TGZ")
+else()
+    set(CPACK_GENERATOR "DEB;RPM;TGZ")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS
+        "libpcap0.8, libqt6widgets6 (>= 6.2), libqt6gui6 (>= 6.2), libqt6core6 (>= 6.2)")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "net")
+    set(CPACK_RPM_PACKAGE_REQUIRES
+        "libpcap, qt6-qtbase")
+endif()
+
+include(CPack)
+
+# ── Documentation (Doxygen) ──────────────────────────────────────
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_SOURCE_DIR}/docs/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM
+    )
+else()
+    message(STATUS "Doxygen not found -- 'docs' target unavailable")
+endif()
+
+# ── Tests ────────────────────────────────────────────────────────
+if(NIDS_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
