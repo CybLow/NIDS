@@ -35,9 +35,8 @@ void CaptureController::startCapture(const nids::core::PacketFilter& filter,
         return;
 
     session_.clear();
-    std::string bpf = filter.generateBpfString();
 
-    if (!capture_->initialize(filter.networkCard, bpf)) {
+    if (std::string bpf = filter.generateBpfString(); !capture_->initialize(filter.networkCard, bpf)) {
         spdlog::error("Failed to initialize capture on interface '{}'", filter.networkCard);
         // cppcheck-suppress shadowFunction  // Qt signal emission, not a shadowing variable
         emit captureError(

@@ -15,7 +15,7 @@ class PacketTableModel : public QAbstractTableModel {
 
 public:
     /** Column indices for the packet table. */
-    enum Column {
+    enum class Column {
         Number = 0,      /**< Packet sequence number. */
         Interface,       /**< Network interface that captured the packet. */
         Protocol,        /**< Transport protocol (TCP, UDP, ICMP, etc.). */
@@ -26,6 +26,9 @@ public:
         PortDestination, /**< Destination port number. */
         ColumnCount      /**< Sentinel value: total number of columns. */
     };
+
+    /// Total number of columns (integral constant for use in array sizes).
+    static constexpr int kColumnCount = static_cast<int>(Column::ColumnCount);
 
     /** Construct an empty packet table model. */
     explicit PacketTableModel(QObject* parent = nullptr);

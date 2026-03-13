@@ -14,6 +14,7 @@
 #include "core/model/PredictionResult.h"
 
 #include <atomic>
+#include <format>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -39,8 +40,7 @@ PredictionResult makePred(AttackType type, float confidence) {
 
 FlowMetadata makeFlowMeta(std::uint32_t flowId, double pps = 500.0) {
     FlowMetadata meta;
-    meta.srcIp = "10.0." + std::to_string((flowId >> 8) & 0xff) + "."
-                 + std::to_string(flowId & 0xff);
+    meta.srcIp = std::format("10.0.{}.{}", (flowId >> 8) & 0xff, flowId & 0xff);
     meta.dstIp = "10.1.0.1";
     meta.srcPort = static_cast<std::uint16_t>(40000 + flowId);
     meta.dstPort = 80;
@@ -62,6 +62,7 @@ protected:
 };
 
 TEST_F(ConcurrentAnalysisTest, singleThread_10kEvaluations) {
+    using enum nids::core::AttackType;
     HybridDetectionService service(&ti_, &rules_);
     constexpr std::size_t kFlows = 10'000;
 
@@ -71,8 +72,8 @@ TEST_F(ConcurrentAnalysisTest, singleThread_10kEvaluations) {
         ScopedTimer timer(elapsedMs);
         for (std::size_t i = 0; i < kFlows; ++i) {
             auto pred = (i % 3 == 0)
-                ? makePred(AttackType::DdosIcmp, 0.9f)
-                : makePred(AttackType::Benign, 0.95f);
+                ? makePred(DdosIcmp, 0.9f)
+                : makePred(Benign, 0.95f);
             auto meta = makeFlowMeta(static_cast<std::uint32_t>(i));
             auto result = service.evaluate(pred, meta.srcIp, meta.dstIp, meta);
             if (result.finalVerdict != AttackType::Benign) {
@@ -90,6 +91,7 @@ TEST_F(ConcurrentAnalysisTest, singleThread_10kEvaluations) {
 }
 
 TEST_F(ConcurrentAnalysisTest, multiThread_4threads_10kEach) {
+    using enum nids::core::AttackType;
     HybridDetectionService service(&ti_, &rules_);
     constexpr std::size_t kFlowsPerThread = 10'000;
     constexpr unsigned kThreads = 4;
@@ -105,20 +107,20 @@ TEST_F(ConcurrentAnalysisTest, multiThread_4threads_10kEach) {
         threads.reserve(kThreads);
 
         for (unsigned t = 0; t < kThreads; ++t) {
-            threads.emplace_back([&, t] {
+            threads.emplace_back([&service, &totalAttacks, &totalErrors, t, kFlowsPerThread] {
                 for (std::size_t i = 0; i < kFlowsPerThread; ++i) {
                     auto flowId = static_cast<std::uint32_t>(t * kFlowsPerThread + i);
                     auto pred = (i % 5 == 0)
-                        ? makePred(AttackType::SynFlood, 0.88f)
-                        : makePred(AttackType::Benign, 0.92f);
+                        ? makePred(SynFlood, 0.88f)
+                        : makePred(Benign, 0.92f);
                     auto meta = makeFlowMeta(flowId);
 
                     try {
                         auto result = service.evaluate(pred, meta.srcIp, meta.dstIp, meta);
-                        if (result.finalVerdict != AttackType::Benign) {
+                        if (result.finalVerdict != Benign) {
                             totalAttacks.fetch_add(1, std::memory_order_relaxed);
                         }
-                    } catch (...) {
+                    } catch (const std::exception&) {
                         totalErrors.fetch_add(1, std::memory_order_relaxed);
                     }
                 }
@@ -159,21 +161,21 @@ TEST_F(ConcurrentAnalysisTest, multiThread_8threads_highContention) {
         threads.reserve(kThreads);
 
         for (unsigned t = 0; t < kThreads; ++t) {
-            threads.emplace_back([&, t] {
+            threads.emplace_back([&service, &tiMatches, &totalErrors, kFlowsPerThread] {
                 for (std::size_t i = 0; i < kFlowsPerThread; ++i) {
                     // Cycle through IPs including blacklisted ones
                     auto flowId = static_cast<std::uint32_t>(i % 10);
                     auto pred = makePred(AttackType::Benign, 0.7f);
                     auto meta = makeFlowMeta(flowId);
                     // Override srcIp to cycle through blacklisted IPs
-                    meta.srcIp = "10.0.0." + std::to_string(flowId);
+                    meta.srcIp = std::format("10.0.0.{}", flowId);
 
                     try {
                         auto result = service.evaluate(pred, meta.srcIp, meta.dstIp, meta);
                         if (result.hasThreatIntelMatch()) {
                             tiMatches.fetch_add(1, std::memory_order_relaxed);
                         }
-                    } catch (...) {
+                    } catch (const std::exception&) {
                         totalErrors.fetch_add(1, std::memory_order_relaxed);
                     }
                 }
@@ -198,7 +200,7 @@ TEST_F(ConcurrentAnalysisTest, weightChangeUnderLoad) {
     constexpr std::size_t kFlowsPerThread = 5'000;
     constexpr unsigned kWorkerThreads = 4;
 
-    std::atomic<bool> running{true};
+    std::atomic running{true};
     std::atomic<std::size_t> totalEvals{0};
     std::atomic<std::size_t> totalErrors{0};
 
@@ -206,7 +208,7 @@ TEST_F(ConcurrentAnalysisTest, weightChangeUnderLoad) {
     std::vector<std::jthread> workers;
     workers.reserve(kWorkerThreads);
     for (unsigned t = 0; t < kWorkerThreads; ++t) {
-        workers.emplace_back([&] {
+        workers.emplace_back([&service, &running, &totalEvals, &totalErrors, kFlowsPerThread] {
             std::size_t count = 0;
             while (running.load(std::memory_order_relaxed) || count < kFlowsPerThread) {
                 auto pred = makePred(AttackType::PortScanning, 0.75f);
@@ -214,7 +216,7 @@ TEST_F(ConcurrentAnalysisTest, weightChangeUnderLoad) {
                 try {
                     auto result = service.evaluate(pred, meta.srcIp, meta.dstIp, meta);
                     static_cast<void>(result);
-                } catch (...) {
+                } catch (const std::exception&) {
                     totalErrors.fetch_add(1, std::memory_order_relaxed);
                 }
                 ++count;
@@ -224,7 +226,7 @@ TEST_F(ConcurrentAnalysisTest, weightChangeUnderLoad) {
     }
 
     // Weight-changer thread — rapidly changes weights
-    std::jthread weightChanger([&] {
+    std::jthread weightChanger([&service, &running] {
         HybridDetectionService::Weights w;
         for (int i = 0; i < 100 && running.load(std::memory_order_relaxed); ++i) {
             w.ml = 0.3f + static_cast<float>(i % 5) * 0.1f;

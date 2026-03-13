@@ -7,7 +7,7 @@ namespace nids::ui {
 namespace {
 
 /// Column headers in enum order.
-constexpr std::array<const char*, PacketTableModel::ColumnCount> kPacketColumnHeaders = {{
+constexpr std::array<const char*, PacketTableModel::kColumnCount> kPacketColumnHeaders = {{
     "Number",
     "Network Card",
     "Protocol",
@@ -32,7 +32,7 @@ int PacketTableModel::rowCount(const QModelIndex& parent) const {
 int PacketTableModel::columnCount(const QModelIndex& parent) const {
     if (parent.isValid())
         return 0;
-    return ColumnCount;
+    return kColumnCount;
 }
 
 QVariant PacketTableModel::data(const QModelIndex& index, int role) const {
@@ -49,32 +49,33 @@ QVariant PacketTableModel::displayData(const QModelIndex& index,
                                         const Row& row) {
     const auto& pkt = row.packet;
 
-    switch (index.column()) {
-        case Number:          return index.row() + 1;
-        case Interface:       return QString::fromStdString(row.interfaceName);
-        case Protocol:        return QString::fromStdString(pkt.protocol);
-        case Application:     return QString::fromStdString(pkt.application);
-        case IpSource:        return QString::fromStdString(pkt.ipSource);
-        case PortSource:      return QString::fromStdString(pkt.portSource);
-        case IpDestination:   return QString::fromStdString(pkt.ipDestination);
-        case PortDestination: return QString::fromStdString(pkt.portDestination);
-        default: return {};
+    switch (static_cast<Column>(index.column())) {
+        case Column::Number:          return index.row() + 1;
+        case Column::Interface:       return QString::fromStdString(row.interfaceName);
+        case Column::Protocol:        return QString::fromStdString(pkt.protocol);
+        case Column::Application:     return QString::fromStdString(pkt.application);
+        case Column::IpSource:        return QString::fromStdString(pkt.ipSource);
+        case Column::PortSource:      return QString::fromStdString(pkt.portSource);
+        case Column::IpDestination:   return QString::fromStdString(pkt.ipDestination);
+        case Column::PortDestination: return QString::fromStdString(pkt.portDestination);
+        case Column::ColumnCount:     return {};
     }
+    return {};
 }
 
 QVariant PacketTableModel::headerData(int section, Qt::Orientation orientation, int role) const {
     if (role != Qt::DisplayRole || orientation != Qt::Horizontal)
         return {};
-    if (section < 0 || section >= ColumnCount)
+    if (section < 0 || section >= kColumnCount)
         return {};
     return kPacketColumnHeaders[static_cast<std::size_t>(section)];
 }
 
 void PacketTableModel::addPacket(const nids::core::PacketInfo& info,
                                   const std::string& interfaceName) {
-    int row = static_cast<int>(rows_.size());
+    auto row = static_cast<int>(rows_.size());
     beginInsertRows(QModelIndex(), row, row);
-    rows_.push_back({info, interfaceName});
+    rows_.emplace_back(info, interfaceName);
     endInsertRows();
 }
 

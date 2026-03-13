@@ -23,21 +23,21 @@ TEST(DetectionResult, defaultConstruction_hasNoMatches) {
 
 TEST(DetectionResult, hasThreatIntelMatch_trueWhenPopulated) {
     DetectionResult result;
-    result.threatIntelMatches.push_back({"1.2.3.4", "feodo", true});
+    result.threatIntelMatches.emplace_back("1.2.3.4", "feodo", true);
     EXPECT_TRUE(result.hasThreatIntelMatch());
 }
 
 TEST(DetectionResult, hasRuleMatch_trueWhenPopulated) {
     DetectionResult result;
-    result.ruleMatches.push_back({"suspicious_port", "Port 4444 detected", 0.6f});
+    result.ruleMatches.emplace_back("suspicious_port", "Port 4444 detected", 0.6f);
     EXPECT_TRUE(result.hasRuleMatch());
 }
 
 TEST(DetectionResult, maxRuleSeverity_returnsHighestSeverity) {
     DetectionResult result;
-    result.ruleMatches.push_back({"rule_a", "Low severity", 0.2f});
-    result.ruleMatches.push_back({"rule_b", "High severity", 0.9f});
-    result.ruleMatches.push_back({"rule_c", "Medium severity", 0.5f});
+    result.ruleMatches.emplace_back("rule_a", "Low severity", 0.2f);
+    result.ruleMatches.emplace_back("rule_b", "High severity", 0.9f);
+    result.ruleMatches.emplace_back("rule_c", "Medium severity", 0.5f);
     EXPECT_FLOAT_EQ(result.maxRuleSeverity(), 0.9f);
 }
 
@@ -55,13 +55,13 @@ TEST(DetectionResult, isFlagged_trueWhenMlIsAttack) {
 
 TEST(DetectionResult, isFlagged_trueWhenThreatIntelMatch) {
     DetectionResult result;
-    result.threatIntelMatches.push_back({"10.0.0.1", "spamhaus", false});
+    result.threatIntelMatches.emplace_back("10.0.0.1", "spamhaus", false);
     EXPECT_TRUE(result.isFlagged());
 }
 
 TEST(DetectionResult, isFlagged_trueWhenRuleMatch) {
     DetectionResult result;
-    result.ruleMatches.push_back({"syn_flood", "SYN flood detected", 0.8f});
+    result.ruleMatches.emplace_back("syn_flood", "SYN flood detected", 0.8f);
     EXPECT_TRUE(result.isFlagged());
 }
 

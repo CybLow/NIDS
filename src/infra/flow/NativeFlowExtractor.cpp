@@ -169,6 +169,41 @@ void pushRatio(std::vector<float>& features, double numerator, double denominato
     features.push_back(denominator > 0 ? static_cast<float>(numerator / denominator) : 0.0f);
 }
 
+/// Build a FlowInfo metadata record from a flow key and accumulated stats.
+nids::core::FlowInfo buildFlowInfo(const FlowKey& key, const FlowStats& stats) {
+    nids::core::FlowInfo info;
+    info.srcIp = key.srcIp;
+    info.dstIp = key.dstIp;
+    info.srcPort = key.srcPort;
+    info.dstPort = key.dstPort;
+    info.protocol = key.protocol;
+
+    info.totalFwdPackets = stats.totalFwdPackets;
+    info.totalBwdPackets = stats.totalBwdPackets;
+
+    auto durationUs = static_cast<double>(stats.lastTimeUs - stats.startTimeUs);
+    info.flowDurationUs = durationUs;
+
+    if (durationUs > 0.0) {
+        double durationSec = durationUs / 1'000'000.0;
+        info.fwdPacketsPerSecond = static_cast<double>(stats.totalFwdPackets) / durationSec;
+        info.bwdPacketsPerSecond = static_cast<double>(stats.totalBwdPackets) / durationSec;
+    }
+
+    info.synFlagCount = stats.synCount;
+    info.ackFlagCount = stats.ackCount;
+    info.rstFlagCount = stats.rstCount;
+    info.finFlagCount = stats.finCount;
+
+    auto totalPackets = stats.totalFwdPackets + stats.totalBwdPackets;
+    auto totalBytes = stats.totalFwdBytes + stats.totalBwdBytes;
+    if (totalPackets > 0) {
+        info.avgPacketSize = static_cast<double>(totalBytes) / static_cast<double>(totalPackets);
+    }
+
+    return info;
+}
+
 } // anonymous namespace
 
 const std::vector<std::string>& flowFeatureNames() {
@@ -559,17 +594,15 @@ NativeFlowExtractor::FlowLookupResult
 NativeFlowExtractor::resolveFlow(const FlowKey& keyFwd, const FlowKey& keyBwd,
                                    std::int64_t timestampUs) {
     // Evict timed-out flows
-    if (auto it = flows_.find(keyFwd); it != flows_.end()) {
-        if (timestampUs - it->second.lastTimeUs > flowTimeoutUs_) {
-            completedFlows_.emplace_back(keyFwd, std::move(it->second));
-            flows_.erase(it);
-        }
+    if (auto it = flows_.find(keyFwd);
+        it != flows_.end() && timestampUs - it->second.lastTimeUs > flowTimeoutUs_) {
+        completedFlows_.emplace_back(keyFwd, std::move(it->second));
+        flows_.erase(it);
     }
-    if (auto it = flows_.find(keyBwd); it != flows_.end()) {
-        if (timestampUs - it->second.lastTimeUs > flowTimeoutUs_) {
-            completedFlows_.emplace_back(keyBwd, std::move(it->second));
-            flows_.erase(it);
-        }
+    if (auto it = flows_.find(keyBwd);
+        it != flows_.end() && timestampUs - it->second.lastTimeUs > flowTimeoutUs_) {
+        completedFlows_.emplace_back(keyBwd, std::move(it->second));
+        flows_.erase(it);
     }
 
     // Determine direction
@@ -748,45 +781,11 @@ void NativeFlowExtractor::buildFlowMetadata() {
     flowMetadata_.clear();
     flowMetadata_.reserve(completedFlows_.size() + flows_.size());
 
-    auto buildOne = [&](const FlowKey& key, const FlowStats& stats) {
-        nids::core::FlowInfo info;
-        info.srcIp = key.srcIp;
-        info.dstIp = key.dstIp;
-        info.srcPort = key.srcPort;
-        info.dstPort = key.dstPort;
-        info.protocol = key.protocol;
-
-        info.totalFwdPackets = stats.totalFwdPackets;
-        info.totalBwdPackets = stats.totalBwdPackets;
-
-        auto durationUs = static_cast<double>(stats.lastTimeUs - stats.startTimeUs);
-        info.flowDurationUs = durationUs;
-
-        if (durationUs > 0.0) {
-            double durationSec = durationUs / 1'000'000.0;
-            info.fwdPacketsPerSecond = static_cast<double>(stats.totalFwdPackets) / durationSec;
-            info.bwdPacketsPerSecond = static_cast<double>(stats.totalBwdPackets) / durationSec;
-        }
-
-        info.synFlagCount = stats.synCount;
-        info.ackFlagCount = stats.ackCount;
-        info.rstFlagCount = stats.rstCount;
-        info.finFlagCount = stats.finCount;
-
-        auto totalPackets = stats.totalFwdPackets + stats.totalBwdPackets;
-        auto totalBytes = stats.totalFwdBytes + stats.totalBwdBytes;
-        if (totalPackets > 0) {
-            info.avgPacketSize = static_cast<double>(totalBytes) / static_cast<double>(totalPackets);
-        }
-
-        flowMetadata_.push_back(std::move(info));
-    };
-
     for (const auto& [key, stats] : completedFlows_) {
-        buildOne(key, stats);
+        flowMetadata_.push_back(buildFlowInfo(key, stats));
     }
     for (const auto& [key, stats] : flows_) {
-        buildOne(key, stats);
+        flowMetadata_.push_back(buildFlowInfo(key, stats));
     }
 }
 

@@ -20,6 +20,11 @@
 #include <random>
 #include <vector>
 
+#ifdef NIDS_HAS_ONNX
+#include "infra/analysis/OnnxAnalyzer.h"
+#include "infra/analysis/AnalyzerFactory.h"
+#endif  // NIDS_HAS_ONNX
+
 using nids::infra::kFlowFeatureCount;
 using nids::core::AttackType;
 using nids::test::ScopedTimer;
@@ -35,7 +40,7 @@ std::vector<std::vector<float>> generateFeatures(std::size_t count, unsigned see
     std::vector<std::vector<float>> features(count);
     for (auto& fv : features) {
         fv.resize(static_cast<std::size_t>(kFlowFeatureCount));
-        std::generate(fv.begin(), fv.end(), [&]() { return dist(rng); });
+        std::ranges::generate(fv, [&]() { return dist(rng); });
         // Set first feature (dst port) to realistic value
         fv[0] = static_cast<float>(rng() % 65536);
     }
@@ -170,8 +175,6 @@ TEST_F(MlInferenceLatencyTest, predict_deterministic_sameInput) {
 }
 
 #ifdef NIDS_HAS_ONNX
-#include "infra/analysis/OnnxAnalyzer.h"
-#include "infra/analysis/AnalyzerFactory.h"
 
 class OnnxInferenceStressTest : public ::testing::Test {
 protected:

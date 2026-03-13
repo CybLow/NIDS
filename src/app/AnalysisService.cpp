@@ -85,7 +85,7 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
     }
 
     const auto& metadata = extractor_->flowMetadata();
-    int total = static_cast<int>(allFeatures.size());
+    auto total = static_cast<int>(allFeatures.size());
 
     spdlog::info("Analyzing {} flows (hybrid detection: {})",
                  total, hybridService_ != nullptr ? "enabled" : "disabled");

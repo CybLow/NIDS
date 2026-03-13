@@ -21,8 +21,9 @@ struct OnnxAnalyzer::Impl {
     bool loaded = false;
 };
 
-OnnxAnalyzer::OnnxAnalyzer()
-    : impl_(std::make_unique<Impl>()) {}
+OnnxAnalyzer::OnnxAnalyzer() {
+    impl_ = std::make_unique<Impl>();
+}
 
 OnnxAnalyzer::~OnnxAnalyzer() = default;
 

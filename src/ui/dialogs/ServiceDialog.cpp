@@ -5,7 +5,7 @@
 
 namespace nids::ui {
 
-ServiceDialog::ServiceDialog(const std::set<std::string>& services, QWidget* parent)
+ServiceDialog::ServiceDialog(const std::set<std::string, std::less<>>& services, QWidget* parent)
     : QDialog(parent)
     , listWidget_(new QListWidget(this))
     , okButton_(new QPushButton("OK", this))
@@ -31,8 +31,7 @@ ServiceDialog::ServiceDialog(const std::set<std::string>& services, QWidget* par
 }
 
 void ServiceDialog::onOkClicked() {
-    auto* item = listWidget_->currentItem();
-    if (item) {
+    if (const auto* item = listWidget_->currentItem()) {
         selectedService_ = item->text();
     }
     accept();

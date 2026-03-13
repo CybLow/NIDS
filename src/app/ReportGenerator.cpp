@@ -4,7 +4,7 @@
 
 #include <fstream>
 #include <chrono>
-#include <iomanip>
+#include <format>
 
 namespace nids::app {
 
@@ -35,7 +35,7 @@ void writeRuleMatches(std::ofstream& file,
     file << "  Heuristic Rules:\n";
     for (const auto& rule : matches) {
         file << "    - " << rule.ruleName << " (severity="
-             << std::fixed << std::setprecision(2) << rule.severity
+             << std::format("{:.2f}", rule.severity)
              << "): " << rule.description << "\n";
     }
 }
@@ -44,10 +44,8 @@ void writeDetectionDetails(std::ofstream& file,
                             const nids::core::DetectionResult& detection) {
     file << "  Detection Source: "
          << nids::core::detectionSourceToString(detection.detectionSource) << "\n";
-    file << "  Combined Score: " << std::fixed << std::setprecision(3)
-         << detection.combinedScore << "\n";
-    file << "  ML Confidence: " << std::fixed << std::setprecision(3)
-         << detection.mlResult.confidence << "\n";
+    file << "  Combined Score: " << std::format("{:.3f}", detection.combinedScore) << "\n";
+    file << "  ML Confidence: " << std::format("{:.3f}", detection.mlResult.confidence) << "\n";
 
     if (!detection.threatIntelMatches.empty()) {
         writeThreatIntelMatches(file, detection.threatIntelMatches);

@@ -57,7 +57,6 @@ std::vector<std::uint8_t> buildTcpPacket(
     std::uint16_t window = 8192,
     std::uint16_t payloadSize = 0)
 {
-    // Ethernet(14) + IPv4(20) + TCP(20) + payload
     std::uint16_t ipTotalLen = 20 + 20 + payloadSize;
     std::uint16_t totalLen = 14 + ipTotalLen;
     std::vector<std::uint8_t> pkt(totalLen, 0);
@@ -123,7 +122,6 @@ std::vector<std::uint8_t> buildIcmpPacket(
     const char* srcIp, const char* dstIp,
     std::uint8_t icmpType = 8, std::uint8_t icmpCode = 0)
 {
-    // Ethernet(14) + IPv4(20) + ICMP(8)
     constexpr std::uint16_t ipTotalLen = 20 + 8;
     constexpr std::uint16_t totalLen = 14 + ipTotalLen;
     std::vector<std::uint8_t> pkt(totalLen, 0);
@@ -153,14 +151,12 @@ std::vector<std::uint8_t> buildVlanTcpPacket(
     std::uint16_t vlanId = 100, std::uint8_t tcpFlags = 0x02)
 {
     std::uint16_t ipTotalLen = 20 + 20;
-    // Ethernet(14) + VLAN tag(4) + IP(20) + TCP(20) = 58
     std::uint16_t totalLen = 14 + 4 + ipTotalLen;
     std::vector<std::uint8_t> pkt(totalLen, 0);
 
     // Ethernet header with VLAN EtherType (0x8100)
     pkt[12] = 0x81; pkt[13] = 0x00;
 
-    // VLAN tag (4 bytes): priority(3) + cfi(1) + vlanId(12) + real EtherType
     pkt[14] = static_cast<std::uint8_t>((vlanId >> 8) & 0x0F);
     pkt[15] = static_cast<std::uint8_t>(vlanId & 0xFF);
     pkt[16] = 0x08; pkt[17] = 0x00;  // Real EtherType = IPv4
@@ -336,7 +332,6 @@ TEST(FlowStats, ToFeatureVector_tcpFlagCountsAndInitWindow) {
     stats.minSegSizeForward = 50;
 
     auto f = stats.toFeatureVector(443);
-    // PSH/URG flags per direction: features 30-33
     EXPECT_FLOAT_EQ(f[30], 1.0f);   // Fwd PSH Flags
     EXPECT_FLOAT_EQ(f[31], 2.0f);   // Bwd PSH Flags
     EXPECT_FLOAT_EQ(f[32], 3.0f);   // Fwd URG Flags
@@ -403,13 +398,9 @@ TEST(FlowStats, ToFeatureVector_bulkMetrics) {
     stats.bwdBulkPackets = {2};
 
     auto f = stats.toFeatureVector(80);
-    // Fwd Avg Bytes/Bulk = mean(200,300) = 250
     EXPECT_FLOAT_EQ(f[55], 250.0f);
-    // Fwd Avg Packets/Bulk = mean(2,3) = 2.5
     EXPECT_FLOAT_EQ(f[56], 2.5f);
-    // Fwd Avg Bulk Rate = (200+300) / 2.0s = 250
     EXPECT_FLOAT_EQ(f[57], 250.0f);
-    // Bwd Avg Bytes/Bulk = 150
     EXPECT_FLOAT_EQ(f[58], 150.0f);
 }
 
@@ -676,7 +667,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_maxFlowSplitting) {
     std::vector<PcapPacketEntry> packets;
     for (std::uint32_t i = 0; i < 250; ++i) {
         auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
-        packets.push_back({pkt, i / 1000, (i % 1000) * 1000});
+        packets.emplace_back(pkt, i / 1000, (i % 1000) * 1000);
     }
 
     auto path = writePcapFile("nfe_maxflow.pcap", packets);
@@ -782,12 +773,12 @@ TEST(NativeFlowExtractor, ExtractFeatures_bulkTransferDetected) {
     std::vector<PcapPacketEntry> packets;
     for (int i = 0; i < 5; ++i) {
         auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
-        packets.push_back({pkt, 0, static_cast<std::uint32_t>(i * 100'000)});
+        packets.emplace_back(pkt, 0, static_cast<std::uint32_t>(i * 100'000));
     }
     // Switch direction (backward)
     for (int i = 0; i < 3; ++i) {
         auto pkt = buildTcpPacket("10.0.0.2", "10.0.0.1", 80, 5000, 0x10);
-        packets.push_back({pkt, 0, static_cast<std::uint32_t>((5 + i) * 100'000)});
+        packets.emplace_back(pkt, 0, static_cast<std::uint32_t>((5 + i) * 100'000));
     }
 
     auto path = writePcapFile("nfe_bulk.pcap", packets);

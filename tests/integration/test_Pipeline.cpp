@@ -11,6 +11,9 @@
 #include "core/model/AttackType.h"
 #include "infra/flow/NativeFlowExtractor.h"  // kFlowFeatureCount
 
+#include <array>
+#include <format>
+
 #include <QCoreApplication>
 #include <QSignalSpy>
 
@@ -50,7 +53,6 @@ public:
     MOCK_METHOD(std::vector<std::vector<float>>, extractFeatures, (const std::string&), (override));
     MOCK_METHOD(const std::vector<FlowInfo>&, flowMetadata, (), (const, noexcept, override));
 
-private:
     std::vector<FlowInfo> emptyMetadata_;
 };
 
@@ -77,9 +79,9 @@ protected:
     void SetUp() override {
         if (!QCoreApplication::instance()) {
             static int argc = 1;
-            static char appName[] = "test";
-            static char* argv[] = {appName, nullptr};
-            app_ = std::make_unique<QCoreApplication>(argc, argv);
+            static std::array<char, 5> appName = {'t', 'e', 's', 't', '\0'};
+            static auto* appNamePtr = appName.data();
+            app_ = std::make_unique<QCoreApplication>(argc, &appNamePtr);
         }
     }
 
@@ -95,7 +97,7 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
     IPacketCapture::PacketCallback packetCb;
 
     EXPECT_CALL(*capturePtr, setPacketCallback(_))
-        .WillOnce(Invoke([&](IPacketCapture::PacketCallback cb) {
+        .WillOnce(Invoke([&packetCb](IPacketCapture::PacketCallback cb) {
             packetCb = std::move(cb);
         }));
     EXPECT_CALL(*capturePtr, setErrorCallback(_));
@@ -118,7 +120,7 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
     for (int i = 0; i < 5; ++i) {
         PacketInfo pkt;
         pkt.protocol = "TCP";
-        pkt.ipSource = "192.168.1." + std::to_string(i + 1);
+        pkt.ipSource = std::format("192.168.1.{}", i + 1);
         pkt.ipDestination = "10.0.0.1";
         pkt.portSource = std::to_string(10000 + i);
         pkt.portDestination = "443";
@@ -195,8 +197,10 @@ TEST_F(PipelineTest, analysisWithAllAttackTypes) {
     EXPECT_CALL(*extractor, extractFeatures(_)).WillOnce(Return(flows));
     EXPECT_CALL(*analyzer, predict(_))
         .Times(kAttackTypeCount)
-        .WillRepeatedly(Invoke([&](const std::vector<float>&) -> AttackType {
-            return attackTypeFromIndex(callIndex++);
+        .WillRepeatedly(Invoke([&callIndex](const std::vector<float>&) {
+            int idx = callIndex;
+            ++callIndex;
+            return attackTypeFromIndex(idx);
         }));
 
     AnalysisService service(std::move(analyzer), std::move(extractor),

@@ -131,7 +131,7 @@ void WeightTuningDialog::setupUi() {
     mainLayout->addLayout(buttonLayout);
 }
 
-void WeightTuningDialog::connectSignals() {
+void WeightTuningDialog::connectSignals() const {
     connect(mlSlider_, &QSlider::valueChanged,
             this, &WeightTuningDialog::onMlSliderChanged);
     connect(tiSlider_, &QSlider::valueChanged,
@@ -168,9 +168,9 @@ void WeightTuningDialog::onThresholdSliderChanged(int value) {
     thresholdSpin_->setValue(static_cast<double>(value) / kSliderScale);
 }
 
-void WeightTuningDialog::redistributeWeights(QSlider* changed,
-                                              QSlider* other1,
-                                              QSlider* other2) {
+void WeightTuningDialog::redistributeWeights(const QSlider* changed,
+                                               QSlider* other1,
+                                               QSlider* other2) {
     if (adjusting_)
         return;
     adjusting_ = true;
@@ -180,9 +180,8 @@ void WeightTuningDialog::redistributeWeights(QSlider* changed,
 
     int other1Val = other1->value();
     int other2Val = other2->value();
-    int otherSum = other1Val + other2Val;
 
-    if (otherSum > 0) {
+    if (int otherSum = other1Val + other2Val; otherSum > 0) {
         // Proportional redistribution: keep the ratio between the other two
         int new1 = (other1Val * remaining) / otherSum;
         int new2 = remaining - new1;  // ensure exact sum to avoid rounding drift

@@ -11,6 +11,8 @@
 #include "core/model/PredictionResult.h"
 #include "infra/flow/NativeFlowExtractor.h"  // kFlowFeatureCount
 
+#include <array>
+
 #include <QCoreApplication>
 #include <QSignalSpy>
 
@@ -38,7 +40,6 @@ public:
     MOCK_METHOD(std::vector<std::vector<float>>, extractFeatures, (const std::string&), (override));
     MOCK_METHOD(const std::vector<FlowInfo>&, flowMetadata, (), (const, noexcept, override));
 
-private:
     std::vector<FlowInfo> emptyMetadata_;
 };
 
@@ -66,9 +67,9 @@ protected:
     void SetUp() override {
         if (!QCoreApplication::instance()) {
             static int argc = 1;
-            static char appName[] = "test";
-            static char* argv[] = {appName, nullptr};
-            app_ = std::make_unique<QCoreApplication>(argc, argv);
+            static std::array<char, 5> appName = {'t', 'e', 's', 't', '\0'};
+            static auto* appNamePtr = appName.data();
+            app_ = std::make_unique<QCoreApplication>(argc, &appNamePtr);
         }
     }
 
@@ -146,7 +147,7 @@ TEST_F(AnalysisServiceTest, lastFlowMetadata_emptyBeforeAnalysis) {
 TEST_F(AnalysisServiceTest, lastFlowMetadata_returnsExtractorMetadata) {
     auto analyzer = std::make_unique<MockAnalyzer>();
     auto extractor = std::make_unique<MockFlowExtractor>();
-    auto* extractorPtr = extractor.get();
+    const auto* extractorPtr = extractor.get();
 
     // Set up metadata to be returned
     std::vector<FlowInfo> metadata;

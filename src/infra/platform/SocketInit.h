@@ -21,7 +21,7 @@ public:
     [[nodiscard]] bool isInitialized() const noexcept { return initialized_; }
 
 private:
-    bool initialized_;
+    bool initialized_ = false;
 };
 
 } // namespace nids::platform

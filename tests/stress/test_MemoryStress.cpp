@@ -13,6 +13,7 @@
 #include "app/HybridDetectionService.h"
 
 #include <filesystem>
+#include <format>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -138,7 +139,7 @@ TEST_F(MemoryStressTest, sustainedEvaluation_memoryStable) {
         pred.confidence = 0.85f;
 
         nids::core::FlowMetadata meta;
-        meta.srcIp = "10.0.0." + std::to_string(i % 256);
+        meta.srcIp = std::format("10.0.0.{}", i % 256);
         meta.dstIp = "10.1.0.1";
         meta.srcPort = static_cast<std::uint16_t>(40000 + (i % 1000));
         meta.dstPort = 80;

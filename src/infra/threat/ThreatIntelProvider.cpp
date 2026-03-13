@@ -65,16 +65,12 @@ std::size_t ThreatIntelProvider::loadFeeds(const std::string& feedDirectory) {
         }
 
         const auto& path = entry.path();
-        auto ext = path.extension().string();
-
         // Accept .txt, .csv, and extensionless files
-        if (!ext.empty() && ext != ".txt" && ext != ".csv") {
+        if (auto ext = path.extension().string(); !ext.empty() && ext != ".txt" && ext != ".csv") {
             continue;
         }
 
-        auto feedName = path.stem().string();
-        auto loaded = loadFeedFile(path.string(), feedName);
-        if (loaded > 0) {
+        if (auto feedName = path.stem().string(); auto loaded = loadFeedFile(path.string(), feedName)) {
             totalLoaded += loaded;
             ++feedCount_;
             feedNames_.push_back(feedName);
@@ -153,8 +149,7 @@ nids::core::ThreatIntelLookup ThreatIntelProvider::lookup(std::string_view ip) c
 
 nids::core::ThreatIntelLookup ThreatIntelProvider::lookup(std::uint32_t ip) const {
     // Check individual IPs first (O(1))
-    auto it = ipEntries_.find(ip);
-    if (it != ipEntries_.end()) {
+    if (auto it = ipEntries_.find(ip); it != ipEntries_.end()) {
         return {true, it->second};
     }
 
@@ -163,10 +158,9 @@ nids::core::ThreatIntelLookup ThreatIntelProvider::lookup(std::uint32_t ip) cons
 }
 
 nids::core::ThreatIntelLookup ThreatIntelProvider::lookupCidr(std::uint32_t ip) const {
-    auto it = std::ranges::find_if(cidrRanges_, [ip](const CidrRange& range) {
-        return (ip & range.mask) == range.network;
-    });
-    if (it != cidrRanges_.end()) {
+    if (auto it = std::ranges::find_if(cidrRanges_, [ip](const CidrRange& range) {
+            return (ip & range.mask) == range.network;
+        }); it != cidrRanges_.end()) {
         return {true, it->feedName};
     }
     return {};

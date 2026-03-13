@@ -13,7 +13,7 @@ namespace {
     constexpr int kAlphaBackground = 60;  // Subtle transparency for row colors
 
     /// Column headers in enum order.
-    constexpr std::array<const char*, FlowTableModel::ColumnCount> kFlowColumnHeaders = {{
+    constexpr std::array<const char*, FlowTableModel::kColumnCount> kFlowColumnHeaders = {{
         "Flow #",
         "Source IP",
         "Src Port",
@@ -28,11 +28,11 @@ namespace {
 
     /// Columns that should be right-aligned.
     constexpr std::array<int, 5> kRightAlignedColumns = {{
-        FlowTableModel::Number,
-        FlowTableModel::SrcPort,
-        FlowTableModel::DstPort,
-        FlowTableModel::Confidence,
-        FlowTableModel::CombinedScore,
+        static_cast<int>(FlowTableModel::Column::Number),
+        static_cast<int>(FlowTableModel::Column::SrcPort),
+        static_cast<int>(FlowTableModel::Column::DstPort),
+        static_cast<int>(FlowTableModel::Column::Confidence),
+        static_cast<int>(FlowTableModel::Column::CombinedScore),
     }};
 
     /// Helper to format an attackTypeToString view as QString.
@@ -75,7 +75,7 @@ namespace {
     }
 
     /// Table of formatters indexed by Column enum.
-    constexpr std::array<DisplayFn, FlowTableModel::ColumnCount> kDisplayFormatters = {{
+    constexpr std::array<DisplayFn, FlowTableModel::kColumnCount> kDisplayFormatters = {{
         fmtNumber,
         fmtSrcIp,
         fmtSrcPort,
@@ -101,7 +101,7 @@ int FlowTableModel::rowCount(const QModelIndex& parent) const {
 int FlowTableModel::columnCount(const QModelIndex& parent) const {
     if (parent.isValid())
         return 0;
-    return ColumnCount;
+    return kColumnCount;
 }
 
 QVariant FlowTableModel::displayData(const QModelIndex& index,
@@ -143,7 +143,7 @@ QVariant FlowTableModel::data(const QModelIndex& index, int role) const {
 QVariant FlowTableModel::headerData(int section, Qt::Orientation orientation, int role) const {
     if (role != Qt::DisplayRole || orientation != Qt::Horizontal)
         return {};
-    if (section < 0 || section >= ColumnCount)
+    if (section < 0 || section >= kColumnCount)
         return {};
     return kFlowColumnHeaders[static_cast<std::size_t>(section)];
 }
@@ -167,9 +167,9 @@ void FlowTableModel::setFlowResults(
 
 void FlowTableModel::addFlowResult(const nids::core::DetectionResult& result,
                                      const nids::core::FlowInfo& metadata) {
-    int row = static_cast<int>(rows_.size());
+    auto row = static_cast<int>(rows_.size());
     beginInsertRows(QModelIndex(), row, row);
-    rows_.push_back({result, metadata});
+    rows_.emplace_back(result, metadata);
     endInsertRows();
 }
 

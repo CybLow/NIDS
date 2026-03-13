@@ -32,8 +32,7 @@ nids::core::DetectionResult HybridDetectionService::evaluate(
 
     // -- Layer 2: Threat Intelligence --
     if (threatIntel_ != nullptr) {
-        auto srcLookup = threatIntel_->lookup(srcIp);
-        if (srcLookup.matched) {
+        if (auto srcLookup = threatIntel_->lookup(srcIp); srcLookup.matched) {
             result.threatIntelMatches.push_back({
                 .ip = srcIp,
                 .feedName = srcLookup.feedName,
@@ -41,8 +40,7 @@ nids::core::DetectionResult HybridDetectionService::evaluate(
             });
         }
 
-        auto dstLookup = threatIntel_->lookup(dstIp);
-        if (dstLookup.matched) {
+        if (auto dstLookup = threatIntel_->lookup(dstIp); dstLookup.matched) {
             result.threatIntelMatches.push_back({
                 .ip = dstIp,
                 .feedName = dstLookup.feedName,
@@ -159,18 +157,20 @@ nids::core::AttackType HybridDetectionService::verdictForBenign(
     bool hasRuleMatch,
     float maxRuleSeverity) const noexcept {
 
+    using enum nids::core::AttackType;
+
     // TI match overrides benign verdict -- this is the key escalation
     if (hasTiMatch) {
-        return nids::core::AttackType::Unknown;
+        return Unknown;
     }
 
     // High-severity heuristic rule + low ML confidence = escalate
     if (hasRuleMatch && maxRuleSeverity >= 0.7f
         && !mlResult.isHighConfidence(confidenceThreshold_)) {
-        return nids::core::AttackType::Unknown;
+        return Unknown;
     }
 
-    return nids::core::AttackType::Benign;
+    return Benign;
 }
 
 nids::core::AttackType HybridDetectionService::determineVerdict(
@@ -179,18 +179,20 @@ nids::core::AttackType HybridDetectionService::determineVerdict(
     bool hasRuleMatch,
     float maxRuleSeverity) const noexcept {
 
+    using enum nids::core::AttackType;
+
     // ML says attack (any confidence) -- trust the classification
     if (mlResult.isAttack()) {
         return mlResult.classification;
     }
 
     // ML says benign -- apply escalation logic
-    if (mlResult.classification == nids::core::AttackType::Benign) {
+    if (mlResult.classification == Benign) {
         return verdictForBenign(mlResult, hasTiMatch, hasRuleMatch, maxRuleSeverity);
     }
 
     // Unknown ML result -- defer to TI
-    return hasTiMatch ? nids::core::AttackType::Unknown : mlResult.classification;
+    return hasTiMatch ? Unknown : mlResult.classification;
 }
 
 } // namespace nids::app

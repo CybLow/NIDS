@@ -26,7 +26,7 @@ class FlowTableModel : public QAbstractTableModel {
 
 public:
     /** Column indices for the flow table. */
-    enum Column {
+    enum class Column {
         Number = 0,   /**< Flow sequence number. */
         SrcIp,        /**< Source IP address. */
         SrcPort,      /**< Source port number. */
@@ -39,6 +39,9 @@ public:
         Source,       /**< Detection source (ML, TI, Heuristic, or combination). */
         ColumnCount   /**< Sentinel value: total number of columns. */
     };
+
+    /// Total number of columns (integral constant for use in array sizes).
+    static constexpr int kColumnCount = static_cast<int>(Column::ColumnCount);
 
     /// Per-flow data: detection result + connection metadata.
     struct FlowRow {

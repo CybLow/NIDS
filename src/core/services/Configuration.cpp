@@ -6,19 +6,7 @@ namespace fs = std::filesystem;
 
 namespace nids::core {
 
-Configuration::Configuration()
-    : modelPath_("models/model.onnx")
-    , metadataPath_("models/model_metadata.json")
-    , threatIntelDir_("data/threat_intel")
-    , defaultDumpFile_("dump.pcap")
-    , flowTimeoutUs_(600'000'000)       // 10 minutes
-    , idleThresholdUs_(5'000'000)       // 5 seconds
-    , onnxIntraOpThreads_(1)
-    , mlConfidenceThreshold_(0.7f)
-    , weightMl_(0.5f)
-    , weightThreatIntel_(0.3f)
-    , weightHeuristic_(0.2f)
-    , windowTitle_("NIDS - Network Intrusion Detection System") {}
+Configuration::Configuration() = default;
 
 Configuration& Configuration::instance() {
     static Configuration instance;
@@ -40,7 +28,7 @@ const std::string& Configuration::defaultDumpFile() const { return defaultDumpFi
 int64_t Configuration::flowTimeoutUs() const { return flowTimeoutUs_; }
 int64_t Configuration::idleThresholdUs() const { return idleThresholdUs_; }
 
-void Configuration::setDefaultDumpFile(const std::string& file) {
+void Configuration::setDefaultDumpFile(std::string_view file) {
     defaultDumpFile_ = file;
 }
 
@@ -91,7 +79,7 @@ void Configuration::setWeightHeuristic(float weight) {
 
 const std::string& Configuration::windowTitle() const { return windowTitle_; }
 
-void Configuration::setWindowTitle(const std::string& title) {
+void Configuration::setWindowTitle(std::string_view title) {
     windowTitle_ = title;
 }
 

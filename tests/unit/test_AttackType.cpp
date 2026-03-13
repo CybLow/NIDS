@@ -51,10 +51,11 @@ TEST(AttackType, kAttackTypeCountMatchesEnumSize) {
 }
 
 TEST(AttackType, constexprEvaluation) {
+    using enum AttackType;
     // Verify these functions work at compile time
-    static_assert(attackTypeToString(AttackType::Benign) == "Benign");
-    static_assert(attackTypeToString(AttackType::Xss) == "XSS");
-    static_assert(attackTypeFromIndex(0) == AttackType::Benign);
-    static_assert(attackTypeFromIndex(16) == AttackType::Unknown);
-    static_assert(attackTypeFromIndex(-1) == AttackType::Unknown);
+    static_assert(attackTypeToString(Benign) == "Benign");
+    static_assert(attackTypeToString(Xss) == "XSS");
+    static_assert(attackTypeFromIndex(0) == Benign);
+    static_assert(attackTypeFromIndex(16) == Unknown);
+    static_assert(attackTypeFromIndex(-1) == Unknown);
 }

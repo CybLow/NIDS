@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <format>
 #include <string_view>
 
 namespace nids::infra {
@@ -82,7 +83,7 @@ std::vector<nids::core::HeuristicRuleResult> HeuristicRuleEngine::evaluate(
     std::vector<nids::core::HeuristicRuleResult> results;
     results.reserve(4);  // Typically 0-2 rules fire, pre-allocate small
 
-    auto tryAdd = [&results](auto&& result) {
+    auto tryAdd = [&results](std::optional<nids::core::HeuristicRuleResult>&& result) {
         if (result.has_value()) {
             results.push_back(std::move(*result));
         }
@@ -107,10 +108,8 @@ std::vector<nids::core::HeuristicRuleResult> HeuristicRuleEngine::evaluatePortSc
     if (distinctDstPorts.size() >= kPortScanThreshold) {
         results.push_back({
             .ruleName = "port_scan",
-            .description = std::string("Source ") + std::string(srcIp)
-                + " contacted " + std::to_string(distinctDstPorts.size())
-                + " distinct destination ports (threshold: "
-                + std::to_string(kPortScanThreshold) + ")",
+            .description = std::format("Source {} contacted {} distinct destination ports (threshold: {})",
+                srcIp, distinctDstPorts.size(), kPortScanThreshold),
             .severity = std::min(1.0f,
                 static_cast<float>(distinctDstPorts.size()) /
                 static_cast<float>(kPortScanThreshold * 3))
@@ -137,15 +136,14 @@ HeuristicRuleEngine::checkSuspiciousPort(const nids::core::FlowMetadata& flow) {
 
     std::string desc;
     if (srcSuspicious && dstSuspicious) {
-        desc = "Both source port " + std::to_string(flow.srcPort)
-             + " and destination port " + std::to_string(flow.dstPort)
-             + " are known suspicious ports";
+        desc = std::format("Both source port {} and destination port {} are known suspicious ports",
+            flow.srcPort, flow.dstPort);
     } else if (dstSuspicious) {
-        desc = "Destination port " + std::to_string(flow.dstPort)
-             + " is a known suspicious port (potential backdoor/C2)";
+        desc = std::format("Destination port {} is a known suspicious port (potential backdoor/C2)",
+            flow.dstPort);
     } else {
-        desc = "Source port " + std::to_string(flow.srcPort)
-             + " is a known suspicious port (potential backdoor/C2)";
+        desc = std::format("Source port {} is a known suspicious port (potential backdoor/C2)",
+            flow.srcPort);
     }
 
     float severity = (srcSuspicious && dstSuspicious) ? 0.8f : 0.6f;
@@ -178,9 +176,8 @@ HeuristicRuleEngine::checkSynFlood(const nids::core::FlowMetadata& flow) {
 
     return nids::core::HeuristicRuleResult{
         .ruleName = "syn_flood",
-        .description = "High SYN/ACK ratio (" + std::to_string(synAckRatio)
-            + ") with " + std::to_string(flow.synFlagCount)
-            + " SYN flags -- potential SYN flood",
+        .description = std::format("High SYN/ACK ratio ({}) with {} SYN flags -- potential SYN flood",
+            synAckRatio, flow.synFlagCount),
         .severity = std::min(1.0f, static_cast<float>(synAckRatio / (kSynFloodRatio * 4)))
     };
 }
@@ -209,9 +206,8 @@ HeuristicRuleEngine::checkIcmpFlood(const nids::core::FlowMetadata& flow) {
 
     return nids::core::HeuristicRuleResult{
         .ruleName = "icmp_flood",
-        .description = "ICMP traffic at " + std::to_string(pktRate)
-            + " packets/sec with " + std::to_string(totalPackets)
-            + " total packets -- potential ICMP flood",
+        .description = std::format("ICMP traffic at {} packets/sec with {} total packets -- potential ICMP flood",
+            pktRate, totalPackets),
         .severity = std::min(1.0f, static_cast<float>(pktRate / (kIcmpFloodRate * 10)))
     };
 }
@@ -246,9 +242,8 @@ HeuristicRuleEngine::checkBruteForce(const nids::core::FlowMetadata& flow) {
 
     return nids::core::HeuristicRuleResult{
         .ruleName = "brute_force",
-        .description = "High packet rate (" + std::to_string(pktRate)
-            + " pkt/s) to " + std::string(serviceName) + " port "
-            + std::to_string(flow.dstPort) + " -- potential brute force",
+        .description = std::format("High packet rate ({} pkt/s) to {} port {} -- potential brute force",
+            pktRate, serviceName, flow.dstPort),
         .severity = std::min(1.0f, static_cast<float>(pktRate / (kBruteForceRate * 10)))
     };
 }
@@ -272,9 +267,8 @@ HeuristicRuleEngine::checkHighPacketRate(const nids::core::FlowMetadata& flow) {
 
     return nids::core::HeuristicRuleResult{
         .ruleName = "high_packet_rate",
-        .description = "Extremely high packet rate: "
-            + std::to_string(pktRate) + " packets/sec over "
-            + std::to_string(totalPackets) + " packets -- potential DoS/DDoS",
+        .description = std::format("Extremely high packet rate: {} packets/sec over {} packets -- potential DoS/DDoS",
+            pktRate, totalPackets),
         .severity = std::min(1.0f, static_cast<float>(pktRate / (kHighPacketRate * 5)))
     };
 }
@@ -303,9 +297,8 @@ HeuristicRuleEngine::checkResetFlood(const nids::core::FlowMetadata& flow) {
 
     return nids::core::HeuristicRuleResult{
         .ruleName = "reset_flood",
-        .description = "High RST ratio (" + std::to_string(rstRatio)
-            + ") with " + std::to_string(flow.rstFlagCount)
-            + " RST flags -- potential reset attack or scan response",
+        .description = std::format("High RST ratio ({}) with {} RST flags -- potential reset attack or scan response",
+            rstRatio, flow.rstFlagCount),
         .severity = std::min(1.0f, static_cast<float>(rstRatio))
     };
 }

@@ -11,7 +11,7 @@
 ///
 /// Usage:
 ///   FeatureNormalizer normalizer;
-///   if (!normalizer.loadMetadata("model_metadata.json")) { /* error */ }
+///   if (!normalizer.loadMetadata("model_metadata.json")) { handle error }
 ///   auto normalized = normalizer.normalize(rawFeatures);
 ///   auto attackType = analyzer->predict(normalized);
 

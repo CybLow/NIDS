@@ -5,6 +5,8 @@
 #include "core/services/IPacketCapture.h"
 #include "core/services/PacketFilter.h"
 
+#include <array>
+
 #include <QCoreApplication>
 #include <QSignalSpy>
 
@@ -35,9 +37,9 @@ protected:
         // Ensure QCoreApplication exists for signal/slot processing
         if (!QCoreApplication::instance()) {
             static int argc = 1;
-            static char appName[] = "test";
-            static char* argv[] = {appName, nullptr};
-            app_ = std::make_unique<QCoreApplication>(argc, argv);
+            static std::array<char, 5> appName = {'t', 'e', 's', 't', '\0'};
+            static auto* appNamePtr = appName.data();
+            app_ = std::make_unique<QCoreApplication>(argc, &appNamePtr);
         }
     }
 
@@ -155,7 +157,7 @@ TEST_F(CaptureControllerTest, packetCallback_forwardsToSession) {
 
     IPacketCapture::PacketCallback storedCallback;
     EXPECT_CALL(*mockPtr, setPacketCallback(_))
-        .WillOnce(Invoke([&](IPacketCapture::PacketCallback cb) {
+        .WillOnce(Invoke([&storedCallback](IPacketCapture::PacketCallback cb) {
             storedCallback = std::move(cb);
         }));
     EXPECT_CALL(*mockPtr, setErrorCallback(_));
@@ -181,7 +183,7 @@ TEST_F(CaptureControllerTest, errorCallback_emitsCaptureError) {
     IPacketCapture::ErrorCallback storedErrorCb;
     EXPECT_CALL(*mockPtr, setPacketCallback(_));
     EXPECT_CALL(*mockPtr, setErrorCallback(_))
-        .WillOnce(Invoke([&](IPacketCapture::ErrorCallback cb) {
+        .WillOnce(Invoke([&storedErrorCb](IPacketCapture::ErrorCallback cb) {
             storedErrorCb = std::move(cb);
         }));
 

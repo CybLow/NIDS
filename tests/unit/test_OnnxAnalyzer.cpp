@@ -188,14 +188,13 @@ TEST_F(OnnxModelTest, predictWithConfidence_confidenceMatchesTopProbability) {
     auto result = analyzer.predictWithConfidence(features);
 
     // Confidence should equal the max probability in the distribution
-    float maxProb = *std::max_element(
-        result.probabilities.begin(), result.probabilities.end());
+    float maxProb = *std::ranges::max_element(result.probabilities);
     EXPECT_FLOAT_EQ(result.confidence, maxProb);
 
     // Classification must match the argmax of probabilities
     auto expectedIdx = static_cast<int>(std::distance(
         result.probabilities.begin(),
-        std::max_element(result.probabilities.begin(), result.probabilities.end())));
+        std::ranges::max_element(result.probabilities)));
     EXPECT_EQ(static_cast<int>(result.classification), expectedIdx);
 }
 
@@ -281,8 +280,8 @@ TEST_F(OnnxModelTest, predict_randomInputs_allReturnValidTypes) {
     constexpr int kTrials = 50;
     for (int trial = 0; trial < kTrials; ++trial) {
         std::vector<float> features(kFlowFeatureCount);
-        std::generate(features.begin(), features.end(),
-                      [&]() { return dist(rng); });
+        std::ranges::generate(features,
+                              [&]() { return dist(rng); });
 
         auto result = analyzer.predictWithConfidence(features);
 
@@ -342,8 +341,8 @@ TEST_F(OnnxModelTest, predict_sequentialCalls_noStateLeakage) {
     constexpr int kBatch = 100;
     for (int i = 0; i < kBatch; ++i) {
         std::vector<float> features(kFlowFeatureCount);
-        std::generate(features.begin(), features.end(),
-                      [&]() { return dist(rng); });
+        std::ranges::generate(features,
+                              [&]() { return dist(rng); });
 
         auto result = analyzer.predictWithConfidence(features);
         ASSERT_NE(result.classification, AttackType::Unknown)

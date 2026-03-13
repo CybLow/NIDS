@@ -94,7 +94,6 @@ TEST(CaptureSession, setDetectionResult_sparseIndex_autoResizes) {
     session.setDetectionResult(10, makeResult(AttackType::DdosIcmp));
     EXPECT_EQ(session.analysisResultCount(), 11u);
 
-    // Index 0-9 should return default (Unknown)
     EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::Unknown);
     EXPECT_EQ(session.getDetectionResult(5).finalVerdict, AttackType::Unknown);
 
@@ -117,15 +116,16 @@ TEST(CaptureSession, setDetectionResult_overwrite) {
 // ── Multiple detection results ───────────────────────────────────────
 
 TEST(CaptureSession, setDetectionResult_multipleResults) {
+    using enum AttackType;
     CaptureSession session;
-    session.setDetectionResult(0, makeResult(AttackType::Benign));
-    session.setDetectionResult(1, makeResult(AttackType::SshBruteForce));
-    session.setDetectionResult(2, makeResult(AttackType::PortScanning));
+    session.setDetectionResult(0, makeResult(Benign));
+    session.setDetectionResult(1, makeResult(SshBruteForce));
+    session.setDetectionResult(2, makeResult(PortScanning));
 
     EXPECT_EQ(session.analysisResultCount(), 3u);
-    EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::Benign);
-    EXPECT_EQ(session.getDetectionResult(1).finalVerdict, AttackType::SshBruteForce);
-    EXPECT_EQ(session.getDetectionResult(2).finalVerdict, AttackType::PortScanning);
+    EXPECT_EQ(session.getDetectionResult(0).finalVerdict, Benign);
+    EXPECT_EQ(session.getDetectionResult(1).finalVerdict, SshBruteForce);
+    EXPECT_EQ(session.getDetectionResult(2).finalVerdict, PortScanning);
 }
 
 // ── Clear resets detection results ───────────────────────────────────

@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <mutex>
 
@@ -28,8 +29,8 @@ public:
      * @param bpfFilter  BPF filter expression (may be empty).
      * @param dumpFile   Path to write captured packets (empty to skip dump).
      */
-    void configure(const std::string& interface, const std::string& bpfFilter,
-                   const std::string& dumpFile);
+    void configure(std::string_view interface, std::string_view bpfFilter,
+                   std::string_view dumpFile);
 
 public slots:
     /** Start the blocking pcap capture loop. Runs until requestStop() is called. */

@@ -142,10 +142,8 @@ TEST_F(ReportGeneratorTest, threatIntelMatchesWritten) {
     detection.combinedScore = 0.7f;
     detection.mlResult.confidence = 0.3f;
     detection.mlResult.classification = AttackType::Benign;
-    detection.threatIntelMatches.push_back(
-        nids::core::ThreatIntelMatch{"1.2.3.4", "feodo", true});
-    detection.threatIntelMatches.push_back(
-        nids::core::ThreatIntelMatch{"5.6.7.8", "spamhaus", false});
+    detection.threatIntelMatches.emplace_back("1.2.3.4", "feodo", true);
+    detection.threatIntelMatches.emplace_back("5.6.7.8", "spamhaus", false);
     session.setDetectionResult(0, detection);
 
     auto result = ReportGenerator::generate(session, testReportPath);
@@ -181,10 +179,8 @@ TEST_F(ReportGeneratorTest, ruleMatchesWritten) {
     detection.combinedScore = 0.95f;
     detection.mlResult.confidence = 0.88f;
     detection.mlResult.classification = AttackType::SynFlood;
-    detection.ruleMatches.push_back(
-        nids::core::RuleMatch{"syn_flood", "SYN flood detected", 0.85f});
-    detection.ruleMatches.push_back(
-        nids::core::RuleMatch{"high_packet_rate", "Very high packet rate", 0.92f});
+    detection.ruleMatches.emplace_back("syn_flood", "SYN flood detected", 0.85f);
+    detection.ruleMatches.emplace_back("high_packet_rate", "Very high packet rate", 0.92f);
     session.setDetectionResult(0, detection);
 
     auto result = ReportGenerator::generate(session, testReportPath);
@@ -233,10 +229,8 @@ TEST_F(ReportGeneratorTest, multiplePackets_mixedDetectionSources) {
     det2.combinedScore = 0.99f;
     det2.mlResult.confidence = 0.95f;
     det2.mlResult.classification = AttackType::DdosIcmp;
-    det2.threatIntelMatches.push_back(
-        nids::core::ThreatIntelMatch{"1.2.3.4", "botnet", true});
-    det2.ruleMatches.push_back(
-        nids::core::RuleMatch{"suspicious_port", "Port 4444 is suspicious", 0.6f});
+    det2.threatIntelMatches.emplace_back("1.2.3.4", "botnet", true);
+    det2.ruleMatches.emplace_back("suspicious_port", "Port 4444 is suspicious", 0.6f);
     session.setDetectionResult(1, det2);
 
     auto result = ReportGenerator::generate(session, testReportPath, "wlan0");

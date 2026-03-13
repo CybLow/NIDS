@@ -34,7 +34,7 @@ namespace nids::test {
 class ScopedTimer {
 public:
     explicit ScopedTimer(double& outMs)
-        : out_(outMs), start_(std::chrono::steady_clock::now()) {}
+        : out_(outMs) {}
     ~ScopedTimer() {
         auto end = std::chrono::steady_clock::now();
         out_ = std::chrono::duration<double, std::milli>(end - start_).count();
@@ -45,7 +45,7 @@ public:
 
 private:
     double& out_;
-    std::chrono::steady_clock::time_point start_;
+    std::chrono::steady_clock::time_point start_ = std::chrono::steady_clock::now();
 };
 
 // ── Memory tracking (Linux-only via /proc/self/status) ──────────────
@@ -103,7 +103,6 @@ inline void generatePcap(const std::string& outPath,
     };
     ofs.write(reinterpret_cast<const char*>(globalHeader), sizeof(globalHeader));
 
-    // Packet template: Ethernet(14) + IPv4(20) + TCP(20) + payload
     const std::uint32_t pktLen = 14 + 20 + 20 + payloadSize;
     std::vector<std::uint8_t> pkt(pktLen, 0);
 
@@ -253,7 +252,7 @@ public:
         const core::FlowMetadata& flow) const override {
         std::vector<core::HeuristicRuleResult> results;
         if (flow.fwdPacketsPerSecond > 10000.0) {
-            results.push_back({"high_rate", "High packet rate", 0.8f});
+            results.emplace_back("high_rate", "High packet rate", 0.8f);
         }
         return results;
     }
@@ -262,7 +261,7 @@ public:
         const std::vector<std::uint16_t>& ports) const override {
         std::vector<core::HeuristicRuleResult> results;
         if (ports.size() > 100) {
-            results.push_back({"port_scan", "Port scan detected", 0.9f});
+            results.emplace_back("port_scan", "Port scan detected", 0.9f);
         }
         return results;
     }

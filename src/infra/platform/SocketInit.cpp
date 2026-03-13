@@ -24,8 +24,9 @@ void cleanupNetworking() {
 #endif
 }
 
-NetworkInitGuard::NetworkInitGuard()
-    : initialized_(initializeNetworking()) {}
+NetworkInitGuard::NetworkInitGuard() {
+    initialized_ = initializeNetworking();
+}
 
 NetworkInitGuard::~NetworkInitGuard() {
     if (initialized_) {

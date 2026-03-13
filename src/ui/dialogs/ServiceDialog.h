@@ -4,6 +4,7 @@
 #include <QListWidget>
 #include <QPushButton>
 
+#include <functional>
 #include <set>
 #include <string>
 
@@ -15,7 +16,7 @@ class ServiceDialog : public QDialog {
 
 public:
     /** Construct with the set of available service names. */
-    explicit ServiceDialog(const std::set<std::string>& services,
+    explicit ServiceDialog(const std::set<std::string, std::less<>>& services,
                            QWidget* parent = nullptr);
 
     /** Return the service name selected by the user, or empty if cancelled. */

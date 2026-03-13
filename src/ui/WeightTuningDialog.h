@@ -45,14 +45,14 @@ private slots:
 
 private:
     void setupUi();
-    void connectSignals();
+    void connectSignals() const;
 
     /// Update spin-box labels to reflect current slider positions.
     void syncLabelsFromSliders();
 
     /// Redistribute remaining weight proportionally across the other two sliders
     /// when one slider is moved.  Prevents infinite signal recursion via guard.
-    void redistributeWeights(QSlider* changed, QSlider* other1, QSlider* other2);
+    void redistributeWeights(const QSlider* changed, QSlider* other1, QSlider* other2);
 
     nids::app::HybridDetectionService* hybridService_ = nullptr;  // non-owning
 

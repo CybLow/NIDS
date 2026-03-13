@@ -1,5 +1,7 @@
 #include "core/services/PacketFilter.h"
 
+#include <string_view>
+
 namespace nids::core {
 
 std::string PacketFilter::generateBpfString() const {
@@ -9,7 +11,7 @@ std::string PacketFilter::generateBpfString() const {
 
     std::string filter;
 
-    auto appendClause = [&filter](const std::string& clause) {
+    auto appendClause = [&filter](std::string_view clause) {
         if (!filter.empty())
             filter += " and ";
         filter += clause;

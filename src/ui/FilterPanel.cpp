@@ -167,8 +167,8 @@ void FilterPanel::onApplicationChanged(int index) {
         if (dialog.exec() == QDialog::Accepted) {
             QString service = dialog.getSelectedService();
             if (!service.isEmpty()) {
-                int existing = applicationCombo_->findText(lastCustomService_);
-                if (existing != -1) {
+                if (int existing = applicationCombo_->findText(lastCustomService_);
+                    existing != -1) {
                     applicationCombo_->removeItem(existing);
                 }
                 applicationCombo_->blockSignals(true);
@@ -184,7 +184,8 @@ void FilterPanel::onApplicationChanged(int index) {
 void FilterPanel::updateApplicationFromPort() {
     QStringList majorApps = {"ALL", "HTTP", "FTP", "SSH", "HTTPS", "SMTP", "DNS", "Telnet", "Unknown"};
 
-    bool srcOk = false, dstOk = false;
+    bool srcOk = false;
+    bool dstOk = false;
     int srcPort = sourcePortEdit_->text().toInt(&srcOk);
     int dstPort = destPortEdit_->text().toInt(&dstOk);
 
@@ -194,9 +195,10 @@ void FilterPanel::updateApplicationFromPort() {
             populateApplications();
             applicationCombo_->setCurrentIndex(applicationCombo_->findText(name));
         } else {
-            int existing = applicationCombo_->findText(lastAddedService_);
-            if (existing != -1)
+            if (int existing = applicationCombo_->findText(lastAddedService_);
+                existing != -1) {
                 applicationCombo_->removeItem(existing);
+            }
             applicationCombo_->addItem(name);
             applicationCombo_->setCurrentIndex(applicationCombo_->count() - 1);
             lastAddedService_ = name;

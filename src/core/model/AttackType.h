@@ -68,8 +68,7 @@ inline constexpr std::array<std::string_view, kAttackTypeTotal> kAttackTypeNames
  * @return Display name, or "Unknown" for out-of-range values.
  */
 [[nodiscard]] constexpr std::string_view attackTypeToString(AttackType type) noexcept {
-    auto idx = static_cast<std::size_t>(type);
-    if (idx < kAttackTypeNames.size())
+    if (auto idx = static_cast<std::size_t>(type); idx < kAttackTypeNames.size())
         return kAttackTypeNames[idx];
     return "Unknown";
 }

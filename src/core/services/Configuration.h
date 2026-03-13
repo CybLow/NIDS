@@ -10,6 +10,7 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <cstdint>
 
 namespace nids::core {
@@ -48,7 +49,7 @@ public:
     [[nodiscard]] int64_t idleThresholdUs() const;
 
     /** Set the default pcap dump file path. */
-    void setDefaultDumpFile(const std::string& file);
+    void setDefaultDumpFile(std::string_view file);
     /** Set the flow timeout in microseconds. */
     void setFlowTimeoutUs(int64_t timeoutUs);
     /** Set the idle threshold in microseconds. */
@@ -96,23 +97,23 @@ public:
     /** Get the main window title string. */
     [[nodiscard]] const std::string& windowTitle() const;
     /** Set the main window title string. */
-    void setWindowTitle(const std::string& title);
+    void setWindowTitle(std::string_view title);
 
 private:
     Configuration();
 
-    std::filesystem::path modelPath_;
-    std::filesystem::path metadataPath_;
-    std::filesystem::path threatIntelDir_;
-    std::string defaultDumpFile_;
-    int64_t flowTimeoutUs_;
-    int64_t idleThresholdUs_;
-    int onnxIntraOpThreads_;
-    float mlConfidenceThreshold_;
-    float weightMl_;
-    float weightThreatIntel_;
-    float weightHeuristic_;
-    std::string windowTitle_;
+    std::filesystem::path modelPath_{"models/model.onnx"};
+    std::filesystem::path metadataPath_{"models/model_metadata.json"};
+    std::filesystem::path threatIntelDir_{"data/threat_intel"};
+    std::string defaultDumpFile_{"dump.pcap"};
+    int64_t flowTimeoutUs_ = 600'000'000;       // 10 minutes
+    int64_t idleThresholdUs_ = 5'000'000;       // 5 seconds
+    int onnxIntraOpThreads_ = 1;
+    float mlConfidenceThreshold_ = 0.7f;
+    float weightMl_ = 0.5f;
+    float weightThreatIntel_ = 0.3f;
+    float weightHeuristic_ = 0.2f;
+    std::string windowTitle_{"NIDS - Network Intrusion Detection System"};
 };
 
 } // namespace nids::core

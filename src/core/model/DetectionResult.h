@@ -35,14 +35,15 @@ enum class DetectionSource : std::uint8_t {
  */
 [[nodiscard]] constexpr std::string_view detectionSourceToString(
     DetectionSource source) noexcept {
+    using enum DetectionSource;
     switch (source) {
-        case DetectionSource::MlOnly:           return "ML Classifier";
-        case DetectionSource::ThreatIntel:      return "Threat Intelligence";
-        case DetectionSource::HeuristicRule:     return "Heuristic Rule";
-        case DetectionSource::MlPlusThreatIntel: return "ML + Threat Intel";
-        case DetectionSource::MlPlusHeuristic:  return "ML + Heuristic";
-        case DetectionSource::Ensemble:         return "Ensemble (ML + TI + Rules)";
-        case DetectionSource::None:             return "None";
+        case MlOnly:           return "ML Classifier";
+        case ThreatIntel:      return "Threat Intelligence";
+        case HeuristicRule:     return "Heuristic Rule";
+        case MlPlusThreatIntel: return "ML + Threat Intel";
+        case MlPlusHeuristic:  return "ML + Heuristic";
+        case Ensemble:         return "Ensemble (ML + TI + Rules)";
+        case None:             return "None";
     }
     return "Unknown";
 }

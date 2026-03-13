@@ -47,12 +47,10 @@ int main(int argc, char* argv[]) {
     auto& config = nids::core::Configuration::instance();
 
     // Load config from JSON file if --config <path> is provided
-    auto configPath = parseConfigArg(argc, argv);
-    if (!configPath.empty()) {
-        if (!nids::infra::loadConfigFromFile(configPath, config)) {
-            spdlog::critical("Failed to parse config file '{}'", configPath.string());
-            return 1;
-        }
+    if (auto configPath = parseConfigArg(argc, argv);
+        !configPath.empty() && !nids::infra::loadConfigFromFile(configPath, config)) {
+        spdlog::critical("Failed to parse config file '{}'", configPath.string());
+        return 1;
     }
 
     QApplication app(argc, argv);
@@ -70,8 +68,7 @@ int main(int argc, char* argv[]) {
 
     // -- Threat Intelligence --
     auto threatIntel = std::make_unique<nids::infra::ThreatIntelProvider>();
-    auto tiDir = config.threatIntelDirectory().string();
-    if (std::filesystem::is_directory(tiDir)) {
+    if (auto tiDir = config.threatIntelDirectory().string(); std::filesystem::is_directory(tiDir)) {
         auto loaded = threatIntel->loadFeeds(tiDir);
         spdlog::info("Loaded {} threat intelligence entries from {} feed(s)",
                      loaded, threatIntel->feedCount());

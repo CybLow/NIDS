@@ -28,7 +28,7 @@ protected:
         fs::remove_all(testDir_, ec);
     }
 
-    void writeFeedFile(const std::string& name, const std::string& content) {
+    void writeFeedFile(const std::string& name, const std::string& content) const {
         std::ofstream file(testDir_ + "/" + name);
         file << content;
     }

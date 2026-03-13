@@ -275,7 +275,7 @@ void MainWindow::onFlowSelectionChanged() {
 }
 
 void MainWindow::populateFlowResults() {
-    auto& session = controller_->session();
+    const auto& session = controller_->session();
     auto resultCount = session.analysisResultCount();
     if (resultCount == 0)
         return;
@@ -367,9 +367,9 @@ void MainWindow::generateReport() {
         return;
     }
 
-    int hours = static_cast<int>(result.generationTimeMs / kMsPerHour);
-    int minutes = static_cast<int>((result.generationTimeMs % kMsPerHour) / kMsPerMinute);
-    int seconds = static_cast<int>((result.generationTimeMs % kMsPerMinute) / kMsPerSecond);
+    auto hours = static_cast<int>(result.generationTimeMs / kMsPerHour);
+    auto minutes = static_cast<int>((result.generationTimeMs % kMsPerHour) / kMsPerMinute);
+    auto seconds = static_cast<int>((result.generationTimeMs % kMsPerMinute) / kMsPerSecond);
 
     QString message = QString("Report generated at: %1\nGeneration time: %2h %3min %4s")
         .arg(QString::fromStdString(result.filePath))

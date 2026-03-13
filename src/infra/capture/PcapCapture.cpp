@@ -11,9 +11,9 @@ namespace nids::infra {
 PcapCaptureWorker::PcapCaptureWorker(QObject* parent)
     : QObject(parent) {}
 
-void PcapCaptureWorker::configure(const std::string& interface,
-                                   const std::string& bpfFilter,
-                                   const std::string& dumpFile) {
+void PcapCaptureWorker::configure(std::string_view interface,
+                                   std::string_view bpfFilter,
+                                   std::string_view dumpFile) {
     interface_ = interface;
     bpfFilter_ = bpfFilter;
     dumpFile_ = dumpFile;
@@ -127,8 +127,8 @@ void PcapCaptureWorker::processPacket(const struct pcap_pkthdr* pkthdr,
 // --- PcapCapture ---
 
 PcapCapture::PcapCapture(QObject* parent)
-    : QObject(parent) {
-    worker_ = new PcapCaptureWorker();
+    : QObject(parent)
+    , worker_(new PcapCaptureWorker()) {
     worker_->moveToThread(&workerThread_);
 
     connect(&workerThread_, &QThread::finished, worker_, &QObject::deleteLater);

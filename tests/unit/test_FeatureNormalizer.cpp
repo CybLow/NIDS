@@ -28,7 +28,7 @@ protected:
         fs::remove_all(testDir_, ec);
     }
 
-    std::string writeMetadata(const std::string& name, const std::string& content) {
+    std::string writeMetadata(const std::string& name, const std::string& content) const {
         auto path = testDir_ + "/" + name;
         std::ofstream file(path);
         file << content;
@@ -137,7 +137,6 @@ TEST_F(FeatureNormalizerTest, loadMetadata_meansStdsSizeMismatch_returnsFalse) {
 // ── normalize: StandardScaler correctness ────────────────────────────
 
 TEST_F(FeatureNormalizerTest, normalize_appliesStandardScaler) {
-    // means=[0, 10], stds=[1, 2], clip=10
     auto path = writeMetadata("scaler.json",
         R"({"normalization":{"means":[0.0,10.0],"stds":[1.0,2.0],"clip_value":10.0}})");
     FeatureNormalizer normalizer;
@@ -153,7 +152,6 @@ TEST_F(FeatureNormalizerTest, normalize_appliesStandardScaler) {
 }
 
 TEST_F(FeatureNormalizerTest, normalize_clipsToRange) {
-    // means=[0], stds=[1], clip=3
     auto path = writeMetadata("clip.json",
         R"({"normalization":{"means":[0.0],"stds":[1.0],"clip_value":3.0}})");
     FeatureNormalizer normalizer;
@@ -255,8 +253,6 @@ TEST_F(FeatureNormalizerTest, normalize_full77Features_succeeds) {
     auto result = normalizer.normalize(input);
     ASSERT_EQ(result.size(), kFlowFeatureCount);
 
-    // Verify each element: (input[i] - mean[i]) / std[i] with clip
-    // mean[i] = i, std[i] = 1+i, clip = 10
     for (std::size_t i = 0; i < kFlowFeatureCount; ++i) {
         float expected = (input[i] - static_cast<float>(i))
                        / (1.0f + static_cast<float>(i));

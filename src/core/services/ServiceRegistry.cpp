@@ -3,73 +3,17 @@
 
 namespace nids::core {
 
-ServiceRegistry::ServiceRegistry()
-    : portToService_{
-        {7, "Echo"}, {20, "FTP-data"}, {21, "FTP"}, {22, "SSH/SCP/SFTP"},
-        {23, "Telnet"}, {25, "SMTP"}, {53, "DNS"}, {67, "DHCP/BOOTP Server"},
-        {68, "DHCP/BOOTP Client"}, {69, "TFTP"}, {80, "HTTP"}, {88, "Kerberos"},
-        {110, "POP3"}, {123, "NTP"}, {137, "NetBIOS Name Service"},
-        {138, "NetBIOS Datagram Service"}, {139, "NetBIOS Session Service"},
-        {143, "IMAP"}, {161, "SNMP"}, {194, "IRC"}, {389, "LDAP"},
-        {443, "HTTPS"}, {445, "Microsoft DS SMB"}, {464, "Kerberos"},
-        {547, "DHCPv6"}, {596, "SMSD"}, {636, "LDAP over SSL"},
-        {1025, "Microsoft RPC"}, {1080, "SOCKS Proxy"}, {1194, "OpenVPN"},
-        {1241, "Nessus"}, {1311, "Dell OpenManage"}, {1337, "WASTE"},
-        {1589, "Cisco VQP"}, {1701, "L2TP VPN"}, {1720, "H.323"},
-        {1723, "Microsoft PPTP"}, {1725, "Steam"}, {1755, "MMS"},
-        {1812, "RADIUS Authentication"}, {1813, "RADIUS Accounting"},
-        {1863, "MSN Messenger"}, {1900, "UPnP"}, {1985, "Cisco HSRP"},
-        {2000, "Cisco SCCP"}, {2049, "NFS"}, {2082, "cPanel"},
-        {2083, "cPanel SSL"}, {2100, "amiganetfs"}, {2222, "DirectAdmin"},
-        {2302, "HALO"}, {2483, "Oracle DB"}, {2484, "Oracle DB SSL"},
-        {2745, "Bagle.H"}, {2967, "Symantec AV"}, {3050, "Interbase DB"},
-        {3074, "XBOX Live"}, {3127, "MyDoom"}, {3128, "HTTP Proxy"},
-        {3222, "GLBP"}, {3260, "iSCSI Target"}, {3306, "MySQL"},
-        {3389, "RDP"}, {3689, "DAAP"}, {3690, "SVN"},
-        {3724, "World of Warcraft"}, {3784, "Ventrilo"}, {4333, "mSQL"},
-        {4444, "Blaster Worm"}, {4500, "IPSec NAT Traversal"},
-        {4664, "Google Desktop"}, {4672, "eMule"}, {4899, "Radmin"},
-        {5000, "UPnP"}, {5001, "iperf"}, {5004, "RTP"},
-        {5050, "Yahoo! Messenger"}, {5060, "SIP"}, {5061, "SIP over TLS"},
-        {5190, "AIM/ICQ"}, {5222, "XMPP"}, {5223, "XMPP over SSL"},
-        {5353, "MDNS"}, {5432, "PostgreSQL"}, {5554, "Sasser"},
-        {5631, "pcAnywhere"}, {5800, "VNC over HTTP"}, {5900, "VNC"},
-        {6000, "X11"}, {6112, "Diablo"}, {6129, "DameWare"},
-        {6257, "WinMX"}, {6346, "Gnutella"}, {6379, "Redis"},
-        {6500, "GameSpy"}, {6566, "SANE"}, {6588, "AnalogX"},
-        {6665, "IRC"}, {6679, "IRC over SSL"}, {6699, "Napster"},
-        {6881, "BitTorrent"}, {6891, "Windows Live Messenger"},
-        {6970, "Quicktime"}, {7000, "Cassandra"}, {7001, "Cassandra SSL"},
-        {7199, "Cassandra JMX"}, {7648, "CU-SeeMe"},
-        {8000, "Internet Radio"}, {8080, "HTTP Proxy"},
-        {8086, "Kaspersky AV"}, {8087, "Kaspersky AV"}, {8118, "Privoxy"},
-        {8200, "VMware Server"}, {8222, "VMware Server"},
-        {8500, "Adobe ColdFusion"}, {8767, "Teamspeak"}, {8866, "Bagle.B"},
-        {9042, "Cassandra"}, {9100, "PDL Data Stream"}, {9101, "Bacula"},
-        {9119, "MXit"}, {9800, "WebDAV"}, {9898, "Dabber Worm"},
-        {9999, "Urchin"}, {10000, "Network Data Management Protocol"},
-        {10113, "NetIQ"}, {10114, "NetIQ Qcheck"},
-        {10115, "NetIQ Endpoint"}, {10116, "NetIQ VoIP Assessor"},
-        {10161, "SNMP-agents (encrypted)"}, {10162, "SNMP-trap (encrypted)"},
-        {11371, "OpenPGP HTTP Keyserver"}, {12345, "NetBus"},
-        {13720, "NetBackup"}, {14567, "Battlefield"},
-        {15118, "Dipnet/Oddbob"}, {19226, "AdminSecure"},
-        {19638, "Ensim"}, {20000, "Usermin"}, {24800, "Synergy"},
-        {25999, "Xfire"}, {27015, "Half-Life"}, {27017, "MongoDB"},
-        {27374, "Sub7"}, {28960, "Call of Duty"}, {31337, "Back Orifice"},
-        {33434, "traceroute"}
-    } {}
+ServiceRegistry::ServiceRegistry() = default;
 
 std::string ServiceRegistry::getServiceByPort(int port) const {
-    auto it = portToService_.find(port);
-    if (it != portToService_.end()) {
+    if (auto it = portToService_.find(port); it != portToService_.end()) {
         return it->second;
     }
     return "Unknown";
 }
 
-std::set<std::string> ServiceRegistry::getUniqueServices() const {
-    std::set<std::string> services;
+std::set<std::string, std::less<>> ServiceRegistry::getUniqueServices() const {
+    std::set<std::string, std::less<>> services;
     for (const auto& [port, name] : portToService_) {
         services.insert(name);
     }
@@ -91,8 +35,10 @@ std::string ServiceRegistry::resolveApplication(
         if (!packetDstPort.empty()) {
             return getServiceByPort(std::stoi(packetDstPort));
         }
-    } catch (const std::exception&) {
-        // stoi failed on invalid port string
+    } catch (const std::invalid_argument&) {
+        // stoi failed on non-numeric port string
+    } catch (const std::out_of_range&) {
+        // stoi failed on port number out of int range
     }
     return "Unknown";
 }

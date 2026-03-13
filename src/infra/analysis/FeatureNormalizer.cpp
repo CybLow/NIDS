@@ -89,11 +89,11 @@ bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
         return true;
 
     } catch (const nlohmann::json::exception& e) {
-        spdlog::error("FeatureNormalizer: JSON parse error in '{}': {}", metadataPath, e.what());
+        spdlog::error("FeatureNormalizer: JSON error in '{}': {}", metadataPath, e.what());
         loaded_ = false;
         return false;
-    } catch (const std::exception& e) {
-        spdlog::error("FeatureNormalizer: error loading '{}': {}", metadataPath, e.what());
+    } catch (const std::ios_base::failure& e) {
+        spdlog::error("FeatureNormalizer: I/O error loading '{}': {}", metadataPath, e.what());
         loaded_ = false;
         return false;
     }
