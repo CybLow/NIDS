@@ -17,6 +17,7 @@
 #include <netinet/udp.h>
 #endif
 
+#include <array>
 #include <cstdint>
 
 namespace nids::platform {
@@ -172,16 +173,15 @@ inline std::uint16_t getIpTotalLength(const IPv4Header *h) noexcept {
  */
 inline const char *getIpSrcStr(const IPv4Header *h) noexcept {
 #ifdef _WIN32
-  static thread_local char buf[INET_ADDRSTRLEN];
+  static thread_local std::array<char, INET_ADDRSTRLEN> buf{};
   struct in_addr addr;
   addr.s_addr = h->srcAddr;
-  inet_ntop(AF_INET, &addr, buf, sizeof(buf));
-  return buf;
+  inet_ntop(AF_INET, &addr, buf.data(), buf.size());
+  return buf.data();
 #else
-  static thread_local char
-      buf[INET_ADDRSTRLEN]; // NOSONAR - inet_ntop requires C char array
-  inet_ntop(AF_INET, &(h->ip_src), buf, sizeof(buf));
-  return buf;
+  static thread_local std::array<char, INET_ADDRSTRLEN> buf{};
+  inet_ntop(AF_INET, &(h->ip_src), buf.data(), buf.size());
+  return buf.data();
 #endif
 }
 
@@ -189,16 +189,15 @@ inline const char *getIpSrcStr(const IPv4Header *h) noexcept {
  * buffer). */
 inline const char *getIpDstStr(const IPv4Header *h) noexcept {
 #ifdef _WIN32
-  static thread_local char buf[INET_ADDRSTRLEN];
+  static thread_local std::array<char, INET_ADDRSTRLEN> buf{};
   struct in_addr addr;
   addr.s_addr = h->dstAddr;
-  inet_ntop(AF_INET, &addr, buf, sizeof(buf));
-  return buf;
+  inet_ntop(AF_INET, &addr, buf.data(), buf.size());
+  return buf.data();
 #else
-  static thread_local char
-      buf[INET_ADDRSTRLEN]; // NOSONAR - inet_ntop requires C char array
-  inet_ntop(AF_INET, &(h->ip_dst), buf, sizeof(buf));
-  return buf;
+  static thread_local std::array<char, INET_ADDRSTRLEN> buf{};
+  inet_ntop(AF_INET, &(h->ip_dst), buf.data(), buf.size());
+  return buf.data();
 #endif
 }
 
