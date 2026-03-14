@@ -309,7 +309,7 @@ void MainWindow::onFlowSelectionChanged() {
 
 void MainWindow::populateFlowResults() {
   const auto &session = controller_->session();
-  auto resultCount = session.analysisResultCount();
+  auto resultCount = session.detectionResultCount();
   if (resultCount == 0)
     return;
 

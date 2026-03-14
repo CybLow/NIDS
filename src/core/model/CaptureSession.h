@@ -33,7 +33,7 @@ public:
     /** Return the number of captured packets in this session. */
     [[nodiscard]] std::size_t packetCount() const;
     /** Return the number of stored detection results. */
-    [[nodiscard]] std::size_t analysisResultCount() const;
+    [[nodiscard]] std::size_t detectionResultCount() const;
 
     /** Remove all packets and detection results from the session. */
     void clear();

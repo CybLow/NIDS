@@ -37,7 +37,7 @@ std::size_t CaptureSession::packetCount() const {
     return packets_.size();
 }
 
-std::size_t CaptureSession::analysisResultCount() const {
+std::size_t CaptureSession::detectionResultCount() const {
     std::scoped_lock lock(mutex_);
     return detectionResults_.size();
 }

@@ -347,7 +347,7 @@ TEST(FlowAnalysisWorker, concurrentProducer_manyItems) {
     worker.stop();
 
     EXPECT_EQ(worker.processedCount(), kItemCount);
-    EXPECT_EQ(session.analysisResultCount(), kItemCount);
+    EXPECT_EQ(session.detectionResultCount(), kItemCount);
 }
 
 TEST(FlowAnalysisWorker, hybridDetection_protocolMapping) {

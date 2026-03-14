@@ -29,80 +29,68 @@ Cross-references: [ADR-004](adr/004-model-benchmark-analysis.md),
 - [x] Phase 7 — UI for hybrid detection results (tabbed Packets/Flows view,
   `FlowTableModel`, `DetectionDetailWidget`, worker thread, TI status panel,
   weight tuning dialog)
+- [x] Phase 6 — Cleanup, config, and test foundation (ConfigLoader + `--config`,
+  legacy `analysisResults_` removed, 130 hybrid detection unit tests,
+  MIT LICENSE, server/client stubs cleaned up)
+- [x] Phase 8 — Real-time flow extraction and analysis (Welford accumulators,
+  timeout sweeps, streaming flow callbacks, producer-consumer pipeline,
+  live packet API, LiveDetectionPipeline)
 
 ---
 
-## Phase 6: Cleanup, Config, and Test Foundation
+## Phase 6: Cleanup, Config, and Test Foundation [DONE]
 
 **Goal**: Remove backward-compatibility scaffolding, implement deferred functionality
 that has zero new dependencies, and establish test coverage for all new hybrid
 detection code.
 
-### 6.1 — Implement `Configuration::loadFromFile()` JSON parsing
+### 6.1 — ~~Implement `Configuration::loadFromFile()` JSON parsing~~ [DONE]
 
-- **File**: `src/core/services/Configuration.cpp:65`
-- **Why**: `nlohmann_json` is already linked. The function is a no-op with a TODO.
-  Every runtime setting (model path, TI directory, hybrid weights, ONNX thread count)
-  can be loaded from a JSON file.
-- **Scope**: Parse the JSON, map keys to setters, log warnings for unknown keys.
-- **Deliverable**: Users can pass `--config /path/to/config.json` (add CLI arg parsing
-  with a simple `argv` loop in `main.cpp`).
+- `ConfigLoader` in `infra/config/` parses JSON with `nlohmann_json`
+- All config sections handled: model, capture, threat_intel, hybrid_detection, ui
+- `main.cpp` has `parseConfigArg()` for `--config /path/to/config.json` CLI arg
+- Unknown keys silently ignored (partial JSON keeps other defaults)
 
-### 6.2 — Remove legacy `analysisResults_` dual storage
+### 6.2 — ~~Remove legacy `analysisResults_` dual storage~~ [DONE]
 
-- **Files**: `CaptureSession.h/.cpp`, `AnalysisService.cpp`, `PacketTableModel`,
-  `ReportGenerator.cpp`, `MainWindow.cpp` (any code reading `analysisResults_`)
-- **Why**: `CaptureSession` maintains a legacy `std::vector<AttackType>` alongside the
-  new `std::vector<DetectionResult>`. This was kept for backward compatibility with UI
-  and report code. Once all consumers read from `DetectionResult`, the legacy vector
-  and `setAnalysisResult()`/`getAnalysisResult()` can be removed.
-- **Steps**:
-  1. Audit all call sites of `getAnalysisResult()` / `analysisResults_`.
-  2. Migrate each to use `getDetectionResult()`, extracting `.finalVerdict`.
-  3. Remove `analysisResults_`, `setAnalysisResult()`, `getAnalysisResult()`.
+- Legacy `analysisResults_` / `getAnalysisResult()` / `setAnalysisResult()` fully
+  removed; all consumers migrated to `DetectionResult`-based API
+- Renamed `analysisResultCount()` → `detectionResultCount()` for consistency
+- Updated all 10 call sites (MainWindow, test_CaptureSession, test_FlowAnalysisWorker)
 
-### 6.3 — Remove `FeatureNormalizer` clip_value fallback
+### 6.3 — ~~Remove `FeatureNormalizer` clip_value fallback~~ [DONE]
 
-- **File**: `src/infra/analysis/FeatureNormalizer.cpp:61-68`
-- **Why**: Once all metadata JSON files include `clip_value`, the default-to-10.0
-  fallback is dead code.
-- **Action**: Remove the fallback, make `clip_value` required, log an error if absent.
+- `clip_value` is now required in metadata JSON (error logged if absent)
+- No default-to-10.0 fallback in `FeatureNormalizer::loadMetadata()`
 
-### 6.4 — Clean up server/client stubs
+### 6.4 — ~~Clean up server/client stubs~~ [DONE]
 
-- **Files**: `src/server/NidsServer.h/.cpp`, `src/client/NidsClient.h/.cpp`
-- **Why**: These reference a legacy model path (`"../src/model/model.json"`),
-  contain commented-out gRPC code, and are not included in any CMake target.
-- **Decision**: Either (a) delete them entirely and recreate when gRPC is implemented,
-  or (b) update them to match current architecture (Configuration singleton, ONNX
-  model, hybrid detection). Option (a) is cleaner.
+- Stubs already updated: proper Phase 9 references, spdlog logging, no legacy
+  model paths, behind `NIDS_BUILD_SERVER=OFF` option
+- Will be rewritten when Phase 9 (gRPC) is implemented
 
-### 6.5 — Remove `PacketInfo.cpp` placeholder
+### 6.5 — ~~Remove `PacketInfo.cpp` placeholder~~ [DONE]
 
-- **File**: `src/core/model/PacketInfo.cpp`
-- **Why**: Contains only a comment. If no `.cpp` is needed, remove it and any CMake
-  reference.
+- File already removed; no CMake references exist
 
-### 6.6 — Add unit tests for hybrid detection components
+### 6.6 — ~~Add unit tests for hybrid detection components~~ [DONE]
 
-| Test file | Class under test | Key scenarios |
-|-----------|-----------------|---------------|
-| `test_ThreatIntelProvider.cpp` | `ThreatIntelProvider` | Load plain-text IPs, CIDR matching, empty file, malformed lines, duplicate IPs, `isKnownThreat()` hit/miss |
-| `test_HeuristicRuleEngine.cpp` | `HeuristicRuleEngine` | Each of 7 rules: trigger condition, below threshold, edge values |
-| `test_HybridDetectionService.cpp` | `HybridDetectionService` | ML-only fallback, TI escalation, weight calculation, benign + high-confidence override, all three sources contributing |
-| `test_FeatureNormalizer.cpp` | `FeatureNormalizer` | Load metadata JSON, normalize features, clip values, missing fields, dimension mismatch |
-| `test_DetectionResult.cpp` | `DetectionResult` | Struct initialization, default values |
-| `test_PredictionResult.cpp` | `PredictionResult` | Struct initialization, probability array |
-| `test_Configuration.cpp` | `Configuration` | `loadFromFile()` with valid JSON, missing file, malformed JSON, all getters |
+All 7 test files implemented with comprehensive coverage:
 
-- **Framework**: GoogleTest + GoogleMock (per AGENTS.md Section 9)
-- **Target**: 80% line coverage for `core/` and `app/` (AGENTS.md Section 9.2)
+| Test file | Tests | Coverage |
+|-----------|-------|----------|
+| `test_ThreatIntelProvider.cpp` | 32 | Feed loading, CIDR matching, delimiters, edge cases |
+| `test_HeuristicRuleEngine.cpp` | 27 | All 7 rules: trigger/below-threshold/edge values |
+| `test_HybridDetectionService.cpp` | 17 | ML-only, TI escalation, ensemble, all detection sources |
+| `test_FeatureNormalizer.cpp` | 20 | Load/normalize/clip/mismatch/reload |
+| `test_DetectionResult.cpp` | 11 | Struct init, flags, maxSeverity, detectionSourceToString |
+| `test_PredictionResult.cpp` | 6 | Struct init, isAttack, isHighConfidence |
+| `test_Configuration.cpp` | 17 | Singleton, getters, ConfigLoader with valid/invalid/partial JSON |
 
-### 6.7 — Add LICENSE file
+### 6.7 — ~~Add LICENSE file~~ [DONE]
 
-- **Files**: `LICENSE` (project root), `CMakeLists.txt:137` (uncomment CPack reference)
-- **Why**: Missing LICENSE blocks CPack packaging and legal compliance. README links to
-  a nonexistent file.
+- MIT License in project root
+- CPack `CPACK_RESOURCE_FILE_LICENSE` points to `${CMAKE_SOURCE_DIR}/LICENSE`
 
 ---
 

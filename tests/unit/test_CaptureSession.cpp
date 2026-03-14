@@ -16,7 +16,7 @@ static DetectionResult makeResult(AttackType verdict) {
 TEST(CaptureSession, initiallyEmpty) {
     CaptureSession session;
     EXPECT_EQ(session.packetCount(), 0u);
-    EXPECT_EQ(session.analysisResultCount(), 0u);
+    EXPECT_EQ(session.detectionResultCount(), 0u);
 }
 
 TEST(CaptureSession, addPacketIncreasesCount) {
@@ -71,7 +71,7 @@ TEST(CaptureSession, clearResetsEverything) {
 
     session.clear();
     EXPECT_EQ(session.packetCount(), 0u);
-    EXPECT_EQ(session.analysisResultCount(), 0u);
+    EXPECT_EQ(session.detectionResultCount(), 0u);
 }
 
 TEST(CaptureSession, multiplePackets) {
@@ -92,7 +92,7 @@ TEST(CaptureSession, setDetectionResult_sparseIndex_autoResizes) {
     CaptureSession session;
     // Set result at index 10 without any prior results → should resize to 11
     session.setDetectionResult(10, makeResult(AttackType::DdosIcmp));
-    EXPECT_EQ(session.analysisResultCount(), 11u);
+    EXPECT_EQ(session.detectionResultCount(), 11u);
 
     EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::Unknown);
     EXPECT_EQ(session.getDetectionResult(5).finalVerdict, AttackType::Unknown);
@@ -122,7 +122,7 @@ TEST(CaptureSession, setDetectionResult_multipleResults) {
     session.setDetectionResult(1, makeResult(SshBruteForce));
     session.setDetectionResult(2, makeResult(PortScanning));
 
-    EXPECT_EQ(session.analysisResultCount(), 3u);
+    EXPECT_EQ(session.detectionResultCount(), 3u);
     EXPECT_EQ(session.getDetectionResult(0).finalVerdict, Benign);
     EXPECT_EQ(session.getDetectionResult(1).finalVerdict, SshBruteForce);
     EXPECT_EQ(session.getDetectionResult(2).finalVerdict, PortScanning);
@@ -133,10 +133,10 @@ TEST(CaptureSession, setDetectionResult_multipleResults) {
 TEST(CaptureSession, clear_alsoResetsDetectionResults) {
     CaptureSession session;
     session.setDetectionResult(5, makeResult(AttackType::DdosIcmp));
-    EXPECT_EQ(session.analysisResultCount(), 6u);
+    EXPECT_EQ(session.detectionResultCount(), 6u);
 
     session.clear();
-    EXPECT_EQ(session.analysisResultCount(), 0u);
+    EXPECT_EQ(session.detectionResultCount(), 0u);
     // After clear, getting any result returns default Unknown
     EXPECT_EQ(session.getDetectionResult(5).finalVerdict, AttackType::Unknown);
 }
@@ -150,9 +150,9 @@ TEST(CaptureSession, packetsAndResults_independent) {
     session.addPacket(pkt);
     // 1 packet but no detection results yet
     EXPECT_EQ(session.packetCount(), 1u);
-    EXPECT_EQ(session.analysisResultCount(), 0u);
+    EXPECT_EQ(session.detectionResultCount(), 0u);
 
     session.setDetectionResult(0, makeResult(AttackType::Benign));
     EXPECT_EQ(session.packetCount(), 1u);
-    EXPECT_EQ(session.analysisResultCount(), 1u);
+    EXPECT_EQ(session.detectionResultCount(), 1u);
 }
