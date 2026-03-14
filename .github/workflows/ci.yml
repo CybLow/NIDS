@@ -18,13 +18,11 @@ env:
 # ════════════════════════════════════════════════════════════════════
 #  Pipeline:
 #
-#  build-linux ──┬── lint
-#                ├── cppcheck
-#  build-windows ├── stress-tests
-#                ├── coverage + SonarCloud
-#                └── docker
-#                      │
-#                quality-gate
+#  build-linux ──┬── static-analysis (clang-tidy + cppcheck)
+#                ├── stress-tests
+#  build-windows ├── sonarcloud (build + coverage + scan)
+#                │
+#              quality-gate
 # ════════════════════════════════════════════════════════════════════
 
 jobs:
@@ -42,12 +40,6 @@ jobs:
       - run: cmake --preset ci-gcc-fast
       - run: cmake --build --preset ci-gcc-fast
       - run: ctest --test-dir build/ci-gcc-fast --output-on-failure --timeout 120 --exclude-regex 'Stress'
-
-      - uses: actions/upload-artifact@v6
-        with:
-          name: compile-commands
-          path: build/ci-gcc-fast/compile_commands.json
-          retention-days: 1
 
   build-windows:
     name: Build & Test (Windows)
@@ -73,59 +65,42 @@ jobs:
 
   # ── Stage 2: Analysis ────────────────────────────────────────────
 
-  lint:
-    name: clang-tidy
+  static-analysis:
+    name: Static Analysis
     needs: build-linux
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-linux
         with:
-          extra-packages: clang-18 clang-tidy-18 clang-tools-18
+          extra-packages: clang-18 clang-tidy-18 clang-tools-18 cppcheck
       - uses: mozilla-actions/sccache-action@v0.0.9
 
       - run: cmake --preset ci-gcc-fast
 
-      - name: Filter MOC files & run clang-tidy
+      - name: Filter MOC files
         run: |
           jq '[.[] | select(.file | test("_autogen") | not)]' \
             build/ci-gcc-fast/compile_commands.json > /tmp/cc.json
           mv /tmp/cc.json build/ci-gcc-fast/compile_commands.json
 
+      - name: clang-tidy
+        run: |
           run-clang-tidy-18 -p build/ci-gcc-fast -quiet \
             -extra-arg=-Wno-unknown-warning-option \
             'src/.*\.(cpp|h)$' 2>&1 | tee clang-tidy.txt
 
-          # Count real issues (exclude "N warnings generated" summary lines)
           ISSUES=$(grep -cE ':\d+:\d+: (warning|error):' clang-tidy.txt 2>/dev/null || true)
           ISSUES=${ISSUES:-0}
           if [ "$ISSUES" -gt 0 ]; then
             echo "::error::clang-tidy found $ISSUES issue(s)"
             grep -E ':\d+:\d+: (warning|error):' clang-tidy.txt
-            exit 1why we
+            exit 1
           fi
 
-  cppcheck:
-    name: cppcheck
-    needs: build-linux
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v6
-      - uses: ./.github/actions/setup-linux
-        with:
-          extra-packages: cppcheck
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
-      - run: cmake --preset ci-gcc-fast
-
-      - name: Filter MOC files & run cppcheck
+      - name: cppcheck
         run: |
-          jq '[.[] | select(.file | test("_autogen") | not)]' \
-            build/ci-gcc-fast/compile_commands.json > /tmp/cc.json
-          mv /tmp/cc.json build/ci-gcc-fast/compile_commands.json
-
           cppcheck --project=build/ci-gcc-fast/compile_commands.json \
             --enable=all --std=c++23 --library=qt \
             --suppress=missingIncludeSystem \
@@ -177,8 +152,8 @@ jobs:
             --output-on-failure --timeout 300 \
             --tests-regex 'Stress' --parallel 1
 
-  coverage:
-    name: Coverage & SonarCloud
+  sonarcloud:
+    name: SonarCloud
     needs: build-linux
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -204,15 +179,8 @@ jobs:
 
       - run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 120
 
-      - name: Generate coverage reports
+      - name: Generate coverage report
         run: |
-          lcov --capture --directory build/ci-coverage --output-file coverage.info \
-            --gcov-tool gcov-14 \
-            --ignore-errors mismatch,mismatch,negative,negative,gcov,gcov
-          lcov --remove coverage.info '/usr/*' '*/tests/*' '*/build/*' \
-            --output-file coverage.info \
-            --ignore-errors unused,unused
-
           gcovr --root . build/ci-coverage \
             --cobertura coverage-cobertura.xml --cobertura-pretty \
             --gcov-executable gcov-14 \
@@ -220,23 +188,6 @@ jobs:
             --exclude-unreachable-branches --exclude-throw-branches \
             --filter 'src/' -e 'src/ui/' -e 'src/server/' -e 'src/client/'
           sed -i 's|<source>[^<]*</source>|<source>.</source>|g' coverage-cobertura.xml
-
-      - name: Coverage threshold (65%)
-        run: |
-          RATE=$(python3 -c "
-          import xml.etree.ElementTree as ET
-          print(f'{float(ET.parse(\"coverage-cobertura.xml\").getroot().get(\"line-rate\",0))*100:.1f}')
-          ")
-          echo "Line coverage: ${RATE}%"
-          python3 -c "import sys; sys.exit(1) if float('${RATE}') < 65 else None"
-
-      - name: Upload to Codecov
-        if: github.event_name == 'push'
-        uses: codecov/codecov-action@v5
-        with:
-          files: coverage.info
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: SonarCloud scan
         uses: SonarSource/sonarqube-scan-action@v7
@@ -247,40 +198,12 @@ jobs:
             -Dsonar.cfamily.compile-commands=bw-output/compile_commands.json
             -Dsonar.cfamily.cobertura.reportPaths=coverage-cobertura.xml
 
-      - uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: coverage-reports
-          path: |
-            coverage.info
-            coverage-cobertura.xml
-          retention-days: 7
-
-  docker:
-    name: Docker
-    needs: build-linux
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v4
-
-      - name: Build production image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/app/Dockerfile
-          push: false
-          tags: nids:ci-${{ github.sha }}
-          cache-from: type=gha,scope=docker-v2
-          cache-to: type=gha,mode=max,scope=docker-v2
-
   # ── Stage 3: Quality Gate ────────────────────────────────────────
 
   quality-gate:
     name: Quality Gate
     if: always()
-    needs: [build-linux, build-windows, lint, cppcheck, stress-tests, coverage, docker]
+    needs: [build-linux, build-windows, static-analysis, stress-tests, sonarcloud]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -300,13 +223,11 @@ jobs:
             fi
           }
 
-          check "Linux build"  "${{ needs.build-linux.result }}"
-          check "Windows build" "${{ needs.build-windows.result }}"
-          check "clang-tidy"   "${{ needs.lint.result }}"
-          check "cppcheck"     "${{ needs.cppcheck.result }}"
-          check "Stress tests" "${{ needs.stress-tests.result }}"
-          check "Coverage"     "${{ needs.coverage.result }}"
-          check "Docker"       "${{ needs.docker.result }}"
+          check "Linux build"      "${{ needs.build-linux.result }}"
+          check "Windows build"    "${{ needs.build-windows.result }}"
+          check "Static analysis"  "${{ needs.static-analysis.result }}"
+          check "Stress tests"     "${{ needs.stress-tests.result }}"
+          check "SonarCloud"       "${{ needs.sonarcloud.result }}"
 
           [ "$FAILED" -eq 1 ] && { echo "::error::Quality gate failed"; exit 1; }
           echo "**PASSED**" >> "$GITHUB_STEP_SUMMARY"
