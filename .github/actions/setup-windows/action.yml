@@ -31,11 +31,12 @@ runs:
       shell: pwsh
       run: choco install ninja ${{ inputs.extra-choco }} -y
 
-    - name: Install npcap runtime
+    - name: Install WinPcap runtime
       shell: pwsh
       run: |
-        Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-1.80.exe" -OutFile "$env:TEMP\npcap.exe"
-        Start-Process -Wait -FilePath "$env:TEMP\npcap.exe" -ArgumentList '/S'
+        Invoke-WebRequest -Uri "https://www.winpcap.org/install/bin/WinPcap_4_1_3.exe" `
+          -OutFile "$env:TEMP\WinPcap.exe"
+        Start-Process -Wait -FilePath "$env:TEMP\WinPcap.exe" -ArgumentList '/S'
 
     - name: Install Conan
       shell: pwsh
