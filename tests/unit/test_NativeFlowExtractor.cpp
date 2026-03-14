@@ -7,6 +7,7 @@
 
 using nids::infra::FlowKey;
 using nids::infra::FlowStats;
+using nids::infra::WelfordAccumulator;
 using nids::infra::kFlowFeatureCount;
 using nids::infra::kMaxFlowPackets;
 using nids::infra::NativeFlowExtractor;
@@ -271,6 +272,73 @@ TEST(FlowKey, HashDiffersForProtocol) {
   EXPECT_NE(hasher(tcp), hasher(udp));
 }
 
+// ── WelfordAccumulator tests ────────────────────────────────────────
+
+TEST(WelfordAccumulator, EmptyAccumulator) {
+  WelfordAccumulator acc;
+  EXPECT_EQ(acc.n, 0u);
+  EXPECT_DOUBLE_EQ(acc.mean(), 0.0);
+  EXPECT_DOUBLE_EQ(acc.sum(), 0.0);
+  EXPECT_DOUBLE_EQ(acc.min(), 0.0);
+  EXPECT_DOUBLE_EQ(acc.max(), 0.0);
+  EXPECT_DOUBLE_EQ(acc.stddev(), 0.0);
+  EXPECT_DOUBLE_EQ(acc.populationVariance(), 0.0);
+  EXPECT_DOUBLE_EQ(acc.sampleVariance(), 0.0);
+}
+
+TEST(WelfordAccumulator, SingleValue) {
+  WelfordAccumulator acc;
+  acc.update(42.0);
+  EXPECT_EQ(acc.n, 1u);
+  EXPECT_DOUBLE_EQ(acc.mean(), 42.0);
+  EXPECT_DOUBLE_EQ(acc.sum(), 42.0);
+  EXPECT_DOUBLE_EQ(acc.min(), 42.0);
+  EXPECT_DOUBLE_EQ(acc.max(), 42.0);
+  EXPECT_DOUBLE_EQ(acc.stddev(), 0.0);       // N=1 → sampleVariance=0
+  EXPECT_DOUBLE_EQ(acc.populationVariance(), 0.0);
+}
+
+TEST(WelfordAccumulator, MultipleValues_meanAndStddev) {
+  WelfordAccumulator acc;
+  // Values: 2, 4, 4, 4, 5, 5, 7, 9 → mean=5, population variance=4, sample
+  // variance=4.571
+  for (double v : {2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0})
+    acc.update(v);
+
+  EXPECT_EQ(acc.n, 8u);
+  EXPECT_DOUBLE_EQ(acc.mean(), 5.0);
+  EXPECT_DOUBLE_EQ(acc.sum(), 40.0);
+  EXPECT_DOUBLE_EQ(acc.min(), 2.0);
+  EXPECT_DOUBLE_EQ(acc.max(), 9.0);
+  EXPECT_NEAR(acc.populationVariance(), 4.0, 1e-10);
+  EXPECT_NEAR(acc.sampleVariance(), 32.0 / 7.0, 1e-10);
+  EXPECT_NEAR(acc.stddev(), std::sqrt(32.0 / 7.0), 1e-10);
+}
+
+TEST(WelfordAccumulator, IdenticalValues_zeroVariance) {
+  WelfordAccumulator acc;
+  acc.update(100);
+  acc.update(100);
+  acc.update(100);
+  EXPECT_DOUBLE_EQ(acc.mean(), 100.0);
+  EXPECT_DOUBLE_EQ(acc.stddev(), 0.0);
+  EXPECT_DOUBLE_EQ(acc.populationVariance(), 0.0);
+}
+
+TEST(WelfordAccumulator, TwoValues_sampleVariance) {
+  WelfordAccumulator acc;
+  acc.update(10);
+  acc.update(20);
+  EXPECT_DOUBLE_EQ(acc.mean(), 15.0);
+  EXPECT_DOUBLE_EQ(acc.sum(), 30.0);
+  EXPECT_DOUBLE_EQ(acc.min(), 10.0);
+  EXPECT_DOUBLE_EQ(acc.max(), 20.0);
+  // Population variance = ((10-15)^2 + (20-15)^2) / 2 = 25
+  EXPECT_DOUBLE_EQ(acc.populationVariance(), 25.0);
+  // Sample variance = 50 / 1 = 50
+  EXPECT_DOUBLE_EQ(acc.sampleVariance(), 50.0);
+}
+
 // ── FlowStats tests ─────────────────────────────────────────────────
 
 TEST(FlowStats, ToFeatureVectorSizeAndOrder) {
@@ -379,10 +447,14 @@ TEST(FlowStats, ToFeatureVector_withIatAndPacketLengths) {
   stats.totalBwdPackets = 0;
   stats.totalFwdBytes = 300;
   stats.totalBwdBytes = 0;
-  stats.fwdPacketLengths = {100, 100, 100};
-  stats.allPacketLengths = {100, 100, 100};
-  stats.flowIatUs = {500'000, 500'000};
-  stats.fwdIatUs = {500'000, 500'000};
+  for (int i = 0; i < 3; ++i) {
+    stats.fwdLengthAcc.update(100);
+    stats.allLengthAcc.update(100);
+  }
+  stats.flowIatAcc.update(500'000);
+  stats.flowIatAcc.update(500'000);
+  stats.fwdIatAcc.update(500'000);
+  stats.fwdIatAcc.update(500'000);
 
   auto f = stats.toFeatureVector(80);
   // Fwd Packet Length Max/Min/Mean/Std: features 6-9
@@ -405,10 +477,12 @@ TEST(FlowStats, ToFeatureVector_bulkMetrics) {
   stats.totalBwdPackets = 3;
   stats.totalFwdBytes = 500;
   stats.totalBwdBytes = 300;
-  stats.fwdBulkBytes = {200, 300};
-  stats.fwdBulkPackets = {2, 3};
-  stats.bwdBulkBytes = {150};
-  stats.bwdBulkPackets = {2};
+  stats.fwdBulkBytesAcc.update(200);
+  stats.fwdBulkBytesAcc.update(300);
+  stats.fwdBulkPktsAcc.update(2);
+  stats.fwdBulkPktsAcc.update(3);
+  stats.bwdBulkBytesAcc.update(150);
+  stats.bwdBulkPktsAcc.update(2);
 
   auto f = stats.toFeatureVector(80);
   EXPECT_FLOAT_EQ(f[55], 250.0f);
@@ -423,8 +497,10 @@ TEST(FlowStats, ToFeatureVector_activeIdlePeriods) {
   stats.lastTimeUs = 10'000'000;
   stats.totalFwdPackets = 1;
   stats.totalFwdBytes = 100;
-  stats.activePeriodsUs = {1'000'000, 2'000'000};
-  stats.idlePeriodsUs = {5'000'000, 6'000'000};
+  stats.activeAcc.update(1'000'000);
+  stats.activeAcc.update(2'000'000);
+  stats.idleAcc.update(5'000'000);
+  stats.idleAcc.update(6'000'000);
 
   auto f = stats.toFeatureVector(80);
   // Active Mean: features[69]
@@ -1216,8 +1292,8 @@ TEST(FlowStats, ToFeatureVector_singleFwdPacket_stddevZero) {
   stats.totalBwdPackets = 0;
   stats.totalFwdBytes = 100;
   stats.totalBwdBytes = 0;
-  stats.fwdPacketLengths = {100};
-  stats.allPacketLengths = {100};
+  stats.fwdLengthAcc.update(100);
+  stats.allLengthAcc.update(100);
 
   auto f = stats.toFeatureVector(80);
   // Fwd Packet Length Std (feature 9) should be 0 for single element
@@ -1235,8 +1311,8 @@ TEST(FlowStats, ToFeatureVector_bulkWithZeroDuration) {
   stats.totalFwdPackets = 5;
   stats.totalBwdPackets = 0;
   stats.totalFwdBytes = 500;
-  stats.fwdBulkBytes = {200};
-  stats.fwdBulkPackets = {3};
+  stats.fwdBulkBytesAcc.update(200);
+  stats.fwdBulkPktsAcc.update(3);
 
   auto f = stats.toFeatureVector(80);
   // Fwd Avg Bulk Rate (feature 57) should be 0 (not NaN/Inf) when duration = 0

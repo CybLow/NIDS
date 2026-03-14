@@ -18,8 +18,11 @@
 
 #include "core/services/IFlowExtractor.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -43,6 +46,65 @@ inline constexpr std::uint64_t kMaxFlowPackets = 200;
 /// Returns the ordered list of feature column names matching toFeatureVector()
 /// output.
 [[nodiscard]] const std::vector<std::string> &flowFeatureNames();
+
+/**
+ * Online statistics accumulator using Welford's algorithm.
+ *
+ * Computes running mean, variance, standard deviation, min, max, and sum
+ * in O(1) space per update.  Replaces per-packet vectors that previously
+ * stored all values for offline statistics computation (~7 KB per flow).
+ *
+ * Reference: Welford, B.P. (1962), "Note on a method for calculating
+ * corrected sums of squares and products", Technometrics 4(3):419-420.
+ */
+struct WelfordAccumulator {
+  std::uint64_t n = 0;
+  double mean_ = 0.0;
+  double m2_ = 0.0;   ///< Sum of squared deviations from the running mean.
+  double sum_ = 0.0;
+  double min_ = std::numeric_limits<double>::max();
+  double max_ = std::numeric_limits<double>::lowest();
+
+  /** Feed a new observation. */
+  void update(double x) noexcept {
+    ++n;
+    sum_ += x;
+    if (n == 1) {
+      min_ = max_ = x;
+    } else {
+      min_ = std::min(min_, x);
+      max_ = std::max(max_, x);
+    }
+    double delta = x - mean_;
+    mean_ += delta / static_cast<double>(n);
+    double delta2 = x - mean_;
+    m2_ += delta * delta2;
+  }
+
+  [[nodiscard]] double mean() const noexcept { return n > 0 ? mean_ : 0.0; }
+  [[nodiscard]] double sum() const noexcept { return sum_; }
+  [[nodiscard]] double min() const noexcept {
+    return n > 0 ? min_ : 0.0;
+  }
+  [[nodiscard]] double max() const noexcept {
+    return n > 0 ? max_ : 0.0;
+  }
+
+  /** Population variance (divide by N). */
+  [[nodiscard]] double populationVariance() const noexcept {
+    return n > 0 ? m2_ / static_cast<double>(n) : 0.0;
+  }
+
+  /** Sample variance (divide by N-1, Bessel's correction). */
+  [[nodiscard]] double sampleVariance() const noexcept {
+    return n > 1 ? m2_ / static_cast<double>(n - 1) : 0.0;
+  }
+
+  /** Sample standard deviation (sqrt of sample variance). */
+  [[nodiscard]] double stddev() const noexcept {
+    return std::sqrt(sampleVariance());
+  }
+};
 
 /** Five-tuple flow key identifying a unique bidirectional network flow. */
 struct FlowKey {
@@ -91,18 +153,18 @@ struct FlowStats { // NOSONAR - 45 fields required by CIC-IDS2017 feature vector
   std::uint64_t totalFwdBytes = 0;
   /** Total payload bytes in the backward direction. */
   std::uint64_t totalBwdBytes = 0;
-  /** Per-packet lengths in the forward direction. */
-  std::vector<std::uint32_t> fwdPacketLengths;
-  /** Per-packet lengths in the backward direction. */
-  std::vector<std::uint32_t> bwdPacketLengths;
-  /** Per-packet lengths across both directions. */
-  std::vector<std::uint32_t> allPacketLengths;
-  /** Inter-arrival times for the entire flow (microseconds). */
-  std::vector<std::int64_t> flowIatUs;
-  /** Forward-direction inter-arrival times (microseconds). */
-  std::vector<std::int64_t> fwdIatUs;
-  /** Backward-direction inter-arrival times (microseconds). */
-  std::vector<std::int64_t> bwdIatUs;
+  /** Running statistics for forward packet lengths. */
+  WelfordAccumulator fwdLengthAcc;
+  /** Running statistics for backward packet lengths. */
+  WelfordAccumulator bwdLengthAcc;
+  /** Running statistics for all packet lengths (both directions). */
+  WelfordAccumulator allLengthAcc;
+  /** Running statistics for flow-level inter-arrival times (microseconds). */
+  WelfordAccumulator flowIatAcc;
+  /** Running statistics for forward inter-arrival times (microseconds). */
+  WelfordAccumulator fwdIatAcc;
+  /** Running statistics for backward inter-arrival times (microseconds). */
+  WelfordAccumulator bwdIatAcc;
   /** Timestamp of the last forward packet (-1 if none yet). */
   std::int64_t lastFwdTimeUs = -1;
   /** Timestamp of the last backward packet (-1 if none yet). */
@@ -143,22 +205,22 @@ struct FlowStats { // NOSONAR - 45 fields required by CIC-IDS2017 feature vector
   std::uint32_t actDataPktFwd = 0;
   /** Minimum segment size observed in the forward direction. */
   std::uint32_t minSegSizeForward = 0;
-  /** Durations of active transfer periods (microseconds). */
-  std::vector<std::int64_t> activePeriodsUs;
-  /** Durations of idle periods (microseconds). */
-  std::vector<std::int64_t> idlePeriodsUs;
+  /** Running statistics for active transfer period durations (microseconds). */
+  WelfordAccumulator activeAcc;
+  /** Running statistics for idle period durations (microseconds). */
+  WelfordAccumulator idleAcc;
   /** End timestamp of the last active period (-1 if none). */
   std::int64_t lastActiveTimeUs = -1;
   /** Start timestamp of the last idle period (-1 if none). */
   std::int64_t lastIdleTimeUs = -1;
-  /** Byte counts of completed forward bulk transfers. */
-  std::vector<std::uint32_t> fwdBulkBytes;
-  /** Byte counts of completed backward bulk transfers. */
-  std::vector<std::uint32_t> bwdBulkBytes;
-  /** Packet counts of completed forward bulk transfers. */
-  std::vector<std::uint32_t> fwdBulkPackets;
-  /** Packet counts of completed backward bulk transfers. */
-  std::vector<std::uint32_t> bwdBulkPackets;
+  /** Running statistics for completed forward bulk transfer byte counts. */
+  WelfordAccumulator fwdBulkBytesAcc;
+  /** Running statistics for completed backward bulk transfer byte counts. */
+  WelfordAccumulator bwdBulkBytesAcc;
+  /** Running statistics for completed forward bulk transfer packet counts. */
+  WelfordAccumulator fwdBulkPktsAcc;
+  /** Running statistics for completed backward bulk transfer packet counts. */
+  WelfordAccumulator bwdBulkPktsAcc;
 
   /** Packets in the current forward bulk transfer. */
   std::uint32_t curFwdBulkPkts = 0;

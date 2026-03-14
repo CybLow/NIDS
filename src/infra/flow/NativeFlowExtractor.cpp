@@ -14,12 +14,9 @@
 
 #include <spdlog/spdlog.h>
 
-#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
-#include <concepts>
-#include <numeric>
 #include <ranges>
 
 namespace nids::infra {
@@ -45,71 +42,30 @@ constexpr std::int64_t kIdleThresholdUs =
     5'000'000; // 5 seconds (standard idle threshold)
 constexpr std::int64_t kDefaultFlowTimeoutUs = 600'000'000; // 600 seconds
 
-template <std::ranges::sized_range Container>
-  requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
-double mean(const Container &c) {
-  if (c.empty())
-    return 0.0;
-  double sum =
-      std::accumulate(c.begin(), c.end(), 0.0, [](double acc, auto val) {
-        return acc + static_cast<double>(val);
-      });
-  return sum / static_cast<double>(c.size());
-}
-
-template <std::ranges::sized_range Container>
-  requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
-double stddev(const Container &c) {
-  if (c.size() <= 1)
-    return 0.0;
-  double m = mean(c);
-  double accum = std::transform_reduce(
-      c.begin(), c.end(), 0.0, std::plus<>{}, [m](auto val) {
-        double d = static_cast<double>(val) - m;
-        return d * d;
-      });
-  return std::sqrt(accum / static_cast<double>(c.size() - 1));
-}
-
-template <std::ranges::sized_range Container>
-  requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
-double variance(const Container &c) {
-  if (c.size() <= 1)
-    return 0.0;
-  double m = mean(c);
-  double accum = std::transform_reduce(
-      c.begin(), c.end(), 0.0, std::plus<>{}, [m](auto val) {
-        double d = static_cast<double>(val) - m;
-        return d * d;
-      });
-  return accum / static_cast<double>(c.size());
-}
-
+/// Push max, min, mean, std from an accumulator, or 4 zeros if empty.
 void pushLengthStats(std::vector<float> &features,
-                     const std::vector<std::uint32_t> &lengths) {
-  if (lengths.empty()) {
+                     const WelfordAccumulator &acc) {
+  if (acc.n == 0) {
     features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
   } else {
-    features.push_back(static_cast<float>(std::ranges::max(lengths)));
-    features.push_back(static_cast<float>(std::ranges::min(lengths)));
-    features.push_back(static_cast<float>(mean(lengths)));
-    features.push_back(static_cast<float>(stddev(lengths)));
+    features.push_back(static_cast<float>(acc.max()));
+    features.push_back(static_cast<float>(acc.min()));
+    features.push_back(static_cast<float>(acc.mean()));
+    features.push_back(static_cast<float>(acc.stddev()));
   }
 }
 
+/// Push total, mean, std, max, min from an accumulator, or 5 zeros if empty.
 void pushIatStats(std::vector<float> &features,
-                  const std::vector<std::int64_t> &iats) {
-  if (iats.empty()) {
+                  const WelfordAccumulator &acc) {
+  if (acc.n == 0) {
     features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
   } else {
-    double totalUs = std::accumulate(
-        iats.begin(), iats.end(), 0.0,
-        [](double acc, auto val) { return acc + static_cast<double>(val); });
-    features.push_back(static_cast<float>(totalUs));
-    features.push_back(static_cast<float>(mean(iats)));
-    features.push_back(static_cast<float>(stddev(iats)));
-    features.push_back(static_cast<float>(std::ranges::max(iats)));
-    features.push_back(static_cast<float>(std::ranges::min(iats)));
+    features.push_back(static_cast<float>(acc.sum()));
+    features.push_back(static_cast<float>(acc.mean()));
+    features.push_back(static_cast<float>(acc.stddev()));
+    features.push_back(static_cast<float>(acc.max()));
+    features.push_back(static_cast<float>(acc.min()));
   }
 }
 
@@ -119,51 +75,47 @@ void pushRate(std::vector<float> &features, double count, double durationUs) {
       durationUs > 0 ? static_cast<float>(count / (durationUs / 1e6)) : 0.0f);
 }
 
-/// Push min/max/mean/std/variance stats for a uint32 container, or 5 zeros if
-/// empty.
+/// Push min, max, mean, std, variance from an accumulator, or 5 zeros.
 void pushFullLengthStats(std::vector<float> &features,
-                         const std::vector<std::uint32_t> &lengths) {
-  if (lengths.empty()) {
+                         const WelfordAccumulator &acc) {
+  if (acc.n == 0) {
     features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
   } else {
-    features.push_back(static_cast<float>(std::ranges::min(lengths)));
-    features.push_back(static_cast<float>(std::ranges::max(lengths)));
-    features.push_back(static_cast<float>(mean(lengths)));
-    features.push_back(static_cast<float>(stddev(lengths)));
-    features.push_back(static_cast<float>(variance(lengths)));
+    features.push_back(static_cast<float>(acc.min()));
+    features.push_back(static_cast<float>(acc.max()));
+    features.push_back(static_cast<float>(acc.mean()));
+    features.push_back(static_cast<float>(acc.stddev()));
+    features.push_back(static_cast<float>(acc.populationVariance()));
   }
 }
 
-/// Push 4 period stats (mean, std, max, min) or 4 zeros if empty.
+/// Push mean, std, max, min from an accumulator, or 4 zeros if empty.
 void pushPeriodStats(std::vector<float> &features,
-                     const std::vector<std::int64_t> &periods) {
-  if (periods.empty()) {
+                     const WelfordAccumulator &acc) {
+  if (acc.n == 0) {
     features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
   } else {
-    features.push_back(static_cast<float>(mean(periods)));
-    features.push_back(static_cast<float>(stddev(periods)));
-    features.push_back(static_cast<float>(std::ranges::max(periods)));
-    features.push_back(static_cast<float>(std::ranges::min(periods)));
+    features.push_back(static_cast<float>(acc.mean()));
+    features.push_back(static_cast<float>(acc.stddev()));
+    features.push_back(static_cast<float>(acc.max()));
+    features.push_back(static_cast<float>(acc.min()));
   }
 }
 
-/// Push bulk statistics (avg bytes/bulk, avg packets/bulk, bulk rate) or 3
-/// zeros if empty.
+/// Push avg bytes/bulk, avg packets/bulk, bulk rate, or 3 zeros.
 void pushBulkStats(std::vector<float> &features,
-                   const std::vector<std::uint32_t> &bulkBytes,
-                   const std::vector<std::uint32_t> &bulkPackets,
+                   const WelfordAccumulator &bytesAcc,
+                   const WelfordAccumulator &pktsAcc,
                    double durationUs) {
-  if (bulkBytes.empty()) {
+  if (bytesAcc.n == 0) {
     features.insert(features.end(), {0.0f, 0.0f, 0.0f});
   } else {
-    features.push_back(static_cast<float>(mean(bulkBytes)));
-    features.push_back(static_cast<float>(mean(bulkPackets)));
-    double totalBulkBytes = std::accumulate(
-        bulkBytes.begin(), bulkBytes.end(), 0.0,
-        [](double acc, auto val) { return acc + static_cast<double>(val); });
+    features.push_back(static_cast<float>(bytesAcc.mean()));
+    features.push_back(static_cast<float>(pktsAcc.mean()));
     features.push_back(
-        durationUs > 0 ? static_cast<float>(totalBulkBytes / (durationUs / 1e6))
-                       : 0.0f);
+        durationUs > 0
+            ? static_cast<float>(bytesAcc.sum() / (durationUs / 1e6))
+            : 0.0f);
   }
 }
 
@@ -350,20 +302,20 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
   features.push_back(static_cast<float>(totalFwdBytes));
   features.push_back(static_cast<float>(totalBwdBytes));
   // 6-9: Fwd Packet Length Max, Min, Mean, Std
-  pushLengthStats(features, fwdPacketLengths);
+  pushLengthStats(features, fwdLengthAcc);
   // 10-13: Bwd Packet Length Max, Min, Mean, Std
-  pushLengthStats(features, bwdPacketLengths);
+  pushLengthStats(features, bwdLengthAcc);
   // 14-15: Flow Bytes/s, Flow Packets/s
   pushRate(features, static_cast<double>(totalFwdBytes + totalBwdBytes),
            durationUs);
   pushRate(features, static_cast<double>(totalFwdPackets + totalBwdPackets),
            durationUs);
   // 16-19: Flow IAT Mean, Std, Max, Min
-  pushPeriodStats(features, flowIatUs);
+  pushPeriodStats(features, flowIatAcc);
   // 20-24: Fwd IAT Total, Mean, Std, Max, Min
-  pushIatStats(features, fwdIatUs);
+  pushIatStats(features, fwdIatAcc);
   // 25-29: Bwd IAT Total, Mean, Std, Max, Min
-  pushIatStats(features, bwdIatUs);
+  pushIatStats(features, bwdIatAcc);
   // 30-33: Fwd PSH Flags, Bwd PSH Flags, Fwd URG Flags, Bwd URG Flags
   features.push_back(static_cast<float>(fwdPshFlags));
   features.push_back(static_cast<float>(bwdPshFlags));
@@ -376,7 +328,7 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
   pushRate(features, static_cast<double>(totalFwdPackets), durationUs);
   pushRate(features, static_cast<double>(totalBwdPackets), durationUs);
   // 38-42: Packet Length Min, Max, Mean, Std, Variance (all packets)
-  pushFullLengthStats(features, allPacketLengths);
+  pushFullLengthStats(features, allLengthAcc);
   // 43-50: FIN, SYN, RST, PSH, ACK, URG, CWR, ECE counts
   features.push_back(static_cast<float>(finCount));
   features.push_back(static_cast<float>(synCount));
@@ -400,9 +352,9 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
   pushRatio(features, static_cast<double>(totalBwdBytes - bwdHeaderBytes),
             static_cast<double>(totalBwdPackets));
   // 55-57: Fwd Bytes/Bulk Avg, Fwd Packet/Bulk Avg, Fwd Bulk Rate Avg
-  pushBulkStats(features, fwdBulkBytes, fwdBulkPackets, durationUs);
+  pushBulkStats(features, fwdBulkBytesAcc, fwdBulkPktsAcc, durationUs);
   // 58-60: Bwd Bytes/Bulk Avg, Bwd Packet/Bulk Avg, Bwd Bulk Rate Avg
-  pushBulkStats(features, bwdBulkBytes, bwdBulkPackets, durationUs);
+  pushBulkStats(features, bwdBulkBytesAcc, bwdBulkPktsAcc, durationUs);
   // 61-64: Subflow Fwd Packets, Subflow Fwd Bytes, Subflow Bwd Packets, Subflow
   // Bwd Bytes
   features.push_back(static_cast<float>(totalFwdPackets));
@@ -416,9 +368,9 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
   features.push_back(static_cast<float>(actDataPktFwd));
   features.push_back(static_cast<float>(minSegSizeForward));
   // 69-72: Active Mean, Std, Max, Min
-  pushPeriodStats(features, activePeriodsUs);
+  pushPeriodStats(features, activeAcc);
   // 73-76: Idle Mean, Std, Max, Min
-  pushPeriodStats(features, idlePeriodsUs);
+  pushPeriodStats(features, idleAcc);
 
   assert(features.size() == static_cast<std::size_t>(kFlowFeatureCount) &&
          "toFeatureVector() output size must match kFlowFeatureCount");
@@ -452,12 +404,12 @@ NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
 void NativeFlowExtractor::finalizeBulks() {
   for (auto &[key, stats] : flows_) {
     if (stats.curFwdBulkPkts >= 2) {
-      stats.fwdBulkPackets.push_back(stats.curFwdBulkPkts);
-      stats.fwdBulkBytes.push_back(stats.curFwdBulkBytes);
+      stats.fwdBulkPktsAcc.update(stats.curFwdBulkPkts);
+      stats.fwdBulkBytesAcc.update(stats.curFwdBulkBytes);
     }
     if (stats.curBwdBulkPkts >= 2) {
-      stats.bwdBulkPackets.push_back(stats.curBwdBulkPkts);
-      stats.bwdBulkBytes.push_back(stats.curBwdBulkBytes);
+      stats.bwdBulkPktsAcc.update(stats.curBwdBulkPkts);
+      stats.bwdBulkBytesAcc.update(stats.curBwdBulkBytes);
     }
   }
 }
@@ -566,11 +518,11 @@ void NativeFlowExtractor::processPacket(pcpp::RawPacket &rawPacket,
   std::int64_t flowGapUs =
       (prevLastTimeUs > 0) ? (timestampUs - prevLastTimeUs) : 0;
   if (flowGapUs > 0)
-    stats.flowIatUs.push_back(flowGapUs);
+    stats.flowIatAcc.update(static_cast<double>(flowGapUs));
   stats.lastTimeUs = timestampUs;
 
   updateDirectionStats(stats, pkt, timestampUs, isForward);
-  stats.allPacketLengths.push_back(pkt.totalPacketLen);
+  stats.allLengthAcc.update(pkt.totalPacketLen);
 
   bool tcpFinOrRst = false;
   if (pkt.protocol == kIpProtoTcp) {
@@ -624,27 +576,30 @@ NativeFlowExtractor::resolveFlow(const FlowKey &keyFwd, const FlowKey &keyBwd,
 }
 
 void NativeFlowExtractor::updateDirectionStats(FlowStats &stats,
-                                               const ParsedPacket &pkt,
-                                               std::int64_t timestampUs,
-                                               bool isForward) {
+                                                const ParsedPacket &pkt,
+                                                std::int64_t timestampUs,
+                                                bool isForward) {
   if (isForward) {
     stats.totalFwdPackets++;
     stats.totalFwdBytes += pkt.totalPacketLen;
-    stats.fwdPacketLengths.push_back(pkt.totalPacketLen);
+    stats.fwdLengthAcc.update(pkt.totalPacketLen);
     stats.fwdHeaderBytes += pkt.headerBytes;
     if (stats.lastFwdTimeUs >= 0) {
-      stats.fwdIatUs.push_back(timestampUs - stats.lastFwdTimeUs);
+      stats.fwdIatAcc.update(
+          static_cast<double>(timestampUs - stats.lastFwdTimeUs));
     }
     stats.lastFwdTimeUs = timestampUs;
   } else {
     stats.totalBwdPackets++;
     stats.totalBwdBytes += pkt.totalPacketLen;
-    stats.bwdPacketLengths.push_back(pkt.totalPacketLen);
+    stats.bwdLengthAcc.update(pkt.totalPacketLen);
     stats.bwdHeaderBytes += pkt.headerBytes;
     if (stats.lastBwdTimeUs >= 0) {
-      std::int64_t iat = timestampUs - stats.lastBwdTimeUs;
-      stats.bwdIatUs.push_back(iat);
-      stats.flowIatUs.push_back(iat);
+      stats.bwdIatAcc.update(
+          static_cast<double>(timestampUs - stats.lastBwdTimeUs));
+      // NOTE: backward IAT is NOT added to flowIatAcc here.
+      // The overall flow IAT is already tracked in processPacket()
+      // as the gap between any two consecutive packets.
     }
     stats.lastBwdTimeUs = timestampUs;
   }
@@ -716,14 +671,14 @@ void NativeFlowExtractor::updateTcpFlags(FlowStats &stats,
 }
 
 void NativeFlowExtractor::updateBulkTracking(FlowStats &stats,
-                                             std::uint32_t packetLen,
-                                             bool isForward) {
+                                              std::uint32_t packetLen,
+                                              bool isForward) {
   if (isForward) {
     stats.curFwdBulkPkts++;
     stats.curFwdBulkBytes += packetLen;
     if (!stats.lastPacketWasFwd && stats.curBwdBulkPkts >= 2) {
-      stats.bwdBulkPackets.push_back(stats.curBwdBulkPkts);
-      stats.bwdBulkBytes.push_back(stats.curBwdBulkBytes);
+      stats.bwdBulkPktsAcc.update(stats.curBwdBulkPkts);
+      stats.bwdBulkBytesAcc.update(stats.curBwdBulkBytes);
     }
     if (!stats.lastPacketWasFwd) {
       stats.curBwdBulkPkts = 0;
@@ -734,8 +689,8 @@ void NativeFlowExtractor::updateBulkTracking(FlowStats &stats,
     stats.curBwdBulkPkts++;
     stats.curBwdBulkBytes += packetLen;
     if (stats.lastPacketWasFwd && stats.curFwdBulkPkts >= 2) {
-      stats.fwdBulkPackets.push_back(stats.curFwdBulkPkts);
-      stats.fwdBulkBytes.push_back(stats.curFwdBulkBytes);
+      stats.fwdBulkPktsAcc.update(stats.curFwdBulkPkts);
+      stats.fwdBulkBytesAcc.update(stats.curFwdBulkBytes);
     }
     if (stats.lastPacketWasFwd) {
       stats.curFwdBulkPkts = 0;
@@ -746,18 +701,20 @@ void NativeFlowExtractor::updateBulkTracking(FlowStats &stats,
 }
 
 void NativeFlowExtractor::updateActiveIdle(FlowStats &stats,
-                                           std::int64_t timestampUs,
-                                           std::int64_t prevLastTimeUs,
-                                           std::int64_t flowGapUs) {
+                                            std::int64_t timestampUs,
+                                            std::int64_t prevLastTimeUs,
+                                            std::int64_t flowGapUs) {
   if (flowGapUs > kIdleThresholdUs && prevLastTimeUs > 0) {
     if (stats.lastActiveTimeUs >= 0) {
-      stats.activePeriodsUs.push_back(prevLastTimeUs - stats.lastActiveTimeUs);
+      stats.activeAcc.update(
+          static_cast<double>(prevLastTimeUs - stats.lastActiveTimeUs));
     }
     stats.lastIdleTimeUs = prevLastTimeUs;
     stats.lastActiveTimeUs = -1;
   }
   if (stats.lastIdleTimeUs >= 0) {
-    stats.idlePeriodsUs.push_back(timestampUs - stats.lastIdleTimeUs);
+    stats.idleAcc.update(
+        static_cast<double>(timestampUs - stats.lastIdleTimeUs));
     stats.lastIdleTimeUs = -1;
   }
   stats.lastActiveTimeUs = timestampUs;
@@ -765,12 +722,12 @@ void NativeFlowExtractor::updateActiveIdle(FlowStats &stats,
 
 void NativeFlowExtractor::completeFlow(const FlowKey &key, FlowStats &stats) {
   if (stats.curFwdBulkPkts >= 2) {
-    stats.fwdBulkPackets.push_back(stats.curFwdBulkPkts);
-    stats.fwdBulkBytes.push_back(stats.curFwdBulkBytes);
+    stats.fwdBulkPktsAcc.update(stats.curFwdBulkPkts);
+    stats.fwdBulkBytesAcc.update(stats.curFwdBulkBytes);
   }
   if (stats.curBwdBulkPkts >= 2) {
-    stats.bwdBulkPackets.push_back(stats.curBwdBulkPkts);
-    stats.bwdBulkBytes.push_back(stats.curBwdBulkBytes);
+    stats.bwdBulkPktsAcc.update(stats.curBwdBulkPkts);
+    stats.bwdBulkBytesAcc.update(stats.curBwdBulkBytes);
   }
   completedFlows_.emplace_back(key, std::move(stats));
 }
