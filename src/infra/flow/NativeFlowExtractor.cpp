@@ -471,7 +471,7 @@ bool NativeFlowExtractor::parsePacketHeaders(pcpp::Packet &packet,
 
   pkt.srcIp = ipLayer->getSrcIPv4Address().toString();
   pkt.dstIp = ipLayer->getDstIPv4Address().toString();
-  pkt.ipIhl = ipLayer->getHeaderLen();
+  pkt.ipIhl = static_cast<std::uint32_t>(ipLayer->getHeaderLen());
   pkt.protocol = ipLayer->getIPv4Header()->protocol;
   pkt.totalPacketLen = pcpp::netToHost16(ipLayer->getIPv4Header()->totalLength);
 
@@ -481,7 +481,8 @@ bool NativeFlowExtractor::parsePacketHeaders(pcpp::Packet &packet,
       return false;
     pkt.srcPort = tcpLayer->getSrcPort();
     pkt.dstPort = tcpLayer->getDstPort();
-    pkt.transportHeaderLen = tcpLayer->getHeaderLen();
+    pkt.transportHeaderLen =
+        static_cast<std::uint32_t>(tcpLayer->getHeaderLen());
     if (pkt.transportHeaderLen < 20)
       pkt.transportHeaderLen = 20;
 

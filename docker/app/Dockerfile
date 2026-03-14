@@ -19,6 +19,9 @@ COPY conanfile.py CMakePresets.json ./
 COPY conan/ conan/
 
 ENV CC=gcc-14 CXX=g++-14
+# Symlinks for Conan build-requires (flex/bison/libpcap need 'cc' in PATH)
+RUN ln -sf /usr/bin/gcc-14 /usr/local/bin/cc && \
+    ln -sf /usr/bin/gcc-14 /usr/local/bin/gcc
 RUN conan profile detect --force && \
     conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
 

@@ -9,6 +9,8 @@
 #include <pcapplusplus/TcpLayer.h>
 #include <pcapplusplus/UdpLayer.h>
 
+#include <iterator>
+#include <ranges>
 #include <string>
 
 namespace nids::infra {
@@ -195,11 +197,12 @@ void PcapCapture::setErrorCallback(ErrorCallback callback) {
 }
 
 std::vector<std::string> PcapCapture::listInterfaces() {
+  const auto &devList =
+      pcpp::PcapLiveDeviceList::getInstance().getPcapLiveDevicesList();
   std::vector<std::string> result;
-  for (auto *dev :
-       pcpp::PcapLiveDeviceList::getInstance().getPcapLiveDevicesList()) {
-    result.emplace_back(dev->getName());
-  }
+  result.reserve(devList.size());
+  std::ranges::transform(devList, std::back_inserter(result),
+                         [](const auto *dev) { return dev->getName(); });
   return result;
 }
 
