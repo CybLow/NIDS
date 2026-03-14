@@ -229,7 +229,7 @@ private:
   [[nodiscard]] std::vector<std::vector<float>> buildFeatureVectors() const;
 
   /// Parse all layers from a PcapPlusPlus parsed packet into ParsedPacket.
-  [[nodiscard]] static bool parsePacketHeaders(pcpp::Packet &packet,
+  [[nodiscard]] static bool parsePacketHeaders(const pcpp::Packet &packet,
                                                ParsedPacket &pkt);
 
   /// Evict timed-out flows and resolve the active flow key and direction.

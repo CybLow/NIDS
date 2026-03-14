@@ -43,11 +43,9 @@ void PcapCaptureWorker::doCapture() {
     return;
   }
 
-  if (!bpfFilter_.empty()) {
-    if (!device_->setFilter(bpfFilter_)) {
-      emit captureError(
-          QString("Could not apply filter: %1").arg(bpfFilter_.c_str()));
-    }
+  if (!bpfFilter_.empty() && !device_->setFilter(bpfFilter_)) {
+    emit captureError(
+        QString("Could not apply filter: %1").arg(bpfFilter_.c_str()));
   }
 
   if (!dumpFile_.empty()) {
@@ -93,18 +91,18 @@ void PcapCaptureWorker::processPacket(pcpp::RawPacket *rawPacket) {
   pcpp::Packet parsedPacket(rawPacket);
   nids::core::PacketInfo info;
 
-  auto *ipLayer = parsedPacket.getLayerOfType<pcpp::IPv4Layer>();
-  if (ipLayer) {
+  if (const auto *ipLayer = parsedPacket.getLayerOfType<pcpp::IPv4Layer>()) {
     info.ipSource = ipLayer->getSrcIPv4Address().toString();
     info.ipDestination = ipLayer->getDstIPv4Address().toString();
 
-    if (auto *tcpLayer = parsedPacket.getLayerOfType<pcpp::TcpLayer>()) {
+    if (const auto *tcpLayer = parsedPacket.getLayerOfType<pcpp::TcpLayer>()) {
       info.protocol = "TCP";
       info.portSource = std::to_string(tcpLayer->getSrcPort());
       info.portDestination = std::to_string(tcpLayer->getDstPort());
       info.application =
           serviceRegistry_.resolveApplication("", "", info.portDestination);
-    } else if (auto *udpLayer = parsedPacket.getLayerOfType<pcpp::UdpLayer>()) {
+    } else if (const auto *udpLayer =
+                   parsedPacket.getLayerOfType<pcpp::UdpLayer>()) {
       info.protocol = "UDP";
       info.portSource = std::to_string(udpLayer->getSrcPort());
       info.portDestination = std::to_string(udpLayer->getDstPort());

@@ -439,8 +439,8 @@ NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
 
   while (reader.getNextPacket(rawPacket)) {
     auto ts = rawPacket.getPacketTimeStamp();
-    std::int64_t tsUs = static_cast<std::int64_t>(ts.tv_sec) * 1'000'000 +
-                        static_cast<std::int64_t>(ts.tv_nsec) / 1'000;
+    auto tsUs =
+        std::int64_t{ts.tv_sec} * 1'000'000 + std::int64_t{ts.tv_nsec} / 1'000;
     processPacket(rawPacket, tsUs);
   }
 
@@ -462,10 +462,33 @@ void NativeFlowExtractor::finalizeBulks() {
   }
 }
 
-bool NativeFlowExtractor::parsePacketHeaders(pcpp::Packet &packet,
+/// Extract TCP flags from a TCP header into a bitmask.
+[[nodiscard]] static std::uint8_t
+extractTcpFlags(const pcpp::tcphdr *hdr) noexcept {
+  std::uint8_t flags = 0;
+  if (hdr->finFlag)
+    flags |= kTcpFin;
+  if (hdr->synFlag)
+    flags |= kTcpSyn;
+  if (hdr->rstFlag)
+    flags |= kTcpRst;
+  if (hdr->pshFlag)
+    flags |= kTcpPsh;
+  if (hdr->ackFlag)
+    flags |= kTcpAck;
+  if (hdr->urgFlag)
+    flags |= kTcpUrg;
+  if (hdr->cwrFlag)
+    flags |= kTcpCwr;
+  if (hdr->eceFlag)
+    flags |= kTcpEce;
+  return flags;
+}
+
+bool NativeFlowExtractor::parsePacketHeaders(const pcpp::Packet &packet,
                                              ParsedPacket &pkt) {
   // PcapPlusPlus automatically handles VLAN (802.1Q) tag parsing
-  auto *ipLayer = packet.getLayerOfType<pcpp::IPv4Layer>();
+  const auto *ipLayer = packet.getLayerOfType<pcpp::IPv4Layer>();
   if (!ipLayer)
     return false;
 
@@ -476,7 +499,7 @@ bool NativeFlowExtractor::parsePacketHeaders(pcpp::Packet &packet,
   pkt.totalPacketLen = pcpp::netToHost16(ipLayer->getIPv4Header()->totalLength);
 
   if (pkt.protocol == kIpProtoTcp) {
-    auto *tcpLayer = packet.getLayerOfType<pcpp::TcpLayer>();
+    const auto *tcpLayer = packet.getLayerOfType<pcpp::TcpLayer>();
     if (!tcpLayer)
       return false;
     pkt.srcPort = tcpLayer->getSrcPort();
@@ -486,36 +509,18 @@ bool NativeFlowExtractor::parsePacketHeaders(pcpp::Packet &packet,
     if (pkt.transportHeaderLen < 20)
       pkt.transportHeaderLen = 20;
 
-    // Extract TCP flags as a bitmask for flow stats
-    auto *tcpHdr = tcpLayer->getTcpHeader();
-    std::uint8_t flags = 0;
-    if (tcpHdr->finFlag)
-      flags |= kTcpFin;
-    if (tcpHdr->synFlag)
-      flags |= kTcpSyn;
-    if (tcpHdr->rstFlag)
-      flags |= kTcpRst;
-    if (tcpHdr->pshFlag)
-      flags |= kTcpPsh;
-    if (tcpHdr->ackFlag)
-      flags |= kTcpAck;
-    if (tcpHdr->urgFlag)
-      flags |= kTcpUrg;
-    if (tcpHdr->cwrFlag)
-      flags |= kTcpCwr;
-    if (tcpHdr->eceFlag)
-      flags |= kTcpEce;
-    pkt.tcpFlags = flags;
+    const auto *tcpHdr = tcpLayer->getTcpHeader();
+    pkt.tcpFlags = extractTcpFlags(tcpHdr);
     pkt.tcpWindow = pcpp::netToHost16(tcpHdr->windowSize);
   } else if (pkt.protocol == kIpProtoUdp) {
-    auto *udpLayer = packet.getLayerOfType<pcpp::UdpLayer>();
+    const auto *udpLayer = packet.getLayerOfType<pcpp::UdpLayer>();
     if (!udpLayer)
       return false;
     pkt.srcPort = udpLayer->getSrcPort();
     pkt.dstPort = udpLayer->getDstPort();
     pkt.transportHeaderLen = 8;
   } else if (pkt.protocol == kIpProtoIcmp) {
-    auto *icmpLayer = packet.getLayerOfType<pcpp::IcmpLayer>();
+    const auto *icmpLayer = packet.getLayerOfType<pcpp::IcmpLayer>();
     if (!icmpLayer)
       return false;
     pkt.srcPort = icmpLayer->getIcmpHeader()->type;
