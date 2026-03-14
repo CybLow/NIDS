@@ -27,6 +27,7 @@ public:
   MOCK_METHOD(bool, isCapturing, (), (const, override));
   MOCK_METHOD(void, setPacketCallback, (PacketCallback), (override));
   MOCK_METHOD(void, setErrorCallback, (ErrorCallback), (override));
+  void setRawPacketCallback(RawPacketCallback /*cb*/) override {}
   MOCK_METHOD(std::vector<std::string>, listInterfaces, (), (override));
 };
 

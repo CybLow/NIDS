@@ -215,7 +215,7 @@ TEST(FlowAnalysisWorker, resultCallback_invokedForEachFlow) {
 
     FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
     worker.setResultCallback(
-        [&](std::size_t idx, DetectionResult result) {
+        [&](std::size_t idx, DetectionResult result, FlowInfo /*metadata*/) {
             std::scoped_lock lock(callbackMutex);
             callbackResults.emplace_back(idx, result.finalVerdict);
             callbackCount.fetch_add(1, std::memory_order_relaxed);

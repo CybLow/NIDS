@@ -172,6 +172,15 @@ void MainWindow::connectSignals() {
   connect(controller_.get(), &nids::app::CaptureController::packetReceived,
           this, &MainWindow::onPacketReceived, Qt::QueuedConnection);
 
+  // Live detection: each flow result is added to the FlowTableModel incrementally.
+  connect(
+      controller_.get(), &nids::app::CaptureController::liveFlowDetected, this,
+      [this](const nids::core::DetectionResult &result,
+             const nids::core::FlowInfo &metadata) {
+        flowModel_->addFlowResult(result, metadata);
+      },
+      Qt::QueuedConnection);
+
   connect(
       controller_.get(), &nids::app::CaptureController::captureError, this,
       [this](const QString &message) {
@@ -217,21 +226,28 @@ void MainWindow::connectSignals() {
 
 void MainWindow::toggleCapture() {
   if (controller_->isCapturing()) {
+    // Capture the live detection state before stopping (stopCapture clears it).
+    bool hadLiveDetection = controller_->isLiveDetectionActive();
+
     controller_->stopCapture();
     filterPanel_->setButtonText("Start");
     filterPanel_->setInputsReadOnly(false);
 
-    int ret = QMessageBox::question(
-        this, "Analysis", "Do you want to run ML analysis on captured traffic?",
-        QMessageBox::Yes | QMessageBox::No);
-    if (ret == QMessageBox::Yes) {
-      // Analysis runs on the worker thread. The report prompt is
-      // deferred to populateFlowResults() so that detection results
-      // are available when the report is generated.
-      runAnalysis();
-    } else {
-      // No analysis requested — offer report with packet data only.
+    if (hadLiveDetection) {
+      // Live detection already produced results — switch to Flows tab
+      // and offer a report.
+      tabWidget_->setCurrentIndex(kFlowsTabIndex);
       promptForReport();
+    } else {
+      int ret = QMessageBox::question(
+          this, "Analysis",
+          "Do you want to run ML analysis on captured traffic?",
+          QMessageBox::Yes | QMessageBox::No);
+      if (ret == QMessageBox::Yes) {
+        runAnalysis();
+      } else {
+        promptForReport();
+      }
     }
   } else {
     auto filter = filterPanel_->gatherFilter();

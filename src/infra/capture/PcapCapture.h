@@ -40,6 +40,10 @@ public:
   void configure(std::string_view iface, std::string_view bpfFilter,
                  std::string_view dumpFile);
 
+  /** Register a callback for raw packet data on the capture thread.
+   *  Thread-safe: may be called from any thread before or during capture. */
+  void setRawPacketCallback(nids::core::IPacketCapture::RawPacketCallback cb);
+
 public slots:
   /** Start the capture loop. Blocks until requestStop() is called. */
   void doCapture();
@@ -68,6 +72,8 @@ private:
   std::mutex mutex_;
   std::condition_variable stopCv_;
 
+  nids::core::IPacketCapture::RawPacketCallback rawPacketCallback_;
+  std::mutex rawCallbackMutex_;  ///< Protects rawPacketCallback_ for thread-safe set/read.
   nids::core::ServiceRegistry serviceRegistry_;
 };
 
@@ -94,6 +100,7 @@ public:
 
   void setPacketCallback(PacketCallback callback) override;
   void setErrorCallback(ErrorCallback callback) override;
+  void setRawPacketCallback(RawPacketCallback callback) override;
   [[nodiscard]] std::vector<std::string> listInterfaces() override;
 
 signals:

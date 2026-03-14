@@ -87,7 +87,27 @@ void PcapCaptureWorker::packetCallback(pcpp::RawPacket *rawPacket,
   self->processPacket(rawPacket);
 }
 
+void PcapCaptureWorker::setRawPacketCallback(
+    nids::core::IPacketCapture::RawPacketCallback cb) {
+  std::scoped_lock lock(rawCallbackMutex_);
+  rawPacketCallback_ = std::move(cb);
+}
+
 void PcapCaptureWorker::processPacket(pcpp::RawPacket *rawPacket) {
+  // Fire raw packet callback first (on the capture thread) before parsing
+  // for PacketInfo.  This lets live flow extraction run with minimal latency.
+  {
+    std::scoped_lock lock(rawCallbackMutex_);
+    if (rawPacketCallback_) {
+      auto ts = rawPacket->getPacketTimeStamp();
+      auto tsUs = std::int64_t{ts.tv_sec} * 1'000'000 +
+                  std::int64_t{ts.tv_nsec} / 1'000;
+      rawPacketCallback_(rawPacket->getRawData(),
+                         static_cast<std::size_t>(rawPacket->getRawDataLen()),
+                         tsUs);
+    }
+  }
+
   pcpp::Packet parsedPacket(rawPacket);
   nids::core::PacketInfo info;
 
@@ -192,6 +212,10 @@ void PcapCapture::setPacketCallback(PacketCallback callback) {
 
 void PcapCapture::setErrorCallback(ErrorCallback callback) {
   errorCallback_ = std::move(callback);
+}
+
+void PcapCapture::setRawPacketCallback(RawPacketCallback callback) {
+  worker_->setRawPacketCallback(std::move(callback));
 }
 
 std::vector<std::string> PcapCapture::listInterfaces() {

@@ -137,7 +137,7 @@ void FlowAnalysisWorker::processItem(FlowWorkItem&& item, std::size_t index) {
     session_.setDetectionResult(index, result);
 
     if (resultCallback_) {
-        resultCallback_(index, std::move(result));
+        resultCallback_(index, std::move(result), std::move(item.metadata));
     }
 }
 

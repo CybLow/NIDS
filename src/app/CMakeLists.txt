@@ -5,6 +5,7 @@ add_library(nids_app STATIC
     CaptureController.cpp
     AnalysisService.cpp
     FlowAnalysisWorker.cpp
+    LiveDetectionPipeline.cpp
     HybridDetectionService.cpp
     ReportGenerator.cpp
 )

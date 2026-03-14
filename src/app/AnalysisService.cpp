@@ -98,7 +98,8 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
     FlowAnalysisWorker worker(queue, *analyzer_, *normalizer_, session);
     worker.setHybridDetection(hybridService_);
     worker.setResultCallback(
-        [this](std::size_t index, core::DetectionResult /*result*/) {
+        [this](std::size_t index, core::DetectionResult /*result*/,
+               core::FlowInfo /*metadata*/) {
             emit analysisProgress(static_cast<int>(index + 1), 0);
         });
     worker.start();

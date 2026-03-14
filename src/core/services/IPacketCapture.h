@@ -2,6 +2,7 @@
 
 #include "core/model/PacketInfo.h"
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -13,10 +14,22 @@ class IPacketCapture {
 public:
   virtual ~IPacketCapture() = default;
 
-  /** Callback invoked for each captured packet. */
+  /** Callback invoked for each captured packet (parsed metadata). */
   using PacketCallback = std::function<void(const PacketInfo &)>;
   /** Callback invoked when a capture error occurs. */
   using ErrorCallback = std::function<void(const std::string &)>;
+
+  /** Callback invoked on the capture thread with raw packet data.
+   *
+   * Runs synchronously within the capture callback — keep it fast or
+   * enqueue work to another thread.  Parameters:
+   *   - data:        Raw packet bytes (including link-layer header).
+   *   - length:      Length of the packet data in bytes.
+   *   - timestampUs: Packet timestamp in microseconds since epoch.
+   */
+  using RawPacketCallback =
+      std::function<void(const std::uint8_t *data, std::size_t length,
+                         std::int64_t timestampUs)>;
 
   /**
    * Open a capture handle on the given network interface.
@@ -40,6 +53,17 @@ public:
   virtual void setPacketCallback(PacketCallback callback) = 0;
   /** Register the callback invoked on capture errors. */
   virtual void setErrorCallback(ErrorCallback callback) = 0;
+
+  /** Register a callback for raw packet data on the capture thread.
+   *
+   * Unlike PacketCallback (which fires on the main thread with parsed
+   * metadata), this callback fires on the capture thread with the raw
+   * packet bytes and timestamp.  Use for live flow extraction where
+   * minimal latency and access to the raw frame are required.
+   *
+   * Pass nullptr to disable.
+   */
+  virtual void setRawPacketCallback(RawPacketCallback callback) = 0;
 
   /** Enumerate available network interfaces. */
   [[nodiscard]] virtual std::vector<std::string> listInterfaces() = 0;

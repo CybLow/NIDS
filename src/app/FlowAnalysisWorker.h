@@ -49,9 +49,10 @@ struct FlowWorkItem {
 class FlowAnalysisWorker {
 public:
     /// Callback invoked on the worker thread for each processed flow.
-    /// Parameters: (flow index, detection result).
+    /// Parameters: (flow index, detection result, flow metadata).
     using ResultCallback =
-        std::function<void(std::size_t, nids::core::DetectionResult)>;
+        std::function<void(std::size_t, nids::core::DetectionResult,
+                           nids::core::FlowInfo)>;
 
     /**
      * Construct the worker with its required dependencies.

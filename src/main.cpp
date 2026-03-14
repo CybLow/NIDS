@@ -1,6 +1,7 @@
 #include "app/AnalysisService.h"
 #include "app/CaptureController.h"
 #include "app/HybridDetectionService.h"
+#include "app/LiveDetectionPipeline.h"
 #include "core/services/Configuration.h"
 #include "infra/analysis/AnalyzerFactory.h"
 #include "infra/analysis/FeatureNormalizer.h"
@@ -114,9 +115,34 @@ int main(int argc, char *argv[]) {
   // Wire hybrid detection into the analysis pipeline
   analysisService->setHybridDetection(hybridService.get());
 
+  // -- Live Detection Pipeline --
+  // Uses a separate flow extractor instance so live detection and
+  // post-capture analysis never share mutable state.
+  auto liveFlowExtractor = std::make_unique<nids::infra::NativeFlowExtractor>();
+  auto liveNormalizer = std::make_unique<nids::infra::FeatureNormalizer>();
+  if (!liveNormalizer->loadMetadata(config.modelMetadataPath().string())) {
+    spdlog::warn("Live detection normalizer metadata not loaded — "
+                 "live predictions may be inaccurate");
+  }
+
+  auto liveAnalyzer = nids::infra::createAnalyzer();
+  if (!liveAnalyzer->loadModel(config.modelPath().string())) {
+    spdlog::warn("Live detection ML model not loaded — "
+                 "live analysis will be unavailable");
+  }
+
+  // CaptureController's session is used for result storage.
+  // The pipeline is wired to the controller after MainWindow construction
+  // (controller is moved into MainWindow, so we wire it before the move).
+  auto pipeline = std::make_unique<nids::app::LiveDetectionPipeline>(
+      *liveFlowExtractor, *liveAnalyzer, *liveNormalizer,
+      controller->session());
+  pipeline->setHybridDetection(hybridService.get());
+  controller->enableLiveDetection(pipeline.get());
+
   nids::ui::MainWindow window(std::move(controller), std::move(analysisService),
-                              hybridService.get(), threatIntel.get(),
-                              ruleEngine.get());
+                               hybridService.get(), threatIntel.get(),
+                               ruleEngine.get());
   window.show();
 
   return QApplication::exec();

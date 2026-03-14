@@ -238,6 +238,42 @@ documented in ADR-004.
 - Added 14 live mode unit tests (329 total)
 - All 329 unit + 31 Qt + 24 stress tests pass
 
+### 8.7 — ~~Wire live detection into capture pipeline~~ [DONE]
+
+- **Files**: `IPacketCapture.h`, `PcapCapture.h/.cpp`, `CaptureController.h/.cpp`,
+  `LiveDetectionPipeline.h/.cpp`, `FlowAnalysisWorker.h/.cpp`,
+  `AnalysisService.cpp`, `MainWindow.cpp`, `main.cpp`,
+  `src/app/CMakeLists.txt`, `test_CaptureController.cpp`, `test_Pipeline.cpp`,
+  `test_FlowAnalysisWorker.cpp`
+- Completed: `RawPacketCallback` on `IPacketCapture` interface — fires on the
+  capture thread with raw packet bytes + timestamp for live flow extraction
+- Completed: `PcapCaptureWorker` fires the callback before parsing `PacketInfo`,
+  thread-safe set/read via mutex
+- Completed: `LiveDetectionPipeline` (new, `app/`) — pure C++23 orchestrator:
+  - Manages `BoundedQueue<FlowWorkItem>` + `FlowAnalysisWorker` lifecycle
+  - `feedPacket()` delegates to `IFlowExtractor::processPacket()`
+  - Uses `tryPush()` (non-blocking) to avoid stalling PcapPlusPlus thread;
+    drops flows under backpressure with logged warning
+  - `start()` resets extractor, creates queue + worker
+  - `stop()` finalizes remaining flows, drains queue, joins worker
+- Completed: `CaptureController` gains `enableLiveDetection()` / `disableLiveDetection()`
+  - On `startCapture()`: starts pipeline, registers raw packet callback
+  - On `stopCapture()`: clears callback, finalizes + stops pipeline
+  - `liveFlowDetected(DetectionResult, FlowInfo)` signal bridges worker
+    thread → main thread via `QMetaObject::invokeMethod`
+- Completed: `FlowAnalysisWorker::ResultCallback` extended to pass `FlowInfo`
+- Completed: `main.cpp` creates separate `NativeFlowExtractor`, `FeatureNormalizer`,
+  and `IPacketAnalyzer` instances for the live pipeline (no shared mutable state
+  with `AnalysisService`)
+- Completed: `MainWindow` connects `liveFlowDetected` → `FlowTableModel::addFlowResult()`
+  for incremental row insertion during capture; skips post-capture analysis prompt
+  when live detection was active
+- Updated 2 mock `IPacketCapture` implementations + 1 `FlowAnalysisWorker` test
+- Thread model: PcapPlusPlus thread → `feedPacket()` → flow extractor →
+  `BoundedQueue` → `FlowAnalysisWorker` (std::jthread) → `ResultCallback` →
+  `QMetaObject::invokeMethod` → main thread → `FlowTableModel`
+- All 329 unit + 31 Qt + 24 stress tests pass
+
 ---
 
 ## Phase 9: gRPC Server and CLI Client
