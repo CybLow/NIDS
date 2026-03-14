@@ -98,12 +98,9 @@ TEST_F(ServiceRegistryTest, knownPorts_infraPorts) {
 // ── resolveApplication exception cascades ────────────────────────────
 
 TEST_F(ServiceRegistryTest, resolveApplication_invalidDstPort_fallsToSrc) {
-  // filterDstPort is invalid, filterSrcPort is valid
+  // filterDstPort "abc" is invalid, filterSrcPort "80" resolves to HTTP
   auto result = registry.resolveApplication("80", "abc", "");
-  // "abc" throws in stoi → catch → return "Unknown"
-  // BUT the try block tries filterDstPort first; if it throws, the catch
-  // returns "Unknown" without trying the remaining ports
-  EXPECT_EQ(result, "Unknown");
+  EXPECT_EQ(result, "HTTP");
 }
 
 TEST_F(ServiceRegistryTest, resolveApplication_emptyDst_validSrc_unknownPort) {

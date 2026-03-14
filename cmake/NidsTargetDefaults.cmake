@@ -37,6 +37,10 @@ function(nids_set_target_defaults target)
             /utf-8       # Source and execution character set
             /Zc:__cplusplus  # Report correct __cplusplus value
         )
+        target_compile_definitions(${target} PRIVATE
+            NOMINMAX             # Prevent windows.h min/max macros
+            WIN32_LEAN_AND_MEAN  # Exclude rarely-used Windows headers
+        )
     endif()
 
     # ── Sanitizers (Debug only, GCC/Clang, disabled when coverage is on) ─
