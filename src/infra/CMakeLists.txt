@@ -11,6 +11,7 @@ add_library(nids_infra STATIC
     threat/ThreatIntelProvider.cpp
     rules/HeuristicRuleEngine.cpp
     platform/SocketInit.cpp
+    platform/DelayLoadHook.cpp
 )
 
 target_link_libraries(nids_infra
