@@ -71,59 +71,100 @@ void AnalysisService::setHybridDetection(HybridDetectionService* service) noexce
 }
 
 void AnalysisService::analyzeCapture(const std::string& pcapPath,
-                                      nids::core::CaptureSession& session) {
+                                       nids::core::CaptureSession& session) {
     emit analysisStarted();
 
-    spdlog::info("Extracting flow features from '{}'", pcapPath);
+    spdlog::info("Extracting and analyzing flow features from '{}' (streaming mode)",
+                 pcapPath);
+    spdlog::info("Hybrid detection: {}",
+                 hybridService_ != nullptr ? "enabled" : "disabled");
 
-    auto allFeatures = extractor_->extractFeatures(pcapPath);
-    if (allFeatures.empty()) {
-        spdlog::warn("No flows extracted from '{}' (empty capture or extraction failure)", pcapPath);
-        // Not necessarily an error -- empty captures produce zero flows.
-        // Only emit analysisError if the pcap could not be opened at all,
-        // but extractFeatures() returning empty is ambiguous. Log and proceed.
-    }
+    // Counter for assigning sequential indices to completed flows.
+    std::size_t flowIndex = 0;
 
-    const auto& metadata = extractor_->flowMetadata();
-    auto total = static_cast<int>(allFeatures.size());
+    // Set up streaming callback: each completed flow is immediately normalized,
+    // classified, and stored in the session — no batch accumulation needed.
+    extractor_->setFlowCompletionCallback(
+        [this, &session, &flowIndex](std::vector<float>&& features,
+                                     core::FlowInfo&& info) {
+            auto idx = flowIndex++;
+            auto normalized = normalizer_->normalize(features);
 
-    spdlog::info("Analyzing {} flows (hybrid detection: {})",
-                 total, hybridService_ != nullptr ? "enabled" : "disabled");
-
-    for (int i = 0; i < total; ++i) {
-        auto idx = static_cast<std::size_t>(i);
-
-        // Normalize features before prediction to match training data distribution.
-        // If normalization metadata was not loaded, the normalizer returns raw features
-        // with a warning (graceful degradation).
-        auto normalized = normalizer_->normalize(allFeatures[idx]);
-
-        if (hybridService_ != nullptr) {
-            // Full hybrid detection: ML + TI + heuristic rules
-            auto mlResult = analyzer_->predictWithConfidence(normalized);
-
-            // Build flow metadata for heuristic rules (if available)
-            if (idx < metadata.size()) {
-                auto flowMeta = toFlowMetadata(metadata[idx]);
+            if (hybridService_ != nullptr) {
+                auto mlResult = analyzer_->predictWithConfidence(normalized);
+                auto flowMeta = toFlowMetadata(info);
                 auto detection = hybridService_->evaluate(
-                    mlResult, metadata[idx].srcIp, metadata[idx].dstIp, flowMeta);
+                    mlResult, info.srcIp, info.dstIp, flowMeta);
                 session.setDetectionResult(idx, detection);
             } else {
-                // No metadata available -- ML + TI only
-                auto detection = hybridService_->evaluate(mlResult, "", "");
-                session.setDetectionResult(idx, detection);
+                auto attackType = analyzer_->predict(normalized);
+                core::DetectionResult mlOnlyResult;
+                mlOnlyResult.finalVerdict = attackType;
+                mlOnlyResult.detectionSource = core::DetectionSource::MlOnly;
+                session.setDetectionResult(idx, mlOnlyResult);
             }
-        } else {
-            // ML-only fallback (no hybrid service configured)
-            auto attackType = analyzer_->predict(normalized);
-            core::DetectionResult mlOnlyResult;
-            mlOnlyResult.finalVerdict = attackType;
-            mlOnlyResult.detectionSource = core::DetectionSource::MlOnly;
-            session.setDetectionResult(idx, mlOnlyResult);
+
+            emit analysisProgress(static_cast<int>(idx + 1), 0);
+        });
+
+    // extractFeatures() fires the callback for each completed flow during
+    // processing.  The returned vectors serve as a fallback for extractors that
+    // do not invoke the callback (e.g., mocks or alternative implementations).
+    auto allFeatures = extractor_->extractFeatures(pcapPath);
+
+    // Clear callback to release captured references.
+    extractor_->setFlowCompletionCallback(nullptr);
+
+    if (allFeatures.empty() && flowIndex == 0) {
+        spdlog::warn("No flows extracted from '{}' (empty capture or extraction failure)",
+                     pcapPath);
+    }
+
+    // Fallback: if the extractor did not invoke the callback (flowIndex == 0),
+    // process all flows from the batch result (backward-compatible path).
+    bool usedBatchFallback = false;
+    if (flowIndex == 0 && !allFeatures.empty()) {
+        usedBatchFallback = true;
+        spdlog::debug("Streaming callback was not invoked — falling back to batch analysis");
+        const auto& metadata = extractor_->flowMetadata();
+        auto total = static_cast<int>(allFeatures.size());
+
+        for (int i = 0; i < total; ++i) {
+            auto idx = static_cast<std::size_t>(i);
+            auto normalized = normalizer_->normalize(allFeatures[idx]);
+
+            if (hybridService_ != nullptr) {
+                auto mlResult = analyzer_->predictWithConfidence(normalized);
+                if (idx < metadata.size()) {
+                    auto flowMeta = toFlowMetadata(metadata[idx]);
+                    auto detection = hybridService_->evaluate(
+                        mlResult, metadata[idx].srcIp, metadata[idx].dstIp, flowMeta);
+                    session.setDetectionResult(idx, detection);
+                } else {
+                    auto detection = hybridService_->evaluate(mlResult, "", "");
+                    session.setDetectionResult(idx, detection);
+                }
+            } else {
+                auto attackType = analyzer_->predict(normalized);
+                core::DetectionResult mlOnlyResult;
+                mlOnlyResult.finalVerdict = attackType;
+                mlOnlyResult.detectionSource = core::DetectionSource::MlOnly;
+                session.setDetectionResult(idx, mlOnlyResult);
+            }
+
+            emit analysisProgress(i + 1, total);
         }
 
-        // cppcheck-suppress shadowFunction  // Qt signal emission, not a shadowing variable
-        emit analysisProgress(i + 1, total);
+        flowIndex = allFeatures.size();
+    }
+
+    auto total = static_cast<int>(flowIndex);
+
+    // For the streaming path, emit a final progress signal with the correct total
+    // now that all flows have been processed.  The batch fallback already emits
+    // correct (current, total) pairs, so skip the extra signal to avoid duplicates.
+    if (!usedBatchFallback && total > 0) {
+        emit analysisProgress(total, total);
     }
 
     spdlog::info("Analysis complete: {} flows processed", total);

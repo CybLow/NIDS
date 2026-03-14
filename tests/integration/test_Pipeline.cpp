@@ -51,6 +51,8 @@ public:
         .WillByDefault(::testing::ReturnRef(emptyMetadata_));
   }
 
+  void setFlowCompletionCallback(FlowCompletionCallback /*cb*/) override {}
+
   MOCK_METHOD(std::vector<std::vector<float>>, extractFeatures,
               (const std::string &), (override));
   MOCK_METHOD(const std::vector<FlowInfo> &, flowMetadata, (),

@@ -285,6 +285,11 @@ NativeFlowExtractor::NativeFlowExtractor()
     : flowTimeoutUs_(core::Configuration::instance().flowTimeoutUs()),
       idleThresholdUs_(core::Configuration::instance().idleThresholdUs()) {}
 
+void NativeFlowExtractor::setFlowCompletionCallback(
+    core::IFlowExtractor::FlowCompletionCallback cb) {
+  flowCompletionCallback_ = std::move(cb);
+}
+
 void NativeFlowExtractor::setFlowTimeout(std::int64_t timeoutUs) {
   flowTimeoutUs_ = timeoutUs;
 }
@@ -440,6 +445,12 @@ void NativeFlowExtractor::finalizeBulks() {
     if (stats.curBwdBulkPkts >= 2) {
       stats.bwdBulkPktsAcc.update(stats.curBwdBulkPkts);
       stats.bwdBulkBytesAcc.update(stats.curBwdBulkBytes);
+    }
+
+    // Fire callback for remaining active flows (end-of-capture finalization).
+    if (flowCompletionCallback_) {
+      flowCompletionCallback_(stats.toFeatureVector(key.dstPort),
+                              buildFlowInfo(key, stats));
     }
   }
 }
@@ -761,6 +772,12 @@ void NativeFlowExtractor::completeFlow(const FlowKey &key, FlowStats &stats) {
     stats.bwdBulkPktsAcc.update(stats.curBwdBulkPkts);
     stats.bwdBulkBytesAcc.update(stats.curBwdBulkBytes);
   }
+
+  if (flowCompletionCallback_) {
+    flowCompletionCallback_(stats.toFeatureVector(key.dstPort),
+                            buildFlowInfo(key, stats));
+  }
+
   completedFlows_.emplace_back(key, std::move(stats));
 }
 

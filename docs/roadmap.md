@@ -184,13 +184,19 @@ documented in ADR-004.
 - `updateActiveIdle()` now accepts idle threshold as parameter
 - Added 4 sweep-specific unit tests (284 total)
 
-### 8.4 — Stream completed flows to ML analyzer
+### 8.4 — ~~Stream completed flows to ML analyzer~~ [DONE]
 
-- **Why**: Currently all flows are accumulated in memory and analyzed sequentially
-  (`AnalysisService.cpp`). The CSV round-trip has been eliminated — features are
-  returned in-memory as `std::vector<std::vector<float>>`.
-- Next step: when a flow completes (timeout or FIN/RST), immediately normalize features
-  and run inference (true streaming, not batch-after-capture)
+- **Files**: `IFlowExtractor.h`, `NativeFlowExtractor.h/.cpp`, `AnalysisService.cpp`,
+  `test_NativeFlowExtractor.cpp`, `test_AnalysisService.cpp`, `test_Pipeline.cpp`
+- Completed: `FlowCompletionCallback` in `IFlowExtractor` fires for each completed
+  flow (FIN/RST, max-packets, timeout sweep, end-of-capture)
+- `NativeFlowExtractor::completeFlow()` and `finalizeBulks()` invoke the callback
+  with the 77-float feature vector and `FlowInfo` metadata
+- `AnalysisService::analyzeCapture()` uses the streaming callback to normalize,
+  predict, and store results as flows complete — no batch accumulation
+- Backward-compatible batch fallback for extractors that don't invoke the callback
+- Added 6 callback unit tests (290 total), updated 2 mock extractors
+- All 290 unit + 31 Qt + 24 stress tests pass
 
 ### 8.5 — Producer-consumer threading
 

@@ -245,6 +245,9 @@ public:
   /** Construct the extractor with timeouts from Configuration::instance(). */
   NativeFlowExtractor();
 
+  /// Register a callback for completed flows.  Pass nullptr to disable.
+  void setFlowCompletionCallback(core::IFlowExtractor::FlowCompletionCallback cb) override;
+
   /**
    * Override the flow inactivity timeout.
    * @param timeoutUs  Timeout in microseconds; flows idle longer than this are
@@ -275,6 +278,7 @@ private:
   std::unordered_map<FlowKey, FlowStats, FlowKeyHash> flows_;
   std::vector<std::pair<FlowKey, FlowStats>> completedFlows_;
   std::vector<core::FlowInfo> flowMetadata_; ///< Populated by extractFeatures()
+  core::IFlowExtractor::FlowCompletionCallback flowCompletionCallback_;
   std::int64_t flowTimeoutUs_;      ///< Flow inactivity timeout (from Configuration).
   std::int64_t idleThresholdUs_;    ///< Idle vs active period threshold (from Configuration).
   std::int64_t lastSweepTimeUs_ = 0; ///< Timestamp of the last periodic sweep.
