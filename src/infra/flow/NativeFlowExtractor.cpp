@@ -413,16 +413,14 @@ NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
     return {};
   }
 
-  flows_.clear();
-  completedFlows_.clear();
-  lastSweepTimeUs_ = 0;
+  reset();
   pcpp::RawPacket rawPacket;
 
   while (reader.getNextPacket(rawPacket)) {
     auto ts = rawPacket.getPacketTimeStamp();
     auto tsUs =
         std::int64_t{ts.tv_sec} * 1'000'000 + std::int64_t{ts.tv_nsec} / 1'000;
-    processPacket(rawPacket, tsUs);
+    processPacketInternal(rawPacket, tsUs);
 
     // Periodic sweep: expire idle flows every kSweepIntervalUs.
     if (tsUs - lastSweepTimeUs_ >= kSweepIntervalUs) {
@@ -434,6 +432,42 @@ NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
   finalizeBulks();
   buildFlowMetadata();
   return buildFeatureVectors();
+}
+
+void NativeFlowExtractor::processPacket(const std::uint8_t *data,
+                                        std::size_t length,
+                                        std::int64_t timestampUs) {
+  // Construct a timeval for PcapPlusPlus RawPacket.
+  timespec ts{};
+  ts.tv_sec = static_cast<time_t>(timestampUs / 1'000'000);
+  ts.tv_nsec = static_cast<long>((timestampUs % 1'000'000) * 1'000);
+
+  // RawPacket with deleteRawDataOnDestruct=false: we do not own the data.
+  // The const_cast is required because PcapPlusPlus RawPacket stores a
+  // non-const pointer internally, but does not modify the data when
+  // deleteRawDataOnDestruct is false.
+  pcpp::RawPacket rawPacket(
+      const_cast<std::uint8_t *>(data),  // NOLINT(cppcoreguidelines-pro-type-const-cast)
+      static_cast<int>(length), ts, false);
+
+  processPacketInternal(rawPacket, timestampUs);
+
+  // Periodic sweep: expire idle flows every kSweepIntervalUs.
+  if (timestampUs - lastSweepTimeUs_ >= kSweepIntervalUs) {
+    sweepExpiredFlows(timestampUs);
+    lastSweepTimeUs_ = timestampUs;
+  }
+}
+
+void NativeFlowExtractor::finalizeAllFlows() {
+  finalizeBulks();
+}
+
+void NativeFlowExtractor::reset() {
+  flows_.clear();
+  completedFlows_.clear();
+  flowMetadata_.clear();
+  lastSweepTimeUs_ = 0;
 }
 
 void NativeFlowExtractor::finalizeBulks() {
@@ -530,8 +564,8 @@ bool NativeFlowExtractor::parsePacketHeaders(const pcpp::Packet &packet,
   return true;
 }
 
-void NativeFlowExtractor::processPacket(pcpp::RawPacket &rawPacket,
-                                        std::int64_t timestampUs) {
+void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
+                                                std::int64_t timestampUs) {
   pcpp::Packet parsedPacket(&rawPacket);
   ParsedPacket pkt;
   if (!parsePacketHeaders(parsedPacket, pkt))

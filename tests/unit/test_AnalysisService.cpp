@@ -38,6 +38,10 @@ public:
   }
 
   void setFlowCompletionCallback(FlowCompletionCallback /*cb*/) override {}
+  void processPacket(const std::uint8_t* /*data*/, std::size_t /*length*/,
+                     std::int64_t /*timestampUs*/) override {}
+  void finalizeAllFlows() override {}
+  void reset() override {}
 
   MOCK_METHOD(std::vector<std::vector<float>>, extractFeatures,
               (const std::string &), (override));

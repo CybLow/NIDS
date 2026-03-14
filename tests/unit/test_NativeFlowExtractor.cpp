@@ -1683,3 +1683,310 @@ TEST(NativeFlowExtractorTest, ExtractFeatures_tcpDataOffsetBelowMin_rejected) {
   EXPECT_EQ(features.size(), 0u);
   fs::remove(path);
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// ── Live packet processing API (Phase 8.6) ──────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST(NativeFlowExtractor, ProcessPacket_singleTcpPacket) {
+  NativeFlowExtractor extractor;
+  auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
+
+  std::vector<std::vector<float>> cbFeatures;
+  std::vector<nids::core::FlowInfo> cbMeta;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&f, nids::core::FlowInfo &&info) {
+        cbFeatures.push_back(std::move(f));
+        cbMeta.push_back(std::move(info));
+      });
+
+  extractor.processPacket(pkt.data(), pkt.size(), 1'000'000);
+
+  // Single SYN packet — no FIN/RST, flow stays active, no callback yet
+  EXPECT_EQ(cbFeatures.size(), 0u);
+
+  // Finalize to flush
+  extractor.finalizeAllFlows();
+  EXPECT_EQ(cbFeatures.size(), 1u);
+  EXPECT_EQ(cbFeatures[0].size(), static_cast<std::size_t>(kFlowFeatureCount));
+  EXPECT_EQ(cbMeta[0].srcIp, "10.0.0.1");
+  EXPECT_EQ(cbMeta[0].dstIp, "10.0.0.2");
+  EXPECT_EQ(cbMeta[0].dstPort, 80);
+  EXPECT_EQ(cbMeta[0].protocol, 6);
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_tcpFinCompletesFlow) {
+  NativeFlowExtractor extractor;
+  auto syn = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
+  auto fin = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x11); // FIN+ACK
+
+  int cbCount = 0;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
+
+  extractor.processPacket(syn.data(), syn.size(), 1'000'000);
+  EXPECT_EQ(cbCount, 0);
+
+  extractor.processPacket(fin.data(), fin.size(), 2'000'000);
+  EXPECT_EQ(cbCount, 1); // FIN triggers immediate completion
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_tcpRstCompletesFlow) {
+  NativeFlowExtractor extractor;
+  auto syn = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
+  auto rst = buildTcpPacket("10.0.0.2", "10.0.0.1", 80, 5000, 0x04); // RST
+
+  int cbCount = 0;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
+
+  extractor.processPacket(syn.data(), syn.size(), 1'000'000);
+  extractor.processPacket(rst.data(), rst.size(), 2'000'000);
+  EXPECT_EQ(cbCount, 1);
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_bidirectionalFlow) {
+  NativeFlowExtractor extractor;
+  auto fwd = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
+  auto bwd = buildTcpPacket("10.0.0.2", "10.0.0.1", 80, 5000, 0x12); // SYN+ACK
+
+  std::vector<nids::core::FlowInfo> cbMeta;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
+        cbMeta.push_back(std::move(info));
+      });
+
+  extractor.processPacket(fwd.data(), fwd.size(), 1'000'000);
+  extractor.processPacket(bwd.data(), bwd.size(), 2'000'000);
+
+  // No completion yet (no FIN/RST)
+  EXPECT_EQ(cbMeta.size(), 0u);
+
+  extractor.finalizeAllFlows();
+  ASSERT_EQ(cbMeta.size(), 1u);
+  EXPECT_EQ(cbMeta[0].totalFwdPackets, 1u);
+  EXPECT_EQ(cbMeta[0].totalBwdPackets, 1u);
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_udpPacket) {
+  NativeFlowExtractor extractor;
+  auto pkt = buildUdpPacket("10.0.0.1", "10.0.0.2", 5000, 53);
+
+  std::vector<nids::core::FlowInfo> cbMeta;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
+        cbMeta.push_back(std::move(info));
+      });
+
+  extractor.processPacket(pkt.data(), pkt.size(), 1'000'000);
+  extractor.finalizeAllFlows();
+
+  ASSERT_EQ(cbMeta.size(), 1u);
+  EXPECT_EQ(cbMeta[0].protocol, 17);
+  EXPECT_EQ(cbMeta[0].dstPort, 53);
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_icmpPacket) {
+  NativeFlowExtractor extractor;
+  auto pkt = buildIcmpPacket("10.0.0.1", "10.0.0.2", 8, 0);
+
+  std::vector<nids::core::FlowInfo> cbMeta;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
+        cbMeta.push_back(std::move(info));
+      });
+
+  extractor.processPacket(pkt.data(), pkt.size(), 1'000'000);
+  extractor.finalizeAllFlows();
+
+  ASSERT_EQ(cbMeta.size(), 1u);
+  EXPECT_EQ(cbMeta[0].protocol, 1);
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_nonIpv4Skipped) {
+  NativeFlowExtractor extractor;
+
+  // ARP packet — should be silently skipped
+  std::vector<std::uint8_t> arpPkt(60, 0);
+  arpPkt[12] = 0x08;
+  arpPkt[13] = 0x06; // ARP
+
+  int cbCount = 0;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
+
+  extractor.processPacket(arpPkt.data(), arpPkt.size(), 1'000'000);
+  extractor.finalizeAllFlows();
+
+  EXPECT_EQ(cbCount, 0);
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_maxFlowSplitting) {
+  NativeFlowExtractor extractor;
+
+  int cbCount = 0;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
+
+  // Feed 250 packets (> kMaxFlowPackets=200)
+  for (std::uint32_t i = 0; i < 250; ++i) {
+    auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
+    extractor.processPacket(pkt.data(), pkt.size(),
+                            static_cast<std::int64_t>(i) * 1'000);
+  }
+
+  // At least one completion at packet 200 (max-flow split)
+  EXPECT_GE(cbCount, 1);
+
+  // Finalize remaining
+  extractor.finalizeAllFlows();
+  EXPECT_GE(cbCount, 2); // 200 + 50 = 2 flows
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_periodicSweep) {
+  NativeFlowExtractor extractor;
+  extractor.setFlowTimeout(10'000'000); // 10-second timeout
+
+  int cbCount = 0;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
+
+  // Flow A at t=0
+  auto pktA = buildUdpPacket("10.0.0.1", "10.0.0.2", 5000, 53);
+  extractor.processPacket(pktA.data(), pktA.size(), 0);
+
+  // Flow B at t=31s — triggers periodic sweep (kSweepIntervalUs = 30s)
+  // which should expire Flow A (idle > 10s timeout)
+  auto pktB = buildUdpPacket("10.0.0.3", "10.0.0.4", 6000, 80);
+  extractor.processPacket(pktB.data(), pktB.size(), 31'000'000);
+
+  // Flow A should have been swept and callback fired
+  EXPECT_GE(cbCount, 1);
+
+  extractor.finalizeAllFlows();
+  EXPECT_EQ(cbCount, 2); // A (swept) + B (finalized)
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_featureVectorMatchesBatchMode) {
+  SKIP_IF_NO_PCAP();
+
+  // Build the same packets for both modes
+  auto syn = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
+  auto ack = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
+  auto bwd = buildTcpPacket("10.0.0.2", "10.0.0.1", 80, 5000, 0x12);
+
+  // Batch mode: write pcap and extract
+  auto path = writePcapFile("nfe_live_vs_batch.pcap", {
+                                                          {syn, 1, 0},
+                                                          {ack, 1, 500'000},
+                                                          {bwd, 2, 0},
+                                                      });
+  NativeFlowExtractor batchExtractor;
+  auto batchFeatures = batchExtractor.extractFeatures(path);
+  fs::remove(path);
+
+  // Live mode: feed same packets individually
+  NativeFlowExtractor liveExtractor;
+  std::vector<std::vector<float>> liveFeatures;
+  liveExtractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&f, nids::core::FlowInfo &&) {
+        liveFeatures.push_back(std::move(f));
+      });
+
+  liveExtractor.processPacket(syn.data(), syn.size(), 1'000'000);
+  liveExtractor.processPacket(ack.data(), ack.size(), 1'500'000);
+  liveExtractor.processPacket(bwd.data(), bwd.size(), 2'000'000);
+  liveExtractor.finalizeAllFlows();
+
+  // Both modes should produce the same number of flows
+  ASSERT_EQ(batchFeatures.size(), liveFeatures.size());
+  ASSERT_EQ(batchFeatures.size(), 1u);
+
+  // Feature vectors should match exactly
+  ASSERT_EQ(batchFeatures[0].size(), liveFeatures[0].size());
+  for (std::size_t i = 0; i < batchFeatures[0].size(); ++i) {
+    EXPECT_FLOAT_EQ(batchFeatures[0][i], liveFeatures[0][i])
+        << "Feature " << i << " differs between batch and live mode";
+  }
+}
+
+TEST(NativeFlowExtractor, FinalizeAllFlows_multipleActiveFlows) {
+  NativeFlowExtractor extractor;
+
+  int cbCount = 0;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
+
+  // Create 3 distinct active flows
+  auto pktA = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
+  auto pktB = buildUdpPacket("10.0.0.3", "10.0.0.4", 6000, 53);
+  auto pktC = buildIcmpPacket("10.0.0.5", "10.0.0.6", 8, 0);
+
+  extractor.processPacket(pktA.data(), pktA.size(), 1'000'000);
+  extractor.processPacket(pktB.data(), pktB.size(), 2'000'000);
+  extractor.processPacket(pktC.data(), pktC.size(), 3'000'000);
+
+  EXPECT_EQ(cbCount, 0); // No completions yet
+
+  extractor.finalizeAllFlows();
+  EXPECT_EQ(cbCount, 3); // All 3 flushed
+}
+
+TEST(NativeFlowExtractor, FinalizeAllFlows_noCallbackSet_noCrash) {
+  NativeFlowExtractor extractor;
+
+  auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
+  extractor.processPacket(pkt.data(), pkt.size(), 1'000'000);
+
+  // No callback set — finalizeAllFlows should not crash
+  extractor.finalizeAllFlows();
+}
+
+TEST(NativeFlowExtractor, Reset_clearsAllState) {
+  NativeFlowExtractor extractor;
+
+  int cbCount = 0;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
+
+  // Build up some state
+  auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
+  extractor.processPacket(pkt.data(), pkt.size(), 1'000'000);
+
+  // Reset before finalizing
+  extractor.reset();
+
+  // Now finalize — should produce nothing (state was cleared)
+  extractor.finalizeAllFlows();
+  EXPECT_EQ(cbCount, 0);
+}
+
+TEST(NativeFlowExtractor, Reset_allowsNewSession) {
+  NativeFlowExtractor extractor;
+
+  std::vector<nids::core::FlowInfo> cbMeta;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
+        cbMeta.push_back(std::move(info));
+      });
+
+  // First session
+  auto pkt1 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
+  extractor.processPacket(pkt1.data(), pkt1.size(), 1'000'000);
+  extractor.finalizeAllFlows();
+  ASSERT_EQ(cbMeta.size(), 1u);
+  EXPECT_EQ(cbMeta[0].srcIp, "10.0.0.1");
+
+  // Reset and start second session
+  cbMeta.clear();
+  extractor.reset();
+
+  auto pkt2 = buildUdpPacket("192.168.1.1", "192.168.1.2", 8080, 443);
+  extractor.processPacket(pkt2.data(), pkt2.size(), 5'000'000);
+  extractor.finalizeAllFlows();
+
+  ASSERT_EQ(cbMeta.size(), 1u);
+  EXPECT_EQ(cbMeta[0].srcIp, "192.168.1.1");
+  EXPECT_EQ(cbMeta[0].dstPort, 443);
+  EXPECT_EQ(cbMeta[0].protocol, 17);
+}

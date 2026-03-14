@@ -1,5 +1,7 @@
 #include "app/AnalysisService.h"
+#include "app/FlowAnalysisWorker.h"
 #include "app/HybridDetectionService.h"
+#include "core/services/BoundedQueue.h"
 #include "core/services/Configuration.h"
 #include "core/services/IRuleEngine.h"
 
@@ -9,7 +11,13 @@ namespace nids::app {
 
 namespace {
 
+/// Queue capacity for the producer-consumer pipeline.
+/// Sized to absorb extraction bursts while bounding memory usage.
+/// 256 items * ~400 bytes/item ≈ 100 KB.
+constexpr std::size_t kFlowQueueCapacity = 256;
+
 /// Convert a FlowInfo (from the extractor) to a FlowMetadata (for heuristic rules).
+/// Note: also duplicated in FlowAnalysisWorker.cpp for the streaming path.
 nids::core::FlowMetadata toFlowMetadata(const nids::core::FlowInfo& info) {
     nids::core::FlowMetadata meta;
     meta.srcIp = info.srcIp;
@@ -74,56 +82,56 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
                                        nids::core::CaptureSession& session) {
     emit analysisStarted();
 
-    spdlog::info("Extracting and analyzing flow features from '{}' (streaming mode)",
+    spdlog::info("Extracting and analyzing flow features from '{}' (pipelined mode)",
                  pcapPath);
     spdlog::info("Hybrid detection: {}",
                  hybridService_ != nullptr ? "enabled" : "disabled");
 
-    // Counter for assigning sequential indices to completed flows.
-    std::size_t flowIndex = 0;
+    // ── Producer-consumer pipeline ──────────────────────────────────
+    // Extractor thread (this thread) → BoundedQueue → FlowAnalysisWorker
+    // (std::jthread).  Extraction and ML inference run concurrently:
+    // the extractor is not blocked by inference, and the queue provides
+    // backpressure when the worker falls behind.
 
-    // Set up streaming callback: each completed flow is immediately normalized,
-    // classified, and stored in the session — no batch accumulation needed.
+    core::BoundedQueue<FlowWorkItem> queue(kFlowQueueCapacity);
+
+    FlowAnalysisWorker worker(queue, *analyzer_, *normalizer_, session);
+    worker.setHybridDetection(hybridService_);
+    worker.setResultCallback(
+        [this](std::size_t index, core::DetectionResult /*result*/) {
+            emit analysisProgress(static_cast<int>(index + 1), 0);
+        });
+    worker.start();
+
+    // Producer callback: each completed flow is pushed into the queue.
     extractor_->setFlowCompletionCallback(
-        [this, &session, &flowIndex](std::vector<float>&& features,
-                                     core::FlowInfo&& info) {
-            auto idx = flowIndex++;
-            auto normalized = normalizer_->normalize(features);
-
-            if (hybridService_ != nullptr) {
-                auto mlResult = analyzer_->predictWithConfidence(normalized);
-                auto flowMeta = toFlowMetadata(info);
-                auto detection = hybridService_->evaluate(
-                    mlResult, info.srcIp, info.dstIp, flowMeta);
-                session.setDetectionResult(idx, detection);
-            } else {
-                auto attackType = analyzer_->predict(normalized);
-                core::DetectionResult mlOnlyResult;
-                mlOnlyResult.finalVerdict = attackType;
-                mlOnlyResult.detectionSource = core::DetectionSource::MlOnly;
-                session.setDetectionResult(idx, mlOnlyResult);
-            }
-
-            emit analysisProgress(static_cast<int>(idx + 1), 0);
+        [&queue](std::vector<float>&& features, core::FlowInfo&& info) {
+            queue.push(FlowWorkItem{std::move(features), std::move(info)});
         });
 
-    // extractFeatures() fires the callback for each completed flow during
-    // processing.  The returned vectors serve as a fallback for extractors that
-    // do not invoke the callback (e.g., mocks or alternative implementations).
+    // extractFeatures() runs synchronously on this thread, firing the
+    // callback for each completed flow.  The returned vectors serve as
+    // a fallback for extractors that don't invoke the callback (mocks).
     auto allFeatures = extractor_->extractFeatures(pcapPath);
 
-    // Clear callback to release captured references.
+    // Signal end-of-stream and wait for the worker to drain the queue.
+    queue.close();
     extractor_->setFlowCompletionCallback(nullptr);
+    worker.stop();
 
-    if (allFeatures.empty() && flowIndex == 0) {
+    auto streamedCount = worker.processedCount();
+
+    if (allFeatures.empty() && streamedCount == 0) {
         spdlog::warn("No flows extracted from '{}' (empty capture or extraction failure)",
                      pcapPath);
     }
 
-    // Fallback: if the extractor did not invoke the callback (flowIndex == 0),
-    // process all flows from the batch result (backward-compatible path).
+    // ── Batch fallback ──────────────────────────────────────────────
+    // If the extractor did not invoke the callback (streamedCount == 0),
+    // process all flows from the batch result (backward-compatible path
+    // for mocks and alternative extractor implementations).
     bool usedBatchFallback = false;
-    if (flowIndex == 0 && !allFeatures.empty()) {
+    if (streamedCount == 0 && !allFeatures.empty()) {
         usedBatchFallback = true;
         spdlog::debug("Streaming callback was not invoked — falling back to batch analysis");
         const auto& metadata = extractor_->flowMetadata();
@@ -155,10 +163,10 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
             emit analysisProgress(i + 1, total);
         }
 
-        flowIndex = allFeatures.size();
+        streamedCount = allFeatures.size();
     }
 
-    auto total = static_cast<int>(flowIndex);
+    auto total = static_cast<int>(streamedCount);
 
     // For the streaming path, emit a final progress signal with the correct total
     // now that all flows have been processed.  The batch fallback already emits

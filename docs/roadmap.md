@@ -198,19 +198,45 @@ documented in ADR-004.
 - Added 6 callback unit tests (290 total), updated 2 mock extractors
 - All 290 unit + 31 Qt + 24 stress tests pass
 
-### 8.5 — Producer-consumer threading
+### 8.5 — ~~Producer-consumer threading~~ [DONE]
 
-- **Pattern**: Capture thread → Flow extractor thread → Analyzer thread
-- Use a lock-free or mutex-protected queue between stages
-- `std::jthread` for non-Qt threads (per AGENTS.md Section 4.1)
-- Connect results back to UI via `Qt::QueuedConnection` signals
+- **Files**: `BoundedQueue.h`, `FlowAnalysisWorker.h/.cpp`, `AnalysisService.cpp`,
+  `test_BoundedQueue.cpp`, `test_FlowAnalysisWorker.cpp`, `tests/CMakeLists.txt`,
+  `src/app/CMakeLists.txt`
+- Completed: `BoundedQueue<T>` thread-safe bounded FIFO (blocking push/pop,
+  backpressure, close/end-of-stream semantics)
+- Completed: `FlowAnalysisWorker` — `std::jthread`-based consumer that pops
+  `FlowWorkItem` from a `BoundedQueue`, normalizes features, runs ML inference
+  (with optional hybrid detection), stores results in `CaptureSession`, and
+  invokes a `ResultCallback` for UI progress
+- Completed: `AnalysisService::analyzeCapture()` wired to use the pipelined
+  architecture — extraction and inference run concurrently on separate threads
+  with bounded queue backpressure between them
+- Batch fallback preserved for mock extractors and alternative implementations
+- Added 14 `BoundedQueue` + 11 `FlowAnalysisWorker` unit tests (315 total)
+- All 315 unit + 31 Qt + 24 stress tests pass
 
-### 8.6 — Live capture via PcapPlusPlus
+### 8.6 — ~~Live capture via PcapPlusPlus~~ [DONE]
 
-- Currently `NativeFlowExtractor::extractFeatures()` reads from a saved `.pcap` file
-  via `pcpp::PcapFileReaderDevice`
-- Add an overload or mode that accepts packets from the live `PcapCapture` callback
-- This enables real-time detection during capture, not just post-capture
+- **Files**: `IFlowExtractor.h`, `NativeFlowExtractor.h/.cpp`,
+  `test_NativeFlowExtractor.cpp`, `test_AnalysisService.cpp`, `test_Pipeline.cpp`
+- Completed: Added 3 new pure virtual methods to `IFlowExtractor` interface:
+  - `processPacket(data, length, timestampUs)` — feed raw packets during live capture
+  - `finalizeAllFlows()` — flush remaining active flows at end-of-capture
+  - `reset()` — clear all internal state for a new capture session
+- Completed: `NativeFlowExtractor` implements all 3 methods:
+  - `processPacket()` wraps raw bytes in `pcpp::RawPacket`, delegates to internal
+    parser, includes periodic sweep (same 30s interval as batch mode)
+  - `finalizeAllFlows()` calls `finalizeBulks()` to flush pending bulk counters
+    and fire completion callbacks for all remaining active flows
+  - `reset()` clears `flows_`, `completedFlows_`, `flowMetadata_`, `lastSweepTimeUs_`
+  - `extractFeatures()` refactored to call `reset()` at start and
+    `processPacketInternal()` internally (shared code path with live mode)
+- Feature parity: live mode produces identical feature vectors to batch mode
+  (verified by `ProcessPacket_featureVectorMatchesBatchMode` test)
+- Updated 2 mock extractors (AnalysisService, Pipeline tests) with no-op overrides
+- Added 14 live mode unit tests (329 total)
+- All 329 unit + 31 Qt + 24 stress tests pass
 
 ---
 

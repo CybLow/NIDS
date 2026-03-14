@@ -274,6 +274,17 @@ public:
   [[nodiscard]] const std::vector<core::FlowInfo> &
   flowMetadata() const noexcept override;
 
+  /// Feed a single raw packet for live flow extraction.
+  /// Includes periodic timeout sweeps (same interval as batch mode).
+  void processPacket(const std::uint8_t *data, std::size_t length,
+                     std::int64_t timestampUs) override;
+
+  /// Finalize all remaining active flows and fire the completion callback.
+  void finalizeAllFlows() override;
+
+  /// Reset all internal state for a new capture session.
+  void reset() override;
+
 private:
   std::unordered_map<FlowKey, FlowStats, FlowKeyHash> flows_;
   std::vector<std::pair<FlowKey, FlowStats>> completedFlows_;
@@ -299,7 +310,7 @@ private:
     std::uint16_t tcpWindow = 0;
   };
 
-  void processPacket(pcpp::RawPacket &rawPacket, std::int64_t timestampUs);
+  void processPacketInternal(pcpp::RawPacket &rawPacket, std::int64_t timestampUs);
   void finalizeBulks();
   void
   buildFlowMetadata(); ///< Populate flowMetadata_ from completed + active flows

@@ -57,6 +57,8 @@ add_executable(nids_tests
     unit/test_HeuristicRuleEngine.cpp
     unit/test_HybridDetectionService.cpp
     unit/test_FeatureNormalizer.cpp
+    unit/test_BoundedQueue.cpp
+    unit/test_FlowAnalysisWorker.cpp
 )
 
 target_link_libraries(nids_tests PRIVATE
