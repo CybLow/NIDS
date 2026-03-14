@@ -1,22 +1,23 @@
 #pragma once
 
 #ifdef _WIN32
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #include <iphlpapi.h>
-    #pragma comment(lib, "ws2_32.lib")
-    #pragma comment(lib, "iphlpapi.lib")
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <iphlpapi.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "iphlpapi.lib")
 #else
-    #include <netinet/ip.h>
-    #include <netinet/tcp.h>
-    #include <netinet/udp.h>
-    #include <arpa/inet.h>
-    #include <netinet/if_ether.h>
+#include <arpa/inet.h>
+#include <netinet/if_ether.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
 #endif
 
+#include <array>
 #include <cstdint>
 
 namespace nids::platform {
@@ -24,45 +25,45 @@ namespace nids::platform {
 #ifdef _WIN32
 
 struct EthernetHeader {
-    std::uint8_t  destMac[6];
-    std::uint8_t  srcMac[6];
-    std::uint16_t etherType;
+  std::uint8_t destMac[6];
+  std::uint8_t srcMac[6];
+  std::uint16_t etherType;
 };
 
 struct IPv4Header {
-    std::uint8_t  versionIhl;
-    std::uint8_t  tos;
-    std::uint16_t totalLength;
-    std::uint16_t identification;
-    std::uint16_t flagsFragOffset;
-    std::uint8_t  ttl;
-    std::uint8_t  protocol;
-    std::uint16_t headerChecksum;
-    std::uint32_t srcAddr;
-    std::uint32_t dstAddr;
+  std::uint8_t versionIhl;
+  std::uint8_t tos;
+  std::uint16_t totalLength;
+  std::uint16_t identification;
+  std::uint16_t flagsFragOffset;
+  std::uint8_t ttl;
+  std::uint8_t protocol;
+  std::uint16_t headerChecksum;
+  std::uint32_t srcAddr;
+  std::uint32_t dstAddr;
 
-    [[nodiscard]] std::uint8_t ihl() const noexcept {
-        return (versionIhl & 0x0F) * 4;
-    }
+  [[nodiscard]] std::uint8_t ihl() const noexcept {
+    return (versionIhl & 0x0F) * 4;
+  }
 };
 
 struct TcpHeader {
-    std::uint16_t srcPort;
-    std::uint16_t dstPort;
-    std::uint32_t seqNum;
-    std::uint32_t ackNum;
-    std::uint8_t  dataOffset;
-    std::uint8_t  flags;
-    std::uint16_t window;
-    std::uint16_t checksum;
-    std::uint16_t urgentPtr;
+  std::uint16_t srcPort;
+  std::uint16_t dstPort;
+  std::uint32_t seqNum;
+  std::uint32_t ackNum;
+  std::uint8_t dataOffset;
+  std::uint8_t flags;
+  std::uint16_t window;
+  std::uint16_t checksum;
+  std::uint16_t urgentPtr;
 };
 
 struct UdpHeader {
-    std::uint16_t srcPort;
-    std::uint16_t dstPort;
-    std::uint16_t length;
-    std::uint16_t checksum;
+  std::uint16_t srcPort;
+  std::uint16_t dstPort;
+  std::uint16_t length;
+  std::uint16_t checksum;
 };
 
 constexpr std::uint16_t kEtherTypeIPv4 = 0x0800;
@@ -96,104 +97,107 @@ constexpr std::size_t kEthernetHeaderSize = sizeof(struct ether_header);
 #endif
 
 /** Get the source port from a TCP header (network-to-host byte order). */
-inline std::uint16_t getTcpSrcPort(const TcpHeader* h) noexcept {
+inline std::uint16_t getTcpSrcPort(const TcpHeader *h) noexcept {
 #ifdef _WIN32
-    return ntohs(h->srcPort);
+  return ntohs(h->srcPort);
 #else
-    return ntohs(h->th_sport);
+  return ntohs(h->th_sport);
 #endif
 }
 
 /** Get the destination port from a TCP header (network-to-host byte order). */
-inline std::uint16_t getTcpDstPort(const TcpHeader* h) noexcept {
+inline std::uint16_t getTcpDstPort(const TcpHeader *h) noexcept {
 #ifdef _WIN32
-    return ntohs(h->dstPort);
+  return ntohs(h->dstPort);
 #else
-    return ntohs(h->th_dport);
+  return ntohs(h->th_dport);
 #endif
 }
 
 /** Get the source port from a UDP header (network-to-host byte order). */
-inline std::uint16_t getUdpSrcPort(const UdpHeader* h) noexcept {
+inline std::uint16_t getUdpSrcPort(const UdpHeader *h) noexcept {
 #ifdef _WIN32
-    return ntohs(h->srcPort);
+  return ntohs(h->srcPort);
 #else
-    return ntohs(h->uh_sport);
+  return ntohs(h->uh_sport);
 #endif
 }
 
 /** Get the destination port from a UDP header (network-to-host byte order). */
-inline std::uint16_t getUdpDstPort(const UdpHeader* h) noexcept {
+inline std::uint16_t getUdpDstPort(const UdpHeader *h) noexcept {
 #ifdef _WIN32
-    return ntohs(h->dstPort);
+  return ntohs(h->dstPort);
 #else
-    return ntohs(h->uh_dport);
+  return ntohs(h->uh_dport);
 #endif
 }
 
-/** Get the EtherType field from an Ethernet header (network-to-host byte order). */
-inline std::uint16_t getEtherType(const EthernetHeader* h) noexcept {
+/** Get the EtherType field from an Ethernet header (network-to-host byte
+ * order). */
+inline std::uint16_t getEtherType(const EthernetHeader *h) noexcept {
 #ifdef _WIN32
-    return ntohs(h->etherType);
+  return ntohs(h->etherType);
 #else
-    return ntohs(h->ether_type);
+  return ntohs(h->ether_type);
 #endif
 }
 
 /** Get the protocol field from an IPv4 header. */
-inline std::uint8_t getIpProtocol(const IPv4Header* h) noexcept {
+inline std::uint8_t getIpProtocol(const IPv4Header *h) noexcept {
 #ifdef _WIN32
-    return h->protocol;
+  return h->protocol;
 #else
-    return h->ip_p;
+  return h->ip_p;
 #endif
 }
 
 /** Get the IP header length in bytes (IHL field * 4). */
-inline std::uint8_t getIpIhl(const IPv4Header* h) noexcept {
+inline std::uint8_t getIpIhl(const IPv4Header *h) noexcept {
 #ifdef _WIN32
-    return (h->versionIhl & 0x0F) * 4;
+  return (h->versionIhl & 0x0F) * 4;
 #else
-    return static_cast<std::uint8_t>(h->ip_hl * 4);
+  return static_cast<std::uint8_t>(h->ip_hl * 4);
 #endif
 }
 
 /** Get the total length of the IP datagram (network-to-host byte order). */
-inline std::uint16_t getIpTotalLength(const IPv4Header* h) noexcept {
+inline std::uint16_t getIpTotalLength(const IPv4Header *h) noexcept {
 #ifdef _WIN32
-    return ntohs(h->totalLength);
+  return ntohs(h->totalLength);
 #else
-    return ntohs(h->ip_len);
+  return ntohs(h->ip_len);
 #endif
 }
 
-/** Get the source IP address as a dotted-decimal string (thread-local buffer). */
-inline const char* getIpSrcStr(const IPv4Header* h) noexcept {
+/** Get the source IP address as a dotted-decimal string (thread-local buffer).
+ */
+inline const char *getIpSrcStr(const IPv4Header *h) noexcept {
 #ifdef _WIN32
-    static thread_local char buf[INET_ADDRSTRLEN];
-    struct in_addr addr;
-    addr.s_addr = h->srcAddr;
-    inet_ntop(AF_INET, &addr, buf, sizeof(buf));
-    return buf;
+  static thread_local std::array<char, INET_ADDRSTRLEN> buf{};
+  struct in_addr addr;
+  addr.s_addr = h->srcAddr;
+  inet_ntop(AF_INET, &addr, buf.data(), buf.size());
+  return buf.data();
 #else
-    static thread_local char buf[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &(h->ip_src), buf, sizeof(buf));
-    return buf;
+  static thread_local std::array<char, INET_ADDRSTRLEN> buf{};
+  inet_ntop(AF_INET, &(h->ip_src), buf.data(), buf.size());
+  return buf.data();
 #endif
 }
 
-/** Get the destination IP address as a dotted-decimal string (thread-local buffer). */
-inline const char* getIpDstStr(const IPv4Header* h) noexcept {
+/** Get the destination IP address as a dotted-decimal string (thread-local
+ * buffer). */
+inline const char *getIpDstStr(const IPv4Header *h) noexcept {
 #ifdef _WIN32
-    static thread_local char buf[INET_ADDRSTRLEN];
-    struct in_addr addr;
-    addr.s_addr = h->dstAddr;
-    inet_ntop(AF_INET, &addr, buf, sizeof(buf));
-    return buf;
+  static thread_local std::array<char, INET_ADDRSTRLEN> buf{};
+  struct in_addr addr;
+  addr.s_addr = h->dstAddr;
+  inet_ntop(AF_INET, &addr, buf.data(), buf.size());
+  return buf.data();
 #else
-    static thread_local char buf[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &(h->ip_dst), buf, sizeof(buf));
-    return buf;
+  static thread_local std::array<char, INET_ADDRSTRLEN> buf{};
+  inet_ntop(AF_INET, &(h->ip_dst), buf.data(), buf.size());
+  return buf.data();
 #endif
 }
 
@@ -219,41 +223,41 @@ constexpr std::uint8_t kTcpCwr = 0x80;
 /// The ICMP header is always at least 8 bytes (including identifier + sequence
 /// for echo), but we only need type and code for flow keying.
 struct IcmpHeader {
-    /** ICMP message type. */
-    std::uint8_t type;
-    /** ICMP message subtype code. */
-    std::uint8_t code;
-    /** Header checksum. */
-    std::uint16_t checksum;
+  /** ICMP message type. */
+  std::uint8_t type;
+  /** ICMP message subtype code. */
+  std::uint8_t code;
+  /** Header checksum. */
+  std::uint16_t checksum;
 };
 
 /// Minimum ICMP header size (type + code + checksum + id + seq).
 constexpr std::size_t kIcmpHeaderSize = 8;
 
 /** Get the TCP flags byte from a TCP header. */
-inline std::uint8_t getTcpFlags(const TcpHeader* h) noexcept {
+inline std::uint8_t getTcpFlags(const TcpHeader *h) noexcept {
 #ifdef _WIN32
-    return h->flags;
+  return h->flags;
 #else
-    return h->th_flags;
+  return h->th_flags;
 #endif
 }
 
 /** Get the TCP window size (network-to-host byte order). */
-inline std::uint16_t getTcpWindow(const TcpHeader* h) noexcept {
+inline std::uint16_t getTcpWindow(const TcpHeader *h) noexcept {
 #ifdef _WIN32
-    return ntohs(h->window);
+  return ntohs(h->window);
 #else
-    return ntohs(h->th_win);
+  return ntohs(h->th_win);
 #endif
 }
 
 /** Get the TCP data offset (header length) in bytes. */
-inline std::uint8_t getTcpDataOffset(const TcpHeader* h) noexcept {
+inline std::uint8_t getTcpDataOffset(const TcpHeader *h) noexcept {
 #ifdef _WIN32
-    return (h->dataOffset >> 4) * 4;
+  return (h->dataOffset >> 4) * 4;
 #else
-    return static_cast<std::uint8_t>(h->th_off * 4);
+  return static_cast<std::uint8_t>(h->th_off * 4);
 #endif
 }
 

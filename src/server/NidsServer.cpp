@@ -1,34 +1,44 @@
 #include "server/NidsServer.h"
 
+#include <cstdio>
 #include <spdlog/spdlog.h>
 
 namespace nids::server {
 
-NidsServer::NidsServer(const ServerConfig& config)
-    : config_(config) {}
+NidsServer::NidsServer(const ServerConfig &config) : config_(config) {}
 
-NidsServer::~NidsServer() {
+NidsServer::~NidsServer() noexcept {
+  try {
     stop();
+  } catch (...) {
+    try {
+      spdlog::error("Exception caught in NidsServer destructor during stop()");
+    } catch (...) {
+      // spdlog itself threw — C stdio as last resort in noexcept destructor
+      static_cast<void>(
+          std::fputs("NidsServer: destructor cleanup failed\n", stderr));
+    }
+  }
 }
 
 void NidsServer::start() {
-    if (running_.load())
-        return;
-    running_.store(true);
+  if (running_.load())
+    return;
+  running_.store(true);
 
-    spdlog::info("NIDS Server starting on {}", config_.listenAddress);
-    spdlog::warn("gRPC integration pending — see Phase 9 in docs/roadmap.md");
+  spdlog::info("NIDS Server starting on {}", config_.listenAddress);
+  spdlog::warn("gRPC integration pending — see Phase 9 in docs/roadmap.md");
 }
 
 void NidsServer::stop() {
-    if (!running_.load())
-        return;
-    running_.store(false);
-    spdlog::info("NIDS Server stopped");
+  if (!running_.load())
+    return;
+  running_.store(false);
+  spdlog::info("NIDS Server stopped");
 }
 
 void NidsServer::waitForShutdown() {
-    // Will block on gRPC server once implemented
+  // Will block on gRPC server once implemented
 }
 
 } // namespace nids::server

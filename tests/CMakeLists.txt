@@ -15,7 +15,35 @@ function(nids_test_coverage target)
     endif()
 endfunction()
 
-# ── Core / Infra / App tests (no Qt, no ONNX Runtime) ───────────
+# ── Helper: register gtest with platform-aware discovery ─────────
+# On Windows, DLLs aren't in PATH at build time, so POST_BUILD
+# discovery fails. PRE_TEST defers to ctest; TARGET_RUNTIME_DLLS
+# copies CMake-known DLLs next to the test exe.
+function(nids_register_gtest target)
+    if(WIN32)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_RUNTIME_DLLS:${target}>
+                    $<TARGET_FILE_DIR:${target}>
+            COMMAND_EXPAND_LISTS
+        )
+
+        gtest_discover_tests(${target}
+            DISCOVERY_MODE PRE_TEST
+            WORKING_DIRECTORY $<TARGET_FILE_DIR:${target}>
+            ${ARGN}
+        )
+    else()
+        gtest_discover_tests(${target} ${ARGN})
+    endif()
+endfunction()
+
+# ══════════════════════════════════════════════════════════════════
+#  Unit tests
+#  Note: transitively links PCAP, ONNX Runtime, Qt Core via nids_infra.
+#  Tests that need pcap runtime use SKIP_IF_NO_PCAP() on Windows.
+# ══════════════════════════════════════════════════════════════════
+
 add_executable(nids_tests
     unit/test_PacketFilter.cpp
     unit/test_ServiceRegistry.cpp
@@ -43,9 +71,12 @@ target_link_libraries(nids_tests PRIVATE
 
 nids_set_target_defaults(nids_tests)
 nids_test_coverage(nids_tests)
-gtest_discover_tests(nids_tests)
+nids_register_gtest(nids_tests)
 
-# ── Qt-dependent tests ───────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+#  Qt-dependent tests
+# ══════════════════════════════════════════════════════════════════
+
 if(Qt6_FOUND)
     add_executable(nids_qt_tests
         unit/test_CaptureController.cpp
@@ -66,12 +97,16 @@ if(Qt6_FOUND)
 
     nids_set_target_defaults(nids_qt_tests)
     nids_test_coverage(nids_qt_tests)
-    gtest_discover_tests(nids_qt_tests)
+    nids_register_gtest(nids_qt_tests)
 else()
     message(STATUS "Qt6 not found -- skipping Qt-dependent tests")
 endif()
 
-# ── Stress / performance tests ───────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+#  Stress / performance tests
+#  Pcap-dependent tests use SKIP_IF_NO_PCAP() on Windows.
+# ══════════════════════════════════════════════════════════════════
+
 add_executable(nids_stress_tests
     stress/test_PacketThroughput.cpp
     stress/test_FlowExtractionLoad.cpp
@@ -96,12 +131,14 @@ target_link_libraries(nids_stress_tests PRIVATE
 
 nids_set_target_defaults(nids_stress_tests)
 nids_test_coverage(nids_stress_tests)
-gtest_discover_tests(nids_stress_tests
+nids_register_gtest(nids_stress_tests
     PROPERTIES TIMEOUT 120
 )
 
-# ── ONNX Runtime tests ──────────────────────────────────────────
-# onnxruntime::onnxruntime is always available via FetchOnnxRuntime.cmake
+# ══════════════════════════════════════════════════════════════════
+#  ONNX Runtime tests
+# ══════════════════════════════════════════════════════════════════
+
 if(TARGET onnxruntime::onnxruntime)
     add_executable(nids_onnx_tests
         unit/test_OnnxAnalyzer.cpp
@@ -113,13 +150,12 @@ if(TARGET onnxruntime::onnxruntime)
         GTest::gmock
         nids_core
         nids_infra
+        onnxruntime::onnxruntime
     )
 
     nids_set_target_defaults(nids_onnx_tests)
     nids_test_coverage(nids_onnx_tests)
-    gtest_discover_tests(nids_onnx_tests
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    )
+    nids_register_gtest(nids_onnx_tests)
 else()
     message(STATUS "onnxruntime target not available -- skipping ONNX analyzer tests")
 endif()

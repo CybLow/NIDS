@@ -61,9 +61,9 @@ def get_predictions(
 
     softmax = torch.nn.Softmax(dim=1)
 
-    for X_batch, y_batch in loader:
-        X_batch = X_batch.to(device, non_blocking=True)
-        logits = model(X_batch)
+    for x_batch, y_batch in loader:
+        x_batch = x_batch.to(device, non_blocking=True)
+        logits = model(x_batch)
         probs = softmax(logits)
 
         all_preds.append(logits.argmax(dim=1).cpu().numpy())
@@ -95,7 +95,7 @@ def plot_confusion_matrix(
         where=row_sums != 0,
     )
 
-    fig, axes = plt.subplots(1, 2, figsize=(24, 10))
+    _, axes = plt.subplots(1, 2, figsize=(24, 10))
 
     # Raw counts
     sns.heatmap(
@@ -144,7 +144,7 @@ def plot_roc_curves(
     """Generate and save per-class ROC curves."""
     n_classes = len(class_names)
 
-    fig, ax = plt.subplots(figsize=(12, 10))
+    _, ax = plt.subplots(figsize=(12, 10))
 
     # One-hot encode true labels
     y_true_onehot = np.eye(n_classes)[y_true]

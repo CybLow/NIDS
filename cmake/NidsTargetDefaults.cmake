@@ -7,8 +7,8 @@
 #   nids_set_target_defaults(<target_name>)
 
 function(nids_set_target_defaults target)
-    # ── C++20 standard ───────────────────────────────────────────
-    target_compile_features(${target} PRIVATE cxx_std_20)
+    # ── C++23 standard ───────────────────────────────────────────
+    target_compile_features(${target} PRIVATE cxx_std_23)
     set_target_properties(${target} PROPERTIES
         CXX_EXTENSIONS OFF
     )
@@ -17,7 +17,19 @@ function(nids_set_target_defaults target)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${target} PRIVATE
             -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion
+            -Wshadow                # Variable shadowing
+            -Wnon-virtual-dtor      # Virtual methods with non-virtual dtor
+            -Wold-style-cast        # C-style casts
+            -Woverloaded-virtual    # Accidental hiding of base virtual functions
+            -Wformat=2              # Format string issues
         )
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${target} PRIVATE
+                -Wmisleading-indentation  # GCC-only: indentation doesn't match control flow
+                -Wduplicated-cond         # GCC-only: duplicated if/else-if conditions
+                -Wlogical-op              # GCC-only: suspicious use of logical operators
+            )
+        endif()
     elseif(MSVC)
         target_compile_options(${target} PRIVATE
             /W4          # High warning level
@@ -25,12 +37,16 @@ function(nids_set_target_defaults target)
             /utf-8       # Source and execution character set
             /Zc:__cplusplus  # Report correct __cplusplus value
         )
+        target_compile_definitions(${target} PRIVATE
+            NOMINMAX             # Prevent windows.h min/max macros
+            WIN32_LEAN_AND_MEAN  # Exclude rarely-used Windows headers
+        )
     endif()
 
-    # ── Sanitizers (Debug only, GCC/Clang) ───────────────────────
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # ── Sanitizers (Debug only, GCC/Clang, disabled when coverage is on) ─
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT NIDS_COVERAGE)
         target_compile_options(${target} PRIVATE
-            $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+            $<$<CONFIG:Debug>:-fsanitize=address,undefined -fno-omit-frame-pointer>
         )
         target_link_options(${target} PRIVATE
             $<$<CONFIG:Debug>:-fsanitize=address,undefined>
@@ -44,6 +60,15 @@ function(nids_set_target_defaults target)
                 --coverage -fprofile-arcs -ftest-coverage
             )
             target_link_options(${target} PRIVATE --coverage)
+        endif()
+    endif()
+
+    # ── Warnings as errors (CI only) ──────────────────────────────
+    if(NIDS_WERROR)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(${target} PRIVATE -Werror)
+        elseif(MSVC)
+            target_compile_options(${target} PRIVATE /WX)
         endif()
     endif()
 

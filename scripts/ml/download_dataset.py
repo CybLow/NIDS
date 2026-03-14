@@ -162,7 +162,7 @@ def extract_archive(archive_path: Path, output_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
+def main() -> None:  # NOSONAR
     parser = argparse.ArgumentParser(
         description="Download the LSNM2024 dataset for NIDS model training."
     )

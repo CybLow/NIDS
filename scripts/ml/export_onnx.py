@@ -128,7 +128,8 @@ def verify_onnx(
     )
 
     # Run inference with dummy data
-    dummy = np.random.randn(1, n_features).astype(np.float32)
+    rng = np.random.default_rng(seed=42)
+    dummy = rng.standard_normal((1, n_features)).astype(np.float32)
     result = session.run([output_info.name], {input_info.name: dummy})
     output = result[0]  # type: ignore[index]
 

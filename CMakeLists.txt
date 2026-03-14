@@ -1,13 +1,21 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(NIDS
-    VERSION 0.2.0
-    DESCRIPTION "Network Intrusion Detection System"
-    LANGUAGES CXX
-)
+if(DEFINED PROJECT_VERSION_OVERRIDE)
+    project(NIDS
+        VERSION ${PROJECT_VERSION_OVERRIDE}
+        DESCRIPTION "Network Intrusion Detection System"
+        LANGUAGES CXX
+    )
+else()
+    project(NIDS
+        VERSION 0.2.0
+        DESCRIPTION "Network Intrusion Detection System"
+        LANGUAGES CXX
+    )
+endif()
 
 # ── Global settings ──────────────────────────────────────────────
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -104,6 +112,13 @@ if(UNIX)
         DESTINATION ${CMAKE_INSTALL_DATADIR}/nids/scripts OPTIONAL)
 endif()
 
+if(WIN32 AND TARGET onnxruntime::onnxruntime)
+    get_target_property(_ort_dll onnxruntime::onnxruntime IMPORTED_LOCATION)
+    if(_ort_dll)
+        install(FILES "${_ort_dll}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
+endif()
+
 # ── Packaging (CPack) ───────────────────────────────────────────
 set(CPACK_PACKAGE_NAME "nids")
 set(CPACK_PACKAGE_VENDOR "NIDS Project")
@@ -117,7 +132,7 @@ if(WIN32)
     set(CPACK_NSIS_DISPLAY_NAME "NIDS ${PROJECT_VERSION}")
     set(CPACK_NSIS_PACKAGE_NAME "NIDS")
     set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
-    set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/src/ui/logo.png")
+    set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/src/ui/logo.ico")
 elseif(APPLE)
     set(CPACK_GENERATOR "DragNDrop;TGZ")
 else()
