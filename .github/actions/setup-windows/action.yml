@@ -1,5 +1,5 @@
 name: Setup Windows Build Environment
-description: Install MSVC, Qt6, Ninja, WinPcap, Conan 2, and cache dependencies
+description: Install MSVC, Qt6, Ninja, Conan 2, and cache dependencies
 
 inputs:
   build-type:
@@ -30,13 +30,6 @@ runs:
     - name: Install Ninja
       shell: pwsh
       run: choco install ninja ${{ inputs.extra-choco }} -y
-
-    - name: Install WinPcap runtime (provides wpcap.dll for pcap file ops)
-      shell: cmd
-      run: |
-        git clone --depth 1 https://github.com/PcapPlusPlus/winpcap-installer
-        winpcap-installer\winpcap-truesight-meter-4.1.3.exe /S
-        rmdir winpcap-installer /s /q
 
     - name: Install Conan
       shell: pwsh

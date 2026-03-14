@@ -11,7 +11,6 @@ add_library(nids_infra STATIC
     threat/ThreatIntelProvider.cpp
     rules/HeuristicRuleEngine.cpp
     platform/SocketInit.cpp
-    platform/DelayLoadHook.cpp
 )
 
 target_link_libraries(nids_infra
@@ -29,10 +28,11 @@ target_link_libraries(nids_infra
 target_compile_definitions(nids_infra PRIVATE NIDS_HAS_ONNX)
 
 if(WIN32)
-    # Delay-load pcap DLLs: PcapPlusPlus links against npcap SDK but CI uses
-    # WinPcap runtime (which lacks npcap-specific exports). DELAYLOAD resolves
-    # each function lazily, so standard pcap functions (pcap_open_offline, etc.)
-    # resolve against WinPcap while npcap-only functions are never called.
+    # Delay-load npcap DLLs so test discovery and non-pcap tests can run
+    # without npcap runtime installed. Pcap-dependent tests use GTEST_SKIP
+    # on Windows CI (PcapPlusPlus uses pcap_open_offline_with_tstamp_precision
+    # which requires npcap; WinPcap is too old). To run all tests on Windows,
+    # install npcap (free: npcap.com, or OEM for CI: fyodor@nmap.org).
     target_link_libraries(nids_infra PRIVATE delayimp)
     target_link_options(nids_infra PUBLIC
         /DELAYLOAD:wpcap.dll
