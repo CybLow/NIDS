@@ -12,10 +12,10 @@ namespace nids::infra {
 
 PcapCaptureWorker::PcapCaptureWorker(QObject *parent) : QObject(parent) {}
 
-void PcapCaptureWorker::configure(std::string_view interface,
+void PcapCaptureWorker::configure(std::string_view iface,
                                   std::string_view bpfFilter,
                                   std::string_view dumpFile) {
-  interface_ = interface;
+  interface_ = iface;
   bpfFilter_ = bpfFilter;
   dumpFile_ = dumpFile;
 }
@@ -173,9 +173,9 @@ PcapCapture::~PcapCapture() {
   workerThread_.wait();
 }
 
-bool PcapCapture::initialize(const std::string &interface,
+bool PcapCapture::initialize(const std::string &iface,
                              const std::string &bpfFilter) {
-  interface_ = interface;
+  interface_ = iface;
   bpfFilter_ = bpfFilter;
   return true;
 }

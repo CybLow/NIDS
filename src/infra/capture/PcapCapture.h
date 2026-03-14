@@ -8,97 +8,99 @@
 #include <QThread>
 
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <mutex>
 
 namespace nids::infra {
 
 /** Worker object that runs the pcap capture loop on a dedicated QThread. */
 class PcapCaptureWorker : public QObject {
-    Q_OBJECT
+  Q_OBJECT
 
 public:
-    /** Construct a capture worker, optionally parented to @p parent. */
-    explicit PcapCaptureWorker(QObject* parent = nullptr);
+  /** Construct a capture worker, optionally parented to @p parent. */
+  explicit PcapCaptureWorker(QObject *parent = nullptr);
 
-    /**
-     * Configure the capture session parameters before starting.
-     * @param interface  Network interface name to capture on.
-     * @param bpfFilter  BPF filter expression (may be empty).
-     * @param dumpFile   Path to write captured packets (empty to skip dump).
-     */
-    void configure(std::string_view interface, std::string_view bpfFilter,
-                   std::string_view dumpFile);
+  /**
+   * Configure the capture session parameters before starting.
+   * @param interface  Network interface name to capture on.
+   * @param bpfFilter  BPF filter expression (may be empty).
+   * @param dumpFile   Path to write captured packets (empty to skip dump).
+   */
+  void configure(std::string_view iface, std::string_view bpfFilter,
+                 std::string_view dumpFile);
 
 public slots:
-    /** Start the blocking pcap capture loop. Runs until requestStop() is called. */
-    void doCapture();
-    /** Signal the capture loop to stop after the current iteration. */
-    void requestStop();
+  /** Start the blocking pcap capture loop. Runs until requestStop() is called.
+   */
+  void doCapture();
+  /** Signal the capture loop to stop after the current iteration. */
+  void requestStop();
 
 signals:
-    /** Emitted for each captured packet with parsed metadata. */
-    void packetCaptured(const nids::core::PacketInfo& info);
-    /** Emitted when the capture loop exits normally. */
-    void captureFinished();
-    /** Emitted when a capture error occurs. */
-    void captureError(const QString& message);
+  /** Emitted for each captured packet with parsed metadata. */
+  void packetCaptured(const nids::core::PacketInfo &info);
+  /** Emitted when the capture loop exits normally. */
+  void captureFinished();
+  /** Emitted when a capture error occurs. */
+  void captureError(const QString &message);
 
 private:
-    static void packetCallback(unsigned char* userData,
-                               const struct pcap_pkthdr* pkthdr,
-                               const unsigned char* packet);
-    void processPacket(const struct pcap_pkthdr* pkthdr,
-                       const unsigned char* packet);
+  static void packetCallback(unsigned char *userData,
+                             const struct pcap_pkthdr *pkthdr,
+                             const unsigned char *packet);
+  void processPacket(const struct pcap_pkthdr *pkthdr,
+                     const unsigned char *packet);
 
-    std::string interface_;
-    std::string bpfFilter_;
-    std::string dumpFile_;
-    PcapHandle handle_{nullptr};
-    PcapDumperHandle dumper_{nullptr};
-    std::atomic<bool> capturing_{false};
+  std::string interface_;
+  std::string bpfFilter_;
+  std::string dumpFile_;
+  PcapHandle handle_{nullptr};
+  PcapDumperHandle dumper_{nullptr};
+  std::atomic<bool> capturing_{false};
 
-    nids::core::ServiceRegistry serviceRegistry_;
+  nids::core::ServiceRegistry serviceRegistry_;
 };
 
-/** Pcap-based packet capture implementing IPacketCapture via a worker thread. */
+/** Pcap-based packet capture implementing IPacketCapture via a worker thread.
+ */
 class PcapCapture : public QObject, public nids::core::IPacketCapture {
-    Q_OBJECT
+  Q_OBJECT
 
 public:
-    /** Construct the capture manager, optionally parented to @p parent. */
-    explicit PcapCapture(QObject* parent = nullptr);
-    ~PcapCapture() override;
+  /** Construct the capture manager, optionally parented to @p parent. */
+  explicit PcapCapture(QObject *parent = nullptr);
+  ~PcapCapture() override;
 
-    PcapCapture(const PcapCapture&) = delete;
-    PcapCapture& operator=(const PcapCapture&) = delete;
-    PcapCapture(PcapCapture&&) = delete;
-    PcapCapture& operator=(PcapCapture&&) = delete;
+  PcapCapture(const PcapCapture &) = delete;
+  PcapCapture &operator=(const PcapCapture &) = delete;
+  PcapCapture(PcapCapture &&) = delete;
+  PcapCapture &operator=(PcapCapture &&) = delete;
 
-    [[nodiscard]] bool initialize(const std::string& interface,
-                                  const std::string& bpfFilter) override;
-    void startCapture(const std::string& dumpFile) override;
-    void stopCapture() override;
-    [[nodiscard]] bool isCapturing() const override;
+  [[nodiscard]] bool initialize(const std::string &iface,
+                                const std::string &bpfFilter) override;
+  void startCapture(const std::string &dumpFile) override;
+  void stopCapture() override;
+  [[nodiscard]] bool isCapturing() const override;
 
-    void setPacketCallback(PacketCallback callback) override;
-    void setErrorCallback(ErrorCallback callback) override;
-    [[nodiscard]] std::vector<std::string> listInterfaces() override;
+  void setPacketCallback(PacketCallback callback) override;
+  void setErrorCallback(ErrorCallback callback) override;
+  [[nodiscard]] std::vector<std::string> listInterfaces() override;
 
 signals:
-    /** Emitted for each captured packet, forwarded from the worker thread. */
-    void packetReceived(const nids::core::PacketInfo& info);
+  /** Emitted for each captured packet, forwarded from the worker thread. */
+  void packetReceived(const nids::core::PacketInfo &info);
 
 private:
-    QThread workerThread_;
-    PcapCaptureWorker* worker_ = nullptr;
-    PacketCallback callback_;
-    ErrorCallback errorCallback_;
-    std::string interface_;
-    std::string bpfFilter_;
-    std::atomic<bool> capturing_{false};
+  QThread workerThread_;
+  PcapCaptureWorker *worker_ = nullptr;
+  PacketCallback callback_;
+  ErrorCallback errorCallback_;
+  std::string interface_;
+  std::string bpfFilter_;
+  std::atomic<bool> capturing_{false};
 };
 
 } // namespace nids::infra
