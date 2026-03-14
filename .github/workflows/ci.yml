@@ -228,7 +228,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
-            -Dsonar.cfamily.compile-commands=bw-output/compile_commands.json
+            -Dsonar.cfamily.build-wrapper-output=bw-output
             -Dsonar.cfamily.cobertura.reportPaths=coverage-cobertura.xml
 
       - uses: actions/upload-artifact@v4
