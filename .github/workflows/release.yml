@@ -62,7 +62,14 @@ jobs:
 
       - run: cmake --preset ci-msvc -DPROJECT_VERSION_OVERRIDE=${{ steps.v.outputs.version }}
       - run: cmake --build --preset ci-msvc
-      - run: ctest --test-dir build/ci-msvc --output-on-failure --timeout 120 --exclude-regex 'Stress'
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $env:PATH = @(
+            "$PWD\build\ci-msvc\_deps\onnxruntime-src\lib"
+            "$env:QT_ROOT_DIR\bin"
+          ) -join ";" + ";$env:PATH"
+          ctest --test-dir build/ci-msvc --output-on-failure --timeout 120 --exclude-regex 'Stress'
 
       - name: Bundle Qt DLLs
         shell: pwsh

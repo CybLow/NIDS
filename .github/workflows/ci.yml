@@ -64,8 +64,10 @@ jobs:
       - name: Test
         shell: pwsh
         run: |
-          # Add DLL directories to PATH for test execution
-          $env:PATH = "$PWD\build\ci-msvc\_deps\onnxruntime-src\lib;$env:PATH"
+          $env:PATH = @(
+            "$PWD\build\ci-msvc\_deps\onnxruntime-src\lib"
+            "$env:QT_ROOT_DIR\bin"
+          ) -join ";" + ";$env:PATH"
           ctest --test-dir build/ci-msvc --output-on-failure --timeout 120 --exclude-regex 'Stress'
 
   # ── Stage 2: Analysis ────────────────────────────────────────────
