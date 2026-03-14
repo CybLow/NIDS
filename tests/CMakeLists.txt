@@ -39,7 +39,9 @@ function(nids_register_gtest target)
 endfunction()
 
 # ══════════════════════════════════════════════════════════════════
-#  Unit tests (no pcap runtime needed)
+#  Unit tests
+#  Note: transitively links PCAP, ONNX Runtime, Qt Core via nids_infra.
+#  Tests that need pcap runtime use SKIP_IF_NO_PCAP() on Windows.
 # ══════════════════════════════════════════════════════════════════
 
 add_executable(nids_tests
@@ -48,6 +50,7 @@ add_executable(nids_tests
     unit/test_CaptureSession.cpp
     unit/test_AttackType.cpp
     unit/test_ReportGenerator.cpp
+    unit/test_NativeFlowExtractor.cpp
     unit/test_Configuration.cpp
     unit/test_DetectionResult.cpp
     unit/test_PredictionResult.cpp
@@ -69,28 +72,6 @@ target_link_libraries(nids_tests PRIVATE
 nids_set_target_defaults(nids_tests)
 nids_test_coverage(nids_tests)
 nids_register_gtest(nids_tests)
-
-# ══════════════════════════════════════════════════════════════════
-#  PCAP-dependent tests (need libpcap/npcap runtime)
-# ══════════════════════════════════════════════════════════════════
-
-add_executable(nids_pcap_tests
-    unit/test_NativeFlowExtractor.cpp
-)
-
-target_link_libraries(nids_pcap_tests PRIVATE
-    GTest::gtest
-    GTest::gtest_main
-    GTest::gmock
-    nids_core
-    nids_infra
-)
-
-nids_set_target_defaults(nids_pcap_tests)
-nids_test_coverage(nids_pcap_tests)
-nids_register_gtest(nids_pcap_tests
-    PROPERTIES LABELS "PCAP"
-)
 
 # ══════════════════════════════════════════════════════════════════
 #  Qt-dependent tests
@@ -122,7 +103,8 @@ else()
 endif()
 
 # ══════════════════════════════════════════════════════════════════
-#  Stress / performance tests (need pcap runtime)
+#  Stress / performance tests
+#  Pcap-dependent tests use SKIP_IF_NO_PCAP() on Windows.
 # ══════════════════════════════════════════════════════════════════
 
 add_executable(nids_stress_tests
@@ -150,9 +132,7 @@ target_link_libraries(nids_stress_tests PRIVATE
 nids_set_target_defaults(nids_stress_tests)
 nids_test_coverage(nids_stress_tests)
 nids_register_gtest(nids_stress_tests
-    PROPERTIES
-        TIMEOUT 120
-        LABELS "Stress;PCAP"
+    PROPERTIES TIMEOUT 120
 )
 
 # ══════════════════════════════════════════════════════════════════

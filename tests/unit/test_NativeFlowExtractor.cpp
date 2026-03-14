@@ -18,6 +18,16 @@ using nids::infra::NativeFlowExtractor;
 
 namespace fs = std::filesystem;
 
+// Skip tests that require pcap runtime (npcap not installed on Windows CI)
+#ifdef _WIN32
+#define SKIP_IF_NO_PCAP()                                                      \
+  GTEST_SKIP() << "npcap runtime not available on Windows CI"
+#else
+#define SKIP_IF_NO_PCAP()                                                      \
+  do {                                                                         \
+  } while (0)
+#endif
+
 // ── Helper: Build raw pcap data in memory ────────────────────────────
 
 namespace {
@@ -443,6 +453,7 @@ TEST(FlowFeatureNames, firstAndLastNames) {
 // ── NativeFlowExtractor: basic pcap tests ───────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeaturesWithMinimalTcpPcap) {
+  SKIP_IF_NO_PCAP();
   auto pkt = buildTcpPacket("192.168.1.1", "192.168.1.2", 8080, 443, 0x02);
   auto path = writePcapFile("nfe_minimal_tcp.pcap", {{pkt, 0, 0}});
 
@@ -467,6 +478,7 @@ TEST(NativeFlowExtractor, ExtractFeaturesWithMinimalTcpPcap) {
 }
 
 TEST(NativeFlowExtractor, ExtractFeatures_badFile_returnsEmpty) {
+  SKIP_IF_NO_PCAP();
   NativeFlowExtractor extractor;
   auto features = extractor.extractFeatures("/nonexistent_file_xyz.pcap");
   EXPECT_TRUE(features.empty());
@@ -480,6 +492,7 @@ TEST(NativeFlowExtractor, SetFlowTimeout) {
 // ── UDP flow extraction ─────────────────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_udpPacket) {
+  SKIP_IF_NO_PCAP();
   auto pkt = buildUdpPacket("10.0.0.1", "10.0.0.2", 5000, 53);
   auto path = writePcapFile("nfe_udp.pcap", {{pkt, 0, 0}});
 
@@ -503,6 +516,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_udpPacket) {
 // ── ICMP flow extraction ────────────────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_icmpPacket) {
+  SKIP_IF_NO_PCAP();
   auto pkt = buildIcmpPacket("10.0.0.1", "10.0.0.2", 8, 0);
   auto path = writePcapFile("nfe_icmp.pcap", {{pkt, 0, 0}});
 
@@ -522,6 +536,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_icmpPacket) {
 // ── VLAN-tagged packet extraction ───────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_vlanTaggedPacket) {
+  SKIP_IF_NO_PCAP();
   auto pkt = buildVlanTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 100, 0x02);
   auto path = writePcapFile("nfe_vlan.pcap", {{pkt, 0, 0}});
 
@@ -538,6 +553,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_vlanTaggedPacket) {
 // ── Bidirectional flow (forward + backward packets) ─────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_bidirectionalFlow) {
+  SKIP_IF_NO_PCAP();
   // Forward: A → B
   auto fwd = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   // Backward: B → A (same flow, reverse direction)
@@ -565,6 +581,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_bidirectionalFlow) {
 // ── Multi-flow: different 5-tuples become separate flows ────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_multipleDistinctFlows) {
+  SKIP_IF_NO_PCAP();
   auto pktA = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   auto pktB = buildUdpPacket("10.0.0.3", "10.0.0.4", 6000, 53);
   auto pktC = buildIcmpPacket("10.0.0.5", "10.0.0.6", 8, 0);
@@ -586,6 +603,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_multipleDistinctFlows) {
 // ── TCP FIN/RST terminates a flow (completeFlow path) ───────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_tcpFinCompletesFlow) {
+  SKIP_IF_NO_PCAP();
   auto syn = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02); // SYN
   auto synack =
       buildTcpPacket("10.0.0.2", "10.0.0.1", 80, 5000, 0x12);        // SYN+ACK
@@ -612,6 +630,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_tcpFinCompletesFlow) {
 }
 
 TEST(NativeFlowExtractor, ExtractFeatures_tcpRstCompletesFlow) {
+  SKIP_IF_NO_PCAP();
   auto syn = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   auto rst = buildTcpPacket("10.0.0.2", "10.0.0.1", 80, 5000, 0x04); // RST
 
@@ -634,6 +653,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_tcpRstCompletesFlow) {
 // ── Flow timeout eviction ───────────────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_flowTimeoutEviction) {
+  SKIP_IF_NO_PCAP();
   auto pkt1 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   // Packet 2 comes 700 seconds later (> 600s default timeout)
   auto pkt2 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
@@ -653,6 +673,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_flowTimeoutEviction) {
 }
 
 TEST(NativeFlowExtractor, ExtractFeatures_customTimeoutEviction) {
+  SKIP_IF_NO_PCAP();
   auto pkt1 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   auto pkt2 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
 
@@ -674,6 +695,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_customTimeoutEviction) {
 // ── Max-flow-size splitting ─────────────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_maxFlowSplitting) {
+  SKIP_IF_NO_PCAP();
   // Build 250 packets (> kMaxFlowPackets=200 threshold)
   std::vector<PcapPacketEntry> packets;
   for (std::uint32_t i = 0; i < 250; ++i) {
@@ -694,6 +716,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_maxFlowSplitting) {
 // ── TCP flags accumulation ──────────────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_tcpFlagsCounted) {
+  SKIP_IF_NO_PCAP();
   // SYN → SYN+ACK → ACK → PSH+ACK → FIN+ACK
   auto syn = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02); // SYN
   auto synack =
@@ -731,6 +754,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_tcpFlagsCounted) {
 // ── Backward stats (IAT, packet lengths) ────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_backwardStatsPopulated) {
+  SKIP_IF_NO_PCAP();
   auto fwd1 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   auto bwd1 = buildTcpPacket("10.0.0.2", "10.0.0.1", 80, 5000, 0x12);
   auto bwd2 = buildTcpPacket("10.0.0.2", "10.0.0.1", 80, 5000, 0x10);
@@ -756,6 +780,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_backwardStatsPopulated) {
 // ── Packet too short: should be skipped ─────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_truncatedPacketSkipped) {
+  SKIP_IF_NO_PCAP();
   // A packet too short for an Ethernet header
   std::vector<std::uint8_t> tiny(10, 0);
   auto path = writePcapFile("nfe_truncated.pcap", {{tiny, 0, 0}});
@@ -768,6 +793,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_truncatedPacketSkipped) {
 }
 
 TEST(NativeFlowExtractor, ExtractFeatures_nonIpv4Skipped) {
+  SKIP_IF_NO_PCAP();
   // Valid Ethernet length but non-IPv4 EtherType (e.g., ARP = 0x0806)
   std::vector<std::uint8_t> arpPkt(60, 0);
   arpPkt[12] = 0x08;
@@ -784,6 +810,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_nonIpv4Skipped) {
 // ── Bulk transfer tracking ──────────────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_bulkTransferDetected) {
+  SKIP_IF_NO_PCAP();
   // 5 consecutive forward packets (direction doesn't change = bulk)
   std::vector<PcapPacketEntry> packets;
   for (int i = 0; i < 5; ++i) {
@@ -811,6 +838,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_bulkTransferDetected) {
 // ── Active/Idle period tracking ─────────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_activeIdlePeriods) {
+  SKIP_IF_NO_PCAP();
   // Packets with a >5 second gap to trigger idle detection
   auto pkt1 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
   auto pkt2 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
@@ -836,6 +864,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_activeIdlePeriods) {
 // ── Reuse after extract (state cleanup) ─────────────────────────────
 
 TEST(NativeFlowExtractor, extractFeatures_clearsBetweenCalls) {
+  SKIP_IF_NO_PCAP();
   auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   auto path = writePcapFile("nfe_reuse.pcap", {{pkt, 0, 0}});
 
@@ -852,6 +881,7 @@ TEST(NativeFlowExtractor, extractFeatures_clearsBetweenCalls) {
 // ── Unsupported protocol skipped ────────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_unsupportedProtocolSkipped) {
+  SKIP_IF_NO_PCAP();
   // Build an IP packet with protocol 50 (ESP) — not TCP/UDP/ICMP
   std::vector<std::uint8_t> pkt(54, 0);
   pkt[12] = 0x08;
@@ -874,6 +904,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_unsupportedProtocolSkipped) {
 // ── Metadata population: flowDuration, packetRates ──────────────────
 
 TEST(NativeFlowExtractor, FlowMetadata_populatedCorrectly) {
+  SKIP_IF_NO_PCAP();
   auto pkt1 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   auto pkt2 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
   auto pkt3 = buildTcpPacket("10.0.0.2", "10.0.0.1", 80, 5000, 0x10);
@@ -905,6 +936,7 @@ TEST(NativeFlowExtractor, FlowMetadata_populatedCorrectly) {
 // ── Malformed packet parsing: truncated transport headers ───────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_truncatedTcpHeader_skipped) {
+  SKIP_IF_NO_PCAP();
   // Build IPv4 packet where payload is too short for TCP header (IP=20 bytes,
   // need +20 for TCP) Ethernet(14) + IP(20) + partial TCP (10 bytes instead of
   // 20) = 44
@@ -927,6 +959,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_truncatedTcpHeader_skipped) {
 }
 
 TEST(NativeFlowExtractor, ExtractFeatures_truncatedUdpHeader_skipped) {
+  SKIP_IF_NO_PCAP();
   // Ethernet(14) + IP(20) + partial UDP (4 bytes instead of 8) = 38
   std::vector<std::uint8_t> pkt(38, 0);
   pkt[12] = 0x08;
@@ -947,6 +980,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_truncatedUdpHeader_skipped) {
 }
 
 TEST(NativeFlowExtractor, ExtractFeatures_truncatedIcmpHeader_skipped) {
+  SKIP_IF_NO_PCAP();
   // Ethernet(14) + IP(20) + partial ICMP (2 bytes instead of 8) = 36
   std::vector<std::uint8_t> pkt(36, 0);
   pkt[12] = 0x08;
@@ -967,6 +1001,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_truncatedIcmpHeader_skipped) {
 }
 
 TEST(NativeFlowExtractor, ExtractFeatures_ipHeaderTooShort_skipped) {
+  SKIP_IF_NO_PCAP();
   // Ethernet(14) + minimal data (IPv4 EtherType but only 10 bytes of IP
   // payload)
   std::vector<std::uint8_t> pkt(24, 0);
@@ -984,6 +1019,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_ipHeaderTooShort_skipped) {
 }
 
 TEST(NativeFlowExtractor, ExtractFeatures_vlanTooShort_skipped) {
+  SKIP_IF_NO_PCAP();
   // VLAN EtherType but only 1 byte after Ethernet header (need 4 for VLAN tag)
   std::vector<std::uint8_t> pkt(15, 0);
   pkt[12] = 0x81;
@@ -999,6 +1035,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_vlanTooShort_skipped) {
 // ── TCP payload and segment tracking ────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_tcpPayloadTracked) {
+  SKIP_IF_NO_PCAP();
   // Forward TCP packet with 100 bytes of payload (PSH+ACK)
   auto pkt1 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x18, 8192, 100);
   // Forward TCP packet with 50 bytes of payload
@@ -1027,6 +1064,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_tcpPayloadTracked) {
 }
 
 TEST(NativeFlowExtractor, ExtractFeatures_urgAndCwrAndEceFlags) {
+  SKIP_IF_NO_PCAP();
   // Forward packet with URG flag
   auto urg = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x20); // URG
   // Forward packet with CWR flag
@@ -1068,6 +1106,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_urgAndCwrAndEceFlags) {
 // ── Backward bulk transfer detection ────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_bwdBulkDetected) {
+  SKIP_IF_NO_PCAP();
   // 1 fwd packet, then 4 consecutive bwd packets (forms bwd bulk),
   // then 1 fwd packet (triggers bwd bulk completion on direction change)
   auto fwd1 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
@@ -1100,6 +1139,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_bwdBulkDetected) {
 // ── Backward key timeout eviction ───────────────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_backwardKeyTimeoutEviction) {
+  SKIP_IF_NO_PCAP();
   // Packet A→B at t=0 (creates flow with keyFwd={A,B})
   auto pkt1 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   // Packet B→A at t=700s (resolveFlow tries keyBwd={A,B} which matches, but
@@ -1123,6 +1163,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_backwardKeyTimeoutEviction) {
 // ── Single-packet flow metadata (zero duration) ─────────────────────
 
 TEST(NativeFlowExtractor, FlowMetadata_singlePacket_zeroDuration) {
+  SKIP_IF_NO_PCAP();
   auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   auto path = writePcapFile("nfe_single_meta.pcap", {{pkt, 0, 0}});
 
@@ -1179,6 +1220,7 @@ TEST(FlowStats, ToFeatureVector_bulkWithZeroDuration) {
 // ── IP total length < IHL → packet rejected ─────────────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_ipTotalLenLessThanIhl_skipped) {
+  SKIP_IF_NO_PCAP();
   // Build a valid TCP packet, then corrupt the IP total length to be
   // smaller than the IHL (20 bytes). This triggers line 495:
   //   if (payloadLen < pkt.ipIhl || ipTotalLen < pkt.ipIhl) return false;
@@ -1204,6 +1246,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_ipTotalLenLessThanIhl_skipped) {
 // ── Bwd bulk flushed at flow completion via TCP FIN (completeFlow) ──
 
 TEST(NativeFlowExtractor, ExtractFeatures_bwdBulkFlushedAtFlowCompletion) {
+  SKIP_IF_NO_PCAP();
   // Create a flow where the last consecutive packets are backward, then a
   // backward FIN terminates the flow. completeFlow() is called while
   // curBwdBulkPkts >= 2, triggering lines 736-738.
@@ -1240,6 +1283,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_bwdBulkFlushedAtFlowCompletion) {
 // ── Bwd bulk flushed at finalizeBulks (end of pcap) ─────────────────
 
 TEST(NativeFlowExtractor, ExtractFeatures_bwdBulkFlushedAtFinalize) {
+  SKIP_IF_NO_PCAP();
   // Create a flow where the last consecutive packets are backward and the
   // pcap ends without a FIN/RST. finalizeBulks() flushes curBwdBulkPkts >= 2
   // for flows still in the flows_ map (lines 408-410).
@@ -1275,6 +1319,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_bwdBulkFlushedAtFinalize) {
 
 TEST(NativeFlowExtractorTest,
      ExtractFeatures_tcpDataOffsetBelowMin_clampedTo20) {
+  SKIP_IF_NO_PCAP();
   // Build a TCP packet where th_off = 1 → getTcpDataOffset returns 4 (< 20).
   // The parser should clamp transportHeaderLen to 20 (line 516-517).
   auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 12345, 80, 0x02);
