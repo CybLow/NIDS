@@ -108,7 +108,7 @@ Dependencies flow **inward only**: UI -> App -> Core, and Infra -> Core.
 │   CaptureController, AnalysisService, HybridDetectionService,   │
 │   ReportGenerator                                                │
 ├──────────────────────────────────────────────────────────────────┤
-│           core/ (Pure C++20, zero platform deps)                 │
+│           core/ (Pure C++23, zero platform deps)                 │
 │   PacketInfo, AttackType, PredictionResult, DetectionResult,     │
 │   CaptureSession, PacketFilter, FlowInfo                        │
 │   IPacketCapture, IPacketAnalyzer, IFlowExtractor,               │
@@ -118,7 +118,7 @@ Dependencies flow **inward only**: UI -> App -> Core, and Infra -> Core.
 │            infra/ (Platform-specific implementations)            │
 │   PcapCapture, OnnxAnalyzer, NativeFlowExtractor,                │
 │   ThreatIntelProvider, HeuristicRuleEngine,                      │
-│   AnalyzerFactory, FeatureNormalizer, PcapHandle, NetworkHeaders  │
+│   AnalyzerFactory, FeatureNormalizer                              │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -224,9 +224,8 @@ ONNX Runtime; additional backends (TensorRT, OpenVINO) can be added without modi
 calling code.
 
 ### RAII Wrappers
-Every C resource is wrapped in `std::unique_ptr` with a custom deleter:
-- `PcapHandle` wraps `pcap_t*` with `pcap_close`
-- `PcapDumper` wraps `pcap_dumper_t*` with `pcap_dump_close`
+- Packet capture uses PcapPlusPlus built-in RAII device classes
+  (`pcpp::PcapLiveDevice`, `pcpp::PcapFileReaderDevice`, `pcpp::PcapFileWriterDevice`)
 - ONNX Runtime session managed by `Impl` struct in `OnnxAnalyzer`
 
 ### Meyers Singleton

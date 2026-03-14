@@ -5,7 +5,7 @@
 
 An AI-powered Network Intrusion Detection System that captures packets, extracts
 flow features natively in C++, and classifies traffic using a CNN-BiLSTM model trained
-on the LSNM2024 dataset. Built with C++20, Qt6, and ONNX Runtime.
+on the LSNM2024 dataset. Built with C++23, Qt6, and ONNX Runtime.
 
 ## Features
 
@@ -17,7 +17,7 @@ on the LSNM2024 dataset. Built with C++20, Qt6, and ONNX Runtime.
   CUDA/TensorRT
 - **Native Flow Extraction**: 77 bidirectional flow features computed in C++ -- no
   external tools required
-- **Real-time Packet Capture**: Live capture with BPF filtering via libpcap
+- **Real-time Packet Capture**: Live capture with BPF filtering via PcapPlusPlus
 - **Application Detection**: Port-to-service mapping for 100+ protocols
 - **Hex/ASCII Inspector**: Raw packet data viewer
 - **Report Generation**: Post-capture analysis reports
@@ -29,8 +29,8 @@ Clean Architecture with four layers:
 
 ```
 src/
-  core/       Pure C++20 domain logic (no platform dependencies)
-  infra/      Platform-specific implementations (pcap, ONNX Runtime)
+  core/       Pure C++23 domain logic (no platform dependencies)
+  infra/      Platform-specific implementations (PcapPlusPlus, ONNX Runtime)
   app/        Application orchestration (controllers, services)
   ui/         Qt6 presentation layer
   server/     gRPC headless daemon (planned)
@@ -87,7 +87,7 @@ See [INSTALL.md](INSTALL.md) for detailed per-platform instructions.
 | GoogleTest      | Conan 2 (`conanfile.py`)                 |
 | ONNX Runtime    | CMake FetchContent (pre-built binaries)  |
 | Qt6             | System package                           |
-| libpcap / Npcap | System package                           |
+| PcapPlusPlus    | Conan 2 (`conanfile.py`)                 |
 
 ## Build Options
 
@@ -171,7 +171,6 @@ NIDS/
   INSTALL.md                  Detailed installation instructions
   cmake/
     FetchOnnxRuntime.cmake    Downloads pre-built ONNX Runtime binaries
-    FindPCAP.cmake            Cross-platform PCAP finder
     NidsTargetDefaults.cmake  Shared compiler flags (ASan/UBSan in Debug)
   .github/workflows/          CI/CD (build, test, lint, coverage, release)
   src/
@@ -181,10 +180,10 @@ NIDS/
       services/               IPacketCapture, IPacketAnalyzer, IFlowExtractor,
                               Configuration, PacketFilter, ServiceRegistry
     infra/                    Infrastructure
-      capture/                PcapCapture, PcapHandle (RAII)
+      capture/                PcapCapture (PcapPlusPlus RAII devices)
       analysis/               OnnxAnalyzer, AnalyzerFactory
       flow/                   NativeFlowExtractor (77 CIC features)
-      platform/               NetworkHeaders, SocketInit
+      platform/               SocketInit
     app/                      Application layer
       CaptureController       Capture lifecycle management
       AnalysisService         ML pipeline orchestration
@@ -214,7 +213,7 @@ NIDS/
 - [Model Training](docs/model-training.md) -- How to train, export, and deploy the model
 - [Deployment](docs/deployment.md) -- Docker, bare metal, packaging, systemd
 - [Installation](INSTALL.md) -- Build dependencies for all platforms
-- [Coding Standards](AGENTS.md) -- C++20/Qt6 conventions, banned patterns, design rules
+- [Coding Standards](AGENTS.md) -- C++23/Qt6 conventions, banned patterns, design rules
 
 ### Architecture Decision Records
 - [ADR-001: Replace frugally-deep with ONNX Runtime](docs/adr/001-replace-fdeep-with-onnx.md)
@@ -222,6 +221,7 @@ NIDS/
 - [ADR-003: Qt6 Migration](docs/adr/003-qt6-migration.md)
 - [ADR-004: Model Benchmark Analysis](docs/adr/004-model-benchmark-analysis.md)
 - [ADR-005: Hybrid Detection System](docs/adr/005-hybrid-detection-system.md)
+- [ADR-006: PcapPlusPlus Migration](docs/adr/006-pcapplusplus-migration.md)
 
 ## Roadmap
 
