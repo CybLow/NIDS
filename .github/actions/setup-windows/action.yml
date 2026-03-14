@@ -31,12 +31,12 @@ runs:
       shell: pwsh
       run: choco install ninja ${{ inputs.extra-choco }} -y
 
-    - name: Install WinPcap 4.1.3 (provides wpcap.dll for pcap operations)
-      shell: pwsh
+    - name: Install WinPcap runtime
+      shell: cmd
       run: |
-        Invoke-WebRequest -Uri "https://www.winpcap.org/install/bin/WinPcap_4_1_3.exe" `
-          -OutFile "$env:TEMP\WinPcap_4_1_3.exe"
-        Start-Process -Wait -FilePath "$env:TEMP\WinPcap_4_1_3.exe" -ArgumentList '/S'
+        git clone --depth 1 https://github.com/PcapPlusPlus/winpcap-installer
+        winpcap-installer\winpcap-truesight-meter-4.1.3.exe /S
+        rmdir winpcap-installer /s /q
 
     - name: Install Conan
       shell: pwsh
