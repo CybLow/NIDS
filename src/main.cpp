@@ -2,7 +2,9 @@
 #include "app/CaptureController.h"
 #include "app/HybridDetectionService.h"
 #include "app/LiveDetectionPipeline.h"
+#include "core/model/DetectionResult.h"
 #include "core/services/Configuration.h"
+#include "core/services/IFlowExtractor.h"
 #include "infra/analysis/AnalyzerFactory.h"
 #include "infra/analysis/FeatureNormalizer.h"
 #include "infra/capture/PcapCapture.h"
@@ -58,6 +60,8 @@ int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
 
   qRegisterMetaType<nids::core::PacketInfo>("nids::core::PacketInfo");
+  qRegisterMetaType<nids::core::DetectionResult>("nids::core::DetectionResult");
+  qRegisterMetaType<nids::core::FlowInfo>("nids::core::FlowInfo");
 
   auto capture = std::make_unique<nids::infra::PcapCapture>();
   auto controller =

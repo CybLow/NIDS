@@ -429,7 +429,13 @@ NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
     }
   }
 
-  finalizeBulks();
+  // Finalize remaining active flows: flush bulk stats, fire callbacks,
+  // and move to completedFlows_ for batch feature vector construction.
+  for (auto &[key, stats] : flows_) {
+    completeFlow(key, stats);
+  }
+  flows_.clear();
+
   buildFlowMetadata();
   return buildFeatureVectors();
 }
@@ -460,7 +466,10 @@ void NativeFlowExtractor::processPacket(const std::uint8_t *data,
 }
 
 void NativeFlowExtractor::finalizeAllFlows() {
-  finalizeBulks();
+  for (auto &[key, stats] : flows_) {
+    completeFlow(key, stats);
+  }
+  flows_.clear();
 }
 
 void NativeFlowExtractor::reset() {
@@ -470,24 +479,8 @@ void NativeFlowExtractor::reset() {
   lastSweepTimeUs_ = 0;
 }
 
-void NativeFlowExtractor::finalizeBulks() {
-  for (auto &[key, stats] : flows_) {
-    if (stats.curFwdBulkPkts >= 2) {
-      stats.fwdBulkPktsAcc.update(stats.curFwdBulkPkts);
-      stats.fwdBulkBytesAcc.update(stats.curFwdBulkBytes);
-    }
-    if (stats.curBwdBulkPkts >= 2) {
-      stats.bwdBulkPktsAcc.update(stats.curBwdBulkPkts);
-      stats.bwdBulkBytesAcc.update(stats.curBwdBulkBytes);
-    }
-
-    // Fire callback for remaining active flows (end-of-capture finalization).
-    if (flowCompletionCallback_) {
-      flowCompletionCallback_(stats.toFeatureVector(key.dstPort),
-                              buildFlowInfo(key, stats));
-    }
-  }
-}
+// finalizeBulks() removed — replaced by completeFlow() loop in
+// extractFeatures() and finalizeAllFlows().
 
 /// Extract TCP flags from a TCP header into a bitmask.
 [[nodiscard]] static std::uint8_t
@@ -627,17 +620,18 @@ void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
 NativeFlowExtractor::FlowLookupResult
 NativeFlowExtractor::resolveFlow(const FlowKey &keyFwd, const FlowKey &keyBwd,
                                  std::int64_t timestampUs) {
-  // Evict timed-out flows
+  // Evict timed-out flows — use completeFlow() so the flow completion
+  // callback fires (required for live detection pipeline).
   if (auto it = flows_.find(keyFwd);
       it != flows_.end() &&
       timestampUs - it->second.lastTimeUs > flowTimeoutUs_) {
-    completedFlows_.emplace_back(keyFwd, std::move(it->second));
+    completeFlow(it->first, it->second);
     flows_.erase(it);
   }
   if (auto it = flows_.find(keyBwd);
       it != flows_.end() &&
       timestampUs - it->second.lastTimeUs > flowTimeoutUs_) {
-    completedFlows_.emplace_back(keyBwd, std::move(it->second));
+    completeFlow(it->first, it->second);
     flows_.erase(it);
   }
 

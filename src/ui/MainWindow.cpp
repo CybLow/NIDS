@@ -250,6 +250,10 @@ void MainWindow::toggleCapture() {
       }
     }
   } else {
+    // Clear stale data from the previous capture session.
+    tableModel_->clear();
+    flowModel_->clear();
+
     auto filter = filterPanel_->gatherFilter();
     controller_->startCapture(filter);
     filterPanel_->setButtonText("Stop");

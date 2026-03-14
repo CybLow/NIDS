@@ -108,39 +108,48 @@ void PcapCaptureWorker::processPacket(pcpp::RawPacket *rawPacket) {
     }
   }
 
+  if (dumper_) {
+    dumper_->writePacket(*rawPacket);
+  }
+
   pcpp::Packet parsedPacket(rawPacket);
+
+  // Skip non-IPv4 packets (ARP, IPv6, STP, etc.) -- they have no meaningful
+  // IP/port fields and would display as blank rows in the Packets tab.
+  const auto *ipLayer = parsedPacket.getLayerOfType<pcpp::IPv4Layer>();
+  if (!ipLayer) {
+    return;
+  }
+
   nids::core::PacketInfo info;
+  info.ipSource = ipLayer->getSrcIPv4Address().toString();
+  info.ipDestination = ipLayer->getDstIPv4Address().toString();
 
-  if (const auto *ipLayer = parsedPacket.getLayerOfType<pcpp::IPv4Layer>()) {
-    info.ipSource = ipLayer->getSrcIPv4Address().toString();
-    info.ipDestination = ipLayer->getDstIPv4Address().toString();
-
-    if (const auto *tcpLayer = parsedPacket.getLayerOfType<pcpp::TcpLayer>()) {
-      info.protocol = "TCP";
-      info.portSource = std::to_string(tcpLayer->getSrcPort());
-      info.portDestination = std::to_string(tcpLayer->getDstPort());
-      info.application =
-          serviceRegistry_.resolveApplication("", "", info.portDestination);
-    } else if (const auto *udpLayer =
-                   parsedPacket.getLayerOfType<pcpp::UdpLayer>()) {
-      info.protocol = "UDP";
-      info.portSource = std::to_string(udpLayer->getSrcPort());
-      info.portDestination = std::to_string(udpLayer->getDstPort());
-      info.application =
-          serviceRegistry_.resolveApplication("", "", info.portDestination);
-    } else if (parsedPacket.getLayerOfType<pcpp::IcmpLayer>()) {
-      info.protocol = "ICMP";
-    } else {
-      info.protocol = "Unknown";
-    }
+  if (const auto *tcpLayer = parsedPacket.getLayerOfType<pcpp::TcpLayer>()) {
+    info.protocol = "TCP";
+    info.portSource = std::to_string(tcpLayer->getSrcPort());
+    info.portDestination = std::to_string(tcpLayer->getDstPort());
+    info.application =
+        serviceRegistry_.resolveApplication("", "", info.portDestination);
+  } else if (const auto *udpLayer =
+                 parsedPacket.getLayerOfType<pcpp::UdpLayer>()) {
+    info.protocol = "UDP";
+    info.portSource = std::to_string(udpLayer->getSrcPort());
+    info.portDestination = std::to_string(udpLayer->getDstPort());
+    info.application =
+        serviceRegistry_.resolveApplication("", "", info.portDestination);
+  } else if (parsedPacket.getLayerOfType<pcpp::IcmpLayer>()) {
+    info.protocol = "ICMP";
+    info.portSource = "-";
+    info.portDestination = "-";
+  } else {
+    info.protocol = "Other";
+    info.portSource = "-";
+    info.portDestination = "-";
   }
 
   info.rawData.assign(rawPacket->getRawData(),
                       rawPacket->getRawData() + rawPacket->getRawDataLen());
-
-  if (dumper_) {
-    dumper_->writePacket(*rawPacket);
-  }
 
   emit packetCaptured(info);
 }

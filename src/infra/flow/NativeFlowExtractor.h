@@ -311,7 +311,6 @@ private:
   };
 
   void processPacketInternal(pcpp::RawPacket &rawPacket, std::int64_t timestampUs);
-  void finalizeBulks();
   void
   buildFlowMetadata(); ///< Populate flowMetadata_ from completed + active flows
 
