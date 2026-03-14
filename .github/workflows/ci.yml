@@ -169,6 +169,8 @@ jobs:
     needs: build-linux
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      SCCACHE_GHA_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -178,26 +180,25 @@ jobs:
           build-type: Debug
           extra-packages: lcov
           extra-pip: gcovr
-      - uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Install SonarCloud build wrapper
         uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v7
 
-      - run: cmake --preset ci-coverage-fast
+      - run: cmake --preset ci-coverage
 
       - name: Build (wrapped for SonarCloud)
-        run: build-wrapper-linux-x86-64 --out-dir bw-output cmake --build --preset ci-coverage-fast
+        run: build-wrapper-linux-x86-64 --out-dir bw-output cmake --build --preset ci-coverage
 
-      - run: ctest --test-dir build/ci-coverage-fast --output-on-failure --timeout 120
+      - run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 120
 
       - name: Generate coverage reports
         run: |
-          lcov --capture --directory build/ci-coverage-fast --output-file coverage.info \
+          lcov --capture --directory build/ci-coverage --output-file coverage.info \
             --gcov-tool gcov-14 --ignore-errors mismatch,negative,gcov
           lcov --remove coverage.info '/usr/*' '*/tests/*' '*/build/*' \
             --output-file coverage.info --ignore-errors unused
 
-          gcovr --root . build/ci-coverage-fast \
+          gcovr --root . build/ci-coverage \
             --cobertura coverage-cobertura.xml --cobertura-pretty \
             --gcov-executable gcov-14 \
             --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \

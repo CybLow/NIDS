@@ -1,9 +1,9 @@
 #include "infra/threat/ThreatIntelProvider.h"
 #include <gtest/gtest.h>
 
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 using nids::infra::ThreatIntelProvider;
 
@@ -16,11 +16,13 @@ protected: // NOSONAR
   void SetUp() override {
     // Use a unique temp directory per test instance to avoid races
     // when CTest runs tests in parallel.
-    auto tmpTemplate = fs::temp_directory_path() / "nids_test_feeds_XXXXXX";
-    auto tmpStr = tmpTemplate.string();
-    char *result = mkdtemp(tmpStr.data());
-    ASSERT_NE(result, nullptr) << "Failed to create temp directory";
-    testDir_ = result;
+    auto base = fs::temp_directory_path() / "nids_test_feeds";
+    base += "_" + std::to_string(
+                      std::hash<std::thread::id>{}(std::this_thread::get_id()));
+    base +=
+        "_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed());
+    fs::create_directories(base);
+    testDir_ = base.string();
   }
 
   void TearDown() override {
