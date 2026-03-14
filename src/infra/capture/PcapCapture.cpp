@@ -2,6 +2,7 @@
 #include "infra/platform/NetworkHeaders.h"
 
 #include <cstring>
+#include <memory>
 #include <pcap.h>
 
 namespace nids::infra {
@@ -54,8 +55,8 @@ void PcapCaptureWorker::doCapture() {
   }
 
   capturing_.store(true);
-  pcap_loop(handle_.get(), 0, packetCallback,
-            reinterpret_cast<unsigned char *>(this));
+  auto *ud = reinterpret_cast<unsigned char *>(this); // NOSONAR
+  pcap_loop(handle_.get(), 0, packetCallback, ud);
 
   dumper_.reset();
   handle_.reset();
@@ -83,36 +84,37 @@ void PcapCaptureWorker::processPacket(const struct pcap_pkthdr *pkthdr,
 
   nids::core::PacketInfo info;
 
-  auto *ethHeader = reinterpret_cast<const EthernetHeader *>(packet);
-  if (getEtherType(ethHeader) == kEtherTypeIPv4) {
-    auto *ipHeader = reinterpret_cast<const IPv4Header *>(
-        packet + kEthernetHeaderSize); // NOSONAR
-    info.ipSource = getIpSrcStr(ipHeader);
-    info.ipDestination = getIpDstStr(ipHeader);
+  EthernetHeader ethHeader;
+  std::memcpy(&ethHeader, packet, sizeof(EthernetHeader));
+  if (getEtherType(&ethHeader) == kEtherTypeIPv4) {
+    const auto *ipData = packet + kEthernetHeaderSize;
+    IPv4Header ipHeader;
+    std::memcpy(&ipHeader, ipData, sizeof(IPv4Header));
 
-    auto proto = getIpProtocol(ipHeader);
-    auto ipHeaderLen = getIpIhl(ipHeader);
+    info.ipSource = getIpSrcStr(&ipHeader);
+    info.ipDestination = getIpDstStr(&ipHeader);
+
+    auto proto = getIpProtocol(&ipHeader);
+    auto ipHeaderLen = getIpIhl(&ipHeader);
 
     // Validate IP header length (minimum 20 bytes, must fit in captured packet)
     if (ipHeaderLen < 20 ||
         (kEthernetHeaderSize + ipHeaderLen) > pkthdr->caplen) {
       info.protocol = "Malformed";
     } else if (proto == kIpProtoTcp) {
-      auto *tcpHeader = reinterpret_cast<const TcpHeader *>( // NOSONAR
-          reinterpret_cast<const std::uint8_t *>(ipHeader) +
-          ipHeaderLen); // NOSONAR
+      TcpHeader tcpHeader;
+      std::memcpy(&tcpHeader, ipData + ipHeaderLen, sizeof(TcpHeader));
       info.protocol = "TCP";
-      info.portSource = std::to_string(getTcpSrcPort(tcpHeader));
-      info.portDestination = std::to_string(getTcpDstPort(tcpHeader));
+      info.portSource = std::to_string(getTcpSrcPort(&tcpHeader));
+      info.portDestination = std::to_string(getTcpDstPort(&tcpHeader));
       info.application =
           serviceRegistry_.resolveApplication("", "", info.portDestination);
     } else if (proto == kIpProtoUdp) {
-      auto *udpHeader = reinterpret_cast<const UdpHeader *>( // NOSONAR
-          reinterpret_cast<const std::uint8_t *>(ipHeader) +
-          ipHeaderLen); // NOSONAR
+      UdpHeader udpHeader;
+      std::memcpy(&udpHeader, ipData + ipHeaderLen, sizeof(UdpHeader));
       info.protocol = "UDP";
-      info.portSource = std::to_string(getUdpSrcPort(udpHeader));
-      info.portDestination = std::to_string(getUdpDstPort(udpHeader));
+      info.portSource = std::to_string(getUdpSrcPort(&udpHeader));
+      info.portDestination = std::to_string(getUdpDstPort(&udpHeader));
       info.application =
           serviceRegistry_.resolveApplication("", "", info.portDestination);
     } else if (proto == kIpProtoIcmp) {
@@ -125,8 +127,8 @@ void PcapCaptureWorker::processPacket(const struct pcap_pkthdr *pkthdr,
   info.rawData.assign(packet, packet + pkthdr->len);
 
   if (dumper_) {
-    pcap_dump(reinterpret_cast<unsigned char *>(dumper_.get()), pkthdr,
-              packet); // NOSONAR
+    auto *dp = reinterpret_cast<unsigned char *>(dumper_.get()); // NOSONAR
+    pcap_dump(dp, pkthdr, packet);
   }
 
   emit packetCaptured(info);
@@ -134,8 +136,9 @@ void PcapCaptureWorker::processPacket(const struct pcap_pkthdr *pkthdr,
 
 // --- PcapCapture ---
 
-PcapCapture::PcapCapture(QObject *parent)
-    : QObject(parent), worker_(new PcapCaptureWorker()) {
+PcapCapture::PcapCapture(QObject *parent) : QObject(parent) {
+  auto workerPtr = std::make_unique<PcapCaptureWorker>();
+  worker_ = workerPtr.release(); // Qt takes ownership via deleteLater
   worker_->moveToThread(&workerThread_);
 
   connect(&workerThread_, &QThread::finished, worker_, &QObject::deleteLater);

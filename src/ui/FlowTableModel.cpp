@@ -30,11 +30,11 @@ constexpr std::array<const char *, FlowTableModel::kColumnCount>
 
 /// Columns that should be right-aligned.
 constexpr std::array<int, 5> kRightAlignedColumns = {{
-    std::to_underlying(FlowTableModel::Column::Number),
-    std::to_underlying(FlowTableModel::Column::SrcPort),
-    std::to_underlying(FlowTableModel::Column::DstPort),
-    std::to_underlying(FlowTableModel::Column::Confidence),
-    std::to_underlying(FlowTableModel::Column::CombinedScore),
+    static_cast<int>(FlowTableModel::Column::Number),
+    static_cast<int>(FlowTableModel::Column::SrcPort),
+    static_cast<int>(FlowTableModel::Column::DstPort),
+    static_cast<int>(FlowTableModel::Column::Confidence),
+    static_cast<int>(FlowTableModel::Column::CombinedScore),
 }};
 
 /// Helper to format an attackTypeToString view as QString.

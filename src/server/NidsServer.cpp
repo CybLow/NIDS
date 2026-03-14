@@ -1,5 +1,6 @@
 #include "server/NidsServer.h"
 
+#include <cstdio>
 #include <spdlog/spdlog.h>
 
 namespace nids::server {
@@ -13,7 +14,9 @@ NidsServer::~NidsServer() noexcept {
     try {
       spdlog::error("Exception caught in NidsServer destructor during stop()");
     } catch (...) {
-      // Last resort: swallow to guarantee noexcept
+      // spdlog itself threw — C stdio as last resort in noexcept destructor
+      static_cast<void>(
+          std::fputs("NidsServer: destructor cleanup failed\n", stderr));
     }
   }
 }

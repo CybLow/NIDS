@@ -29,7 +29,7 @@ public:
   };
 
   /// Total number of columns (integral constant for use in array sizes).
-  static constexpr int kColumnCount = std::to_underlying(Column::ColumnCount);
+  static constexpr int kColumnCount = static_cast<int>(Column::ColumnCount);
 
   /** Construct an empty packet table model. */
   explicit PacketTableModel(QObject *parent = nullptr);
