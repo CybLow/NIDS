@@ -171,13 +171,18 @@ documented in ADR-004.
 - Removed dead vector-based free functions (`mean`, `stddev`, `variance`)
 - Added 5 `WelfordAccumulator` unit tests
 
-### 8.3 — Add periodic timeout sweeps
+### 8.3 — ~~Add periodic timeout sweeps~~ [DONE]
 
-- **Why**: Currently flow expiry is only checked lazily when the next packet for the
-  same 5-tuple arrives. Long-lived idle flows are never expired.
-- Add a timer (e.g., every 30s) that sweeps flows and expires those past the idle
-  timeout
-- Emit completed flows for analysis
+- **Files**: `NativeFlowExtractor.h`, `NativeFlowExtractor.cpp`, `test_NativeFlowExtractor.cpp`
+- Completed: `sweepExpiredFlows(nowUs)` public method iterates active flows and
+  expires any idle beyond `flowTimeoutUs_`
+- Called every 30 seconds (by packet timestamp) during batch pcap processing
+- Designed for future live mode: external timer can call `sweepExpiredFlows()`
+- Constructor now reads `flowTimeoutUs_` and `idleThresholdUs_` from
+  `Configuration::instance()` (was hardcoded)
+- Removed `kDefaultFlowTimeoutUs` and `kIdleThresholdUs` local constants
+- `updateActiveIdle()` now accepts idle threshold as parameter
+- Added 4 sweep-specific unit tests (284 total)
 
 ### 8.4 — Stream completed flows to ML analyzer
 

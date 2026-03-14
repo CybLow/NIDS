@@ -242,8 +242,7 @@ struct FlowStats { // NOSONAR - 45 fields required by CIC-IDS2017 feature vector
  * vectors. */
 class NativeFlowExtractor : public core::IFlowExtractor {
 public:
-  /** Construct the extractor with the default flow timeout from Configuration.
-   */
+  /** Construct the extractor with timeouts from Configuration::instance(). */
   NativeFlowExtractor();
 
   /**
@@ -252,6 +251,19 @@ public:
    * finalized.
    */
   void setFlowTimeout(std::int64_t timeoutUs);
+
+  /**
+   * Sweep all active flows and expire those idle longer than flowTimeoutUs_.
+   *
+   * @param nowUs  Current time in microseconds (e.g., packet timestamp or
+   *               wall-clock time).
+   * @return       Number of flows expired by this sweep.
+   *
+   * In batch mode (extractFeatures), this is called periodically during pcap
+   * processing.  In future live mode (Phase 8.6), an external timer can call
+   * this to proactively expire idle flows.
+   */
+  std::size_t sweepExpiredFlows(std::int64_t nowUs);
 
   [[nodiscard]] std::vector<std::vector<float>>
   extractFeatures(const std::string &pcapPath) override;
@@ -263,7 +275,9 @@ private:
   std::unordered_map<FlowKey, FlowStats, FlowKeyHash> flows_;
   std::vector<std::pair<FlowKey, FlowStats>> completedFlows_;
   std::vector<core::FlowInfo> flowMetadata_; ///< Populated by extractFeatures()
-  std::int64_t flowTimeoutUs_ = 600'000'000; // 600 seconds default
+  std::int64_t flowTimeoutUs_;      ///< Flow inactivity timeout (from Configuration).
+  std::int64_t idleThresholdUs_;    ///< Idle vs active period threshold (from Configuration).
+  std::int64_t lastSweepTimeUs_ = 0; ///< Timestamp of the last periodic sweep.
 
   /// Parsed packet context passed between processPacket helpers.
   struct ParsedPacket {
@@ -329,7 +343,8 @@ private:
   /// Update active/idle period tracking based on inter-packet gap.
   static void updateActiveIdle(FlowStats &stats, std::int64_t timestampUs,
                                std::int64_t prevLastTimeUs,
-                               std::int64_t flowGapUs);
+                               std::int64_t flowGapUs,
+                               std::int64_t idleThresholdUs);
 
   /// Finalize bulk counters and move flow to completedFlows_.
   void completeFlow(const FlowKey &key, FlowStats &stats);

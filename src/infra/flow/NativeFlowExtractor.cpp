@@ -1,5 +1,7 @@
 #include "infra/flow/NativeFlowExtractor.h"
 
+#include "core/services/Configuration.h"
+
 #include <pcapplusplus/EthLayer.h>
 #include <pcapplusplus/IPv4Layer.h>
 #include <pcapplusplus/IcmpLayer.h>
@@ -38,9 +40,11 @@ constexpr std::uint8_t kTcpUrg = 0x20;
 constexpr std::uint8_t kTcpCwr = 0x80;
 constexpr std::uint8_t kTcpEce = 0x40;
 
-constexpr std::int64_t kIdleThresholdUs =
-    5'000'000; // 5 seconds (standard idle threshold)
-constexpr std::int64_t kDefaultFlowTimeoutUs = 600'000'000; // 600 seconds
+/// Interval between periodic sweeps during batch pcap processing.
+/// Triggered when the packet timestamp has advanced by at least this amount
+/// since the last sweep.  30 seconds balances memory savings against the
+/// O(n) sweep cost.
+constexpr std::int64_t kSweepIntervalUs = 30'000'000; // 30 seconds
 
 /// Push max, min, mean, std from an accumulator, or 4 zeros if empty.
 void pushLengthStats(std::vector<float> &features,
@@ -278,10 +282,29 @@ const std::vector<std::string> &flowFeatureNames() {
 }
 
 NativeFlowExtractor::NativeFlowExtractor()
-    : flowTimeoutUs_(kDefaultFlowTimeoutUs) {}
+    : flowTimeoutUs_(core::Configuration::instance().flowTimeoutUs()),
+      idleThresholdUs_(core::Configuration::instance().idleThresholdUs()) {}
 
 void NativeFlowExtractor::setFlowTimeout(std::int64_t timeoutUs) {
   flowTimeoutUs_ = timeoutUs;
+}
+
+std::size_t NativeFlowExtractor::sweepExpiredFlows(std::int64_t nowUs) {
+  std::size_t swept = 0;
+  for (auto it = flows_.begin(); it != flows_.end();) {
+    if (nowUs - it->second.lastTimeUs > flowTimeoutUs_) {
+      completeFlow(it->first, it->second);
+      it = flows_.erase(it);
+      ++swept;
+    } else {
+      ++it;
+    }
+  }
+  if (swept > 0) {
+    spdlog::debug("sweepExpiredFlows: expired {} idle flows ({} active remain)",
+                  swept, flows_.size());
+  }
+  return swept;
 }
 
 std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
@@ -387,6 +410,7 @@ NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
 
   flows_.clear();
   completedFlows_.clear();
+  lastSweepTimeUs_ = 0;
   pcpp::RawPacket rawPacket;
 
   while (reader.getNextPacket(rawPacket)) {
@@ -394,6 +418,12 @@ NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
     auto tsUs =
         std::int64_t{ts.tv_sec} * 1'000'000 + std::int64_t{ts.tv_nsec} / 1'000;
     processPacket(rawPacket, tsUs);
+
+    // Periodic sweep: expire idle flows every kSweepIntervalUs.
+    if (tsUs - lastSweepTimeUs_ >= kSweepIntervalUs) {
+      sweepExpiredFlows(tsUs);
+      lastSweepTimeUs_ = tsUs;
+    }
   }
 
   finalizeBulks();
@@ -531,7 +561,8 @@ void NativeFlowExtractor::processPacket(pcpp::RawPacket &rawPacket,
   }
 
   updateBulkTracking(stats, pkt.totalPacketLen, isForward);
-  updateActiveIdle(stats, timestampUs, prevLastTimeUs, flowGapUs);
+  updateActiveIdle(stats, timestampUs, prevLastTimeUs, flowGapUs,
+                   idleThresholdUs_);
 
   if (tcpFinOrRst) {
     completeFlow(activeKey, stats);
@@ -701,10 +732,11 @@ void NativeFlowExtractor::updateBulkTracking(FlowStats &stats,
 }
 
 void NativeFlowExtractor::updateActiveIdle(FlowStats &stats,
-                                            std::int64_t timestampUs,
-                                            std::int64_t prevLastTimeUs,
-                                            std::int64_t flowGapUs) {
-  if (flowGapUs > kIdleThresholdUs && prevLastTimeUs > 0) {
+                                             std::int64_t timestampUs,
+                                             std::int64_t prevLastTimeUs,
+                                             std::int64_t flowGapUs,
+                                             std::int64_t idleThresholdUs) {
+  if (flowGapUs > idleThresholdUs && prevLastTimeUs > 0) {
     if (stats.lastActiveTimeUs >= 0) {
       stats.activeAcc.update(
           static_cast<double>(prevLastTimeUs - stats.lastActiveTimeUs));
