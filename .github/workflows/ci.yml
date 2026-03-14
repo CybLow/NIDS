@@ -68,7 +68,9 @@ jobs:
             "$PWD\build\ci-msvc\_deps\onnxruntime-src\lib"
             "$env:QT_ROOT_DIR\bin"
           ) -join ";" + ";$env:PATH"
-          ctest --test-dir build/ci-msvc --output-on-failure --timeout 120 --exclude-regex 'Stress'
+          # Exclude NativeFlowExtractor and pcap-dependent tests (npcap runtime not available in CI)
+          ctest --test-dir build/ci-msvc --output-on-failure --timeout 120 `
+            --exclude-regex 'Stress|NativeFlowExtractor|PcapCapture'
 
   # ── Stage 2: Analysis ────────────────────────────────────────────
 
