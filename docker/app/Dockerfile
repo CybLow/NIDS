@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ gcc-14 g++-14 \
-    cmake ninja-build mold \
+    cmake ninja-build make mold \
     qt6-base-dev \
     ca-certificates curl tar pkg-config \
     python3-pip \
@@ -16,7 +16,7 @@ WORKDIR /app
 
 # Copy dependency manifests first for layer caching
 COPY conanfile.py CMakePresets.json ./
-COPY conan/ conan/
+COPY conan/ cowhy nan/
 
 ENV CC=gcc-14 CXX=g++-14
 RUN conan profile detect --force && \
