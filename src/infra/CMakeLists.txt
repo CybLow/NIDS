@@ -28,9 +28,10 @@ target_link_libraries(nids_infra
 target_compile_definitions(nids_infra PRIVATE NIDS_HAS_ONNX)
 
 if(WIN32)
-    # Delay-load npcap DLLs so non-pcap tests can run without npcap runtime.
-    # Pcap-dependent tests use GTEST_SKIP on Windows CI (npcap free edition
-    # does not support silent install; OEM license needed for full coverage).
+    # Delay-load pcap DLLs: PcapPlusPlus links against npcap SDK but CI uses
+    # WinPcap runtime (which lacks npcap-specific exports). DELAYLOAD resolves
+    # each function lazily, so standard pcap functions (pcap_open_offline, etc.)
+    # resolve against WinPcap while npcap-only functions are never called.
     target_link_libraries(nids_infra PRIVATE delayimp)
     target_link_options(nids_infra PUBLIC
         /DELAYLOAD:wpcap.dll
