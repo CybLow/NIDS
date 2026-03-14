@@ -16,10 +16,9 @@ function(nids_test_coverage target)
 endfunction()
 
 # ── Helper: register gtest with platform-aware discovery ─────────
-# On Windows, DLLs (ONNX Runtime, Qt, npcap) aren't in PATH at build
-# time, so POST_BUILD discovery fails with 0xc0000135.
-# PRE_TEST defers discovery to ctest execution; TARGET_RUNTIME_DLLS
-# copies known DLLs next to the test exe.
+# On Windows, DLLs aren't in PATH at build time, so POST_BUILD
+# discovery fails. PRE_TEST defers to ctest; TARGET_RUNTIME_DLLS
+# copies CMake-known DLLs next to the test exe.
 function(nids_register_gtest target)
     if(WIN32)
         add_custom_command(TARGET ${target} POST_BUILD
@@ -31,7 +30,7 @@ function(nids_register_gtest target)
 
         gtest_discover_tests(${target}
             DISCOVERY_MODE PRE_TEST
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            WORKING_DIRECTORY $<TARGET_FILE_DIR:${target}>
             ${ARGN}
         )
     else()
@@ -39,15 +38,16 @@ function(nids_register_gtest target)
     endif()
 endfunction()
 
-# ── Core / Infra / App tests ─────────────────────────────────────
-# Note: transitively links PCAP, ONNX Runtime, Qt Core via nids_infra.
+# ══════════════════════════════════════════════════════════════════
+#  Unit tests (no pcap runtime needed)
+# ══════════════════════════════════════════════════════════════════
+
 add_executable(nids_tests
     unit/test_PacketFilter.cpp
     unit/test_ServiceRegistry.cpp
     unit/test_CaptureSession.cpp
     unit/test_AttackType.cpp
     unit/test_ReportGenerator.cpp
-    unit/test_NativeFlowExtractor.cpp
     unit/test_Configuration.cpp
     unit/test_DetectionResult.cpp
     unit/test_PredictionResult.cpp
@@ -70,7 +70,32 @@ nids_set_target_defaults(nids_tests)
 nids_test_coverage(nids_tests)
 nids_register_gtest(nids_tests)
 
-# ── Qt-dependent tests ───────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+#  PCAP-dependent tests (need libpcap/npcap runtime)
+# ══════════════════════════════════════════════════════════════════
+
+add_executable(nids_pcap_tests
+    unit/test_NativeFlowExtractor.cpp
+)
+
+target_link_libraries(nids_pcap_tests PRIVATE
+    GTest::gtest
+    GTest::gtest_main
+    GTest::gmock
+    nids_core
+    nids_infra
+)
+
+nids_set_target_defaults(nids_pcap_tests)
+nids_test_coverage(nids_pcap_tests)
+nids_register_gtest(nids_pcap_tests
+    PROPERTIES LABELS "PCAP"
+)
+
+# ══════════════════════════════════════════════════════════════════
+#  Qt-dependent tests
+# ══════════════════════════════════════════════════════════════════
+
 if(Qt6_FOUND)
     add_executable(nids_qt_tests
         unit/test_CaptureController.cpp
@@ -96,7 +121,10 @@ else()
     message(STATUS "Qt6 not found -- skipping Qt-dependent tests")
 endif()
 
-# ── Stress / performance tests ───────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+#  Stress / performance tests (need pcap runtime)
+# ══════════════════════════════════════════════════════════════════
+
 add_executable(nids_stress_tests
     stress/test_PacketThroughput.cpp
     stress/test_FlowExtractionLoad.cpp
@@ -122,10 +150,15 @@ target_link_libraries(nids_stress_tests PRIVATE
 nids_set_target_defaults(nids_stress_tests)
 nids_test_coverage(nids_stress_tests)
 nids_register_gtest(nids_stress_tests
-    PROPERTIES TIMEOUT 120
+    PROPERTIES
+        TIMEOUT 120
+        LABELS "Stress;PCAP"
 )
 
-# ── ONNX Runtime tests ──────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+#  ONNX Runtime tests
+# ══════════════════════════════════════════════════════════════════
+
 if(TARGET onnxruntime::onnxruntime)
     add_executable(nids_onnx_tests
         unit/test_OnnxAnalyzer.cpp

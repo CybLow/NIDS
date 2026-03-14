@@ -69,10 +69,9 @@ jobs:
             "$PWD\build\ci-msvc\_deps\onnxruntime-src\lib"
             "$env:QT_ROOT_DIR\bin"
           ) -join ";" + ";$env:PATH"
-          # Exclude pcap-dependent tests (npcap runtime not installed on CI)
-          # and POSIX-only permission test
+          # Exclude PCAP-dependent and Stress tests (npcap runtime not on CI)
           ctest --test-dir build/ci-msvc --output-on-failure --timeout 120 `
-            --exclude-regex 'Stress|NativeFlowExtractor|PcapCapture|PacketThroughput|FlowExtractionLoad|Unreadable'
+            -LE "PCAP|Stress"
 
   # ── Stage 2: Analysis ────────────────────────────────────────────
 
@@ -210,9 +209,11 @@ jobs:
       - name: Generate coverage reports
         run: |
           lcov --capture --directory build/ci-coverage --output-file coverage.info \
-            --gcov-tool gcov-14 --ignore-errors mismatch,negative,gcov
+            --gcov-tool gcov-14 \
+            --ignore-errors mismatch,mismatch,negative,negative,gcov,gcov
           lcov --remove coverage.info '/usr/*' '*/tests/*' '*/build/*' \
-            --output-file coverage.info --ignore-errors unused
+            --output-file coverage.info \
+            --ignore-errors unused,unused
 
           gcovr --root . build/ci-coverage \
             --cobertura coverage-cobertura.xml --cobertura-pretty \
