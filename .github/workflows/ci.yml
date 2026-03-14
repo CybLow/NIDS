@@ -100,7 +100,9 @@ jobs:
             -extra-arg=-Wno-unknown-warning-option \
             'src/.*\.(cpp|h)$' 2>&1 | tee clang-tidy.txt
 
-          ISSUES=$(grep -cE ':\d+:\d+: (warning|error):' clang-tidy.txt || echo "0")
+          # Count real issues (exclude "N warnings generated" summary lines)
+          ISSUES=$(grep -cE ':\d+:\d+: (warning|error):' clang-tidy.txt 2>/dev/null || true)
+          ISSUES=${ISSUES:-0}
           if [ "$ISSUES" -gt 0 ]; then
             echo "::error::clang-tidy found $ISSUES issue(s)"
             grep -E ':\d+:\d+: (warning|error):' clang-tidy.txt
