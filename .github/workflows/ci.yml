@@ -106,7 +106,7 @@ jobs:
           if [ "$ISSUES" -gt 0 ]; then
             echo "::error::clang-tidy found $ISSUES issue(s)"
             grep -E ':\d+:\d+: (warning|error):' clang-tidy.txt
-            exit 1
+            exit 1why we
           fi
 
   cppcheck:
@@ -245,7 +245,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
-            -Dsonar.cfamily.build-wrapper-output=bw-output
+            -Dsonar.cfamily.compile-commands=bw-output/compile_commands.json
             -Dsonar.cfamily.cobertura.reportPaths=coverage-cobertura.xml
 
       - uses: actions/upload-artifact@v6
