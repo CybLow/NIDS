@@ -42,7 +42,7 @@ runs:
       run: conan profile detect --force
 
     - name: Cache Conan packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ github.workspace }}/.conan2
         key: conan-linux-gcc14-${{ inputs.build-type }}-${{ hashFiles('conanfile.py') }}

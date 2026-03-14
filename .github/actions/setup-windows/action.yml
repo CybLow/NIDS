@@ -43,7 +43,7 @@ runs:
       run: pip install conan && conan profile detect --force
 
     - name: Cache Conan packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ github.workspace }}/.conan2
         key: conan-windows-msvc-${{ inputs.build-type }}-${{ hashFiles('conanfile.py') }}
