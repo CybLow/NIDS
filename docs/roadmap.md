@@ -161,15 +161,15 @@ documented in ADR-004.
 - **File**: `src/infra/flow/NativeFlowExtractor.h`
 - Completed: `std::unordered_map` with `FlowKeyHash` functor, O(1) amortized lookup
 
-### 8.2 — Switch to Welford's online statistics
+### 8.2 — ~~Switch to Welford's online statistics~~ [DONE]
 
-- **Files**: `NativeFlowExtractor.h:57-88` (FlowStats vectors)
-- **Why**: Per-flow memory drops from ~7 KB (storing all per-packet vectors) to ~200 B
-  (running mean, variance, min, max, count)
-- Remove `fwdPacketLengths`, `bwdPacketLengths`, `allPacketLengths`, `flowIatUs`,
-  `fwdIatUs`, `bwdIatUs`, `activePeriodsUs`, `idlePeriodsUs` vectors
-- Replace with `WelfordAccumulator` structs that track N, mean, M2 (for variance),
-  min, max
+- **Files**: `NativeFlowExtractor.h`, `NativeFlowExtractor.cpp`, `test_NativeFlowExtractor.cpp`
+- Completed: `WelfordAccumulator` struct with numerically stable online algorithm
+- Replaced all 12 per-packet vectors with accumulator members (O(1) space per update)
+- Per-flow memory reduced from ~7 KB to ~200 B
+- Fixed backward IAT double-push bug in `updateDirectionStats()`
+- Removed dead vector-based free functions (`mean`, `stddev`, `variance`)
+- Added 5 `WelfordAccumulator` unit tests
 
 ### 8.3 — Add periodic timeout sweeps
 
