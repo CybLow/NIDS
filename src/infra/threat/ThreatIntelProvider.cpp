@@ -96,7 +96,7 @@ std::size_t
 ThreatIntelProvider::parseAndStoreEntry(const std::string &entry,
                                         const std::string &feedName) {
   // CIDR range (contains '/')
-  if (entry.find('/') != std::string::npos) {
+  if (entry.contains('/')) {
     std::uint32_t network = 0;
     if (std::uint32_t mask = 0; parseCidr(entry, network, mask)) {
       cidrRanges_.emplace_back(network, mask, feedName);
