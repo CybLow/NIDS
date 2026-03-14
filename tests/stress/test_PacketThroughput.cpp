@@ -15,14 +15,6 @@
 #include <filesystem>
 #include <string>
 
-// Skip tests requiring pcap runtime (not available on Windows CI)
-#ifdef _WIN32
-#define SKIP_IF_NO_PCAP() GTEST_SKIP() << "npcap runtime not available"
-#else
-#define SKIP_IF_NO_PCAP() do {} while(0)
-#endif
-
-
 namespace fs = std::filesystem;
 using nids::infra::NativeFlowExtractor;
 using nids::test::generatePcap;
@@ -43,7 +35,7 @@ protected: // NOSONAR
 };
 
 TEST_F(PacketThroughputTest, parse10kPackets_singleFlow) {
-  SKIP_IF_NO_PCAP();
+
   constexpr std::uint32_t kPackets = 10'000;
   constexpr std::uint32_t kFlows = 1;
 
@@ -71,7 +63,7 @@ TEST_F(PacketThroughputTest, parse10kPackets_singleFlow) {
 }
 
 TEST_F(PacketThroughputTest, parse50kPackets_100flows) {
-  SKIP_IF_NO_PCAP();
+
   constexpr std::uint32_t kPackets = 50'000;
   constexpr std::uint32_t kFlows = 100;
 
@@ -94,7 +86,7 @@ TEST_F(PacketThroughputTest, parse50kPackets_100flows) {
 }
 
 TEST_F(PacketThroughputTest, parse100kPackets_1000flows) {
-  SKIP_IF_NO_PCAP();
+
   constexpr std::uint32_t kPackets = 100'000;
   constexpr std::uint32_t kFlows = 1'000;
 
@@ -117,7 +109,7 @@ TEST_F(PacketThroughputTest, parse100kPackets_1000flows) {
 }
 
 TEST_F(PacketThroughputTest, parse100kPackets_withPayload) {
-  SKIP_IF_NO_PCAP();
+
   constexpr std::uint32_t kPackets = 100'000;
   constexpr std::uint32_t kFlows = 500;
   constexpr std::uint32_t kPayload = 256; // 256-byte payload per packet
@@ -143,7 +135,7 @@ TEST_F(PacketThroughputTest, parse100kPackets_withPayload) {
 }
 
 TEST_F(PacketThroughputTest, featureVectorDimensionConsistency) {
-  SKIP_IF_NO_PCAP();
+
   constexpr std::uint32_t kPackets = 5'000;
   constexpr std::uint32_t kFlows = 50;
 

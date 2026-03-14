@@ -1,8 +1,17 @@
 #include "infra/flow/NativeFlowExtractor.h"
-#include "infra/capture/PcapHandle.h"
-#include "infra/platform/NetworkHeaders.h"
 
-#include <pcap.h>
+#include <pcapplusplus/EthLayer.h>
+#include <pcapplusplus/IPv4Layer.h>
+#include <pcapplusplus/IcmpLayer.h>
+#include <pcapplusplus/Packet.h>
+#include <pcapplusplus/PcapFileDevice.h>
+#include <pcapplusplus/RawPacket.h>
+#include <pcapplusplus/TcpLayer.h>
+#include <pcapplusplus/UdpLayer.h>
+#include <pcapplusplus/VlanLayer.h>
+
+#include <pcapplusplus/SystemUtils.h>
+
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -12,49 +21,29 @@
 #include <concepts>
 #include <numeric>
 #include <ranges>
-// Note: std::ranges::fold_left (C++23) is not available under C++20.
-// std::accumulate is used for reductions until the project adopts C++23.
 
 namespace nids::infra {
 
 namespace {
 
-using nids::platform::EthernetHeader;
-using nids::platform::getEtherType;
-using nids::platform::getIpDstStr;
-using nids::platform::getIpIhl;
-using nids::platform::getIpProtocol;
-using nids::platform::getIpSrcStr;
-using nids::platform::getIpTotalLength;
-using nids::platform::getTcpDataOffset;
-using nids::platform::getTcpDstPort;
-using nids::platform::getTcpFlags;
-using nids::platform::getTcpSrcPort;
-using nids::platform::getTcpWindow;
-using nids::platform::getUdpDstPort;
-using nids::platform::getUdpSrcPort;
-using nids::platform::IcmpHeader;
-using nids::platform::IPv4Header;
-using nids::platform::kEthernetHeaderSize;
-using nids::platform::kEtherTypeIPv4;
-using nids::platform::kIcmpHeaderSize;
-using nids::platform::kIpProtoIcmp;
-using nids::platform::kIpProtoTcp;
-using nids::platform::kIpProtoUdp;
-using nids::platform::kTcpAck;
-using nids::platform::kTcpCwr;
-using nids::platform::kTcpEce;
-using nids::platform::kTcpFin;
-using nids::platform::kTcpPsh;
-using nids::platform::kTcpRst;
-using nids::platform::kTcpSyn;
-using nids::platform::kTcpUrg;
-using nids::platform::TcpHeader;
-using nids::platform::UdpHeader;
+// Standard IP protocol numbers
+constexpr std::uint8_t kIpProtoIcmp = 1;
+constexpr std::uint8_t kIpProtoTcp = 6;
+constexpr std::uint8_t kIpProtoUdp = 17;
+
+// TCP flag bitmasks (RFC 793)
+constexpr std::uint8_t kTcpFin = 0x01;
+constexpr std::uint8_t kTcpSyn = 0x02;
+constexpr std::uint8_t kTcpRst = 0x04;
+constexpr std::uint8_t kTcpPsh = 0x08;
+constexpr std::uint8_t kTcpAck = 0x10;
+constexpr std::uint8_t kTcpUrg = 0x20;
+constexpr std::uint8_t kTcpCwr = 0x80;
+constexpr std::uint8_t kTcpEce = 0x40;
+
 constexpr std::int64_t kIdleThresholdUs =
     5'000'000; // 5 seconds (standard idle threshold)
 constexpr std::int64_t kDefaultFlowTimeoutUs = 600'000'000; // 600 seconds
-constexpr std::uint16_t kEtherTypeVlan = 0x8100;
 
 template <std::ranges::sized_range Container>
   requires std::is_arithmetic_v<std::ranges::range_value_t<Container>>
@@ -438,22 +427,21 @@ std::vector<float> FlowStats::toFeatureVector(std::uint16_t dstPort) const {
 
 std::vector<std::vector<float>>
 NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
-  char errbuf[PCAP_ERRBUF_SIZE];
-  auto handle = makePcapHandle(pcap_open_offline(pcapPath.c_str(), errbuf));
-  if (!handle) {
-    spdlog::error("Cannot open pcap file: {}", errbuf);
+  pcpp::PcapFileReaderDevice reader(pcapPath);
+  if (!reader.open()) {
+    spdlog::error("Cannot open pcap file: {}", pcapPath);
     return {};
   }
 
   flows_.clear();
   completedFlows_.clear();
-  struct pcap_pkthdr *header;
-  const unsigned char *data;
+  pcpp::RawPacket rawPacket;
 
-  while (pcap_next_ex(handle.get(), &header, &data) > 0) {
-    std::int64_t tsUs = static_cast<std::int64_t>(header->ts.tv_sec) * 1000000 +
-                        header->ts.tv_usec;
-    processPacket(data, header->caplen, tsUs);
+  while (reader.getNextPacket(rawPacket)) {
+    auto ts = rawPacket.getPacketTimeStamp();
+    std::int64_t tsUs = static_cast<std::int64_t>(ts.tv_sec) * 1'000'000 +
+                        static_cast<std::int64_t>(ts.tv_nsec) / 1'000;
+    processPacket(rawPacket, tsUs);
   }
 
   finalizeBulks();
@@ -474,11 +462,80 @@ void NativeFlowExtractor::finalizeBulks() {
   }
 }
 
-void NativeFlowExtractor::processPacket(const std::uint8_t *data,
-                                        std::uint32_t len,
+bool NativeFlowExtractor::parsePacketHeaders(pcpp::Packet &packet,
+                                             ParsedPacket &pkt) {
+  // PcapPlusPlus automatically handles VLAN (802.1Q) tag parsing
+  auto *ipLayer = packet.getLayerOfType<pcpp::IPv4Layer>();
+  if (!ipLayer)
+    return false;
+
+  pkt.srcIp = ipLayer->getSrcIPv4Address().toString();
+  pkt.dstIp = ipLayer->getDstIPv4Address().toString();
+  pkt.ipIhl = ipLayer->getHeaderLen();
+  pkt.protocol = ipLayer->getIPv4Header()->protocol;
+  pkt.totalPacketLen = pcpp::netToHost16(ipLayer->getIPv4Header()->totalLength);
+
+  if (pkt.protocol == kIpProtoTcp) {
+    auto *tcpLayer = packet.getLayerOfType<pcpp::TcpLayer>();
+    if (!tcpLayer)
+      return false;
+    pkt.srcPort = tcpLayer->getSrcPort();
+    pkt.dstPort = tcpLayer->getDstPort();
+    pkt.transportHeaderLen = tcpLayer->getHeaderLen();
+    if (pkt.transportHeaderLen < 20)
+      pkt.transportHeaderLen = 20;
+
+    // Extract TCP flags as a bitmask for flow stats
+    auto *tcpHdr = tcpLayer->getTcpHeader();
+    std::uint8_t flags = 0;
+    if (tcpHdr->finFlag)
+      flags |= kTcpFin;
+    if (tcpHdr->synFlag)
+      flags |= kTcpSyn;
+    if (tcpHdr->rstFlag)
+      flags |= kTcpRst;
+    if (tcpHdr->pshFlag)
+      flags |= kTcpPsh;
+    if (tcpHdr->ackFlag)
+      flags |= kTcpAck;
+    if (tcpHdr->urgFlag)
+      flags |= kTcpUrg;
+    if (tcpHdr->cwrFlag)
+      flags |= kTcpCwr;
+    if (tcpHdr->eceFlag)
+      flags |= kTcpEce;
+    pkt.tcpFlags = flags;
+    pkt.tcpWindow = pcpp::netToHost16(tcpHdr->windowSize);
+  } else if (pkt.protocol == kIpProtoUdp) {
+    auto *udpLayer = packet.getLayerOfType<pcpp::UdpLayer>();
+    if (!udpLayer)
+      return false;
+    pkt.srcPort = udpLayer->getSrcPort();
+    pkt.dstPort = udpLayer->getDstPort();
+    pkt.transportHeaderLen = 8;
+  } else if (pkt.protocol == kIpProtoIcmp) {
+    auto *icmpLayer = packet.getLayerOfType<pcpp::IcmpLayer>();
+    if (!icmpLayer)
+      return false;
+    pkt.srcPort = icmpLayer->getIcmpHeader()->type;
+    pkt.dstPort = 0;
+    pkt.transportHeaderLen = 8;
+  } else {
+    return false; // Unsupported protocol
+  }
+
+  pkt.headerBytes = pkt.ipIhl + pkt.transportHeaderLen;
+  pkt.payloadSize = pkt.totalPacketLen > pkt.headerBytes
+                        ? pkt.totalPacketLen - pkt.headerBytes
+                        : 0;
+  return true;
+}
+
+void NativeFlowExtractor::processPacket(pcpp::RawPacket &rawPacket,
                                         std::int64_t timestampUs) {
+  pcpp::Packet parsedPacket(&rawPacket);
   ParsedPacket pkt;
-  if (!parsePacketHeaders(data, len, pkt))
+  if (!parsePacketHeaders(parsedPacket, pkt))
     return;
 
   FlowKey keyFwd{.srcIp = pkt.srcIp,
@@ -511,12 +568,8 @@ void NativeFlowExtractor::processPacket(const std::uint8_t *data,
 
   bool tcpFinOrRst = false;
   if (pkt.protocol == kIpProtoTcp) {
-    auto *tcp =
-        reinterpret_cast<const TcpHeader *>(pkt.transportHeader); // NOSONAR
-    std::uint8_t flags = getTcpFlags(tcp);
-    tcpFinOrRst = (flags & (kTcpFin | kTcpRst)) != 0;
-    updateTcpFlags(stats, pkt.transportHeader - pkt.ipIhl, pkt.ipIhl,
-                   pkt.payloadSize, isForward);
+    tcpFinOrRst = (pkt.tcpFlags & (kTcpFin | kTcpRst)) != 0;
+    updateTcpFlags(stats, pkt, isForward);
   }
 
   updateBulkTracking(stats, pkt.totalPacketLen, isForward);
@@ -535,96 +588,6 @@ void NativeFlowExtractor::processPacket(const std::uint8_t *data,
     completeFlow(activeKey, stats);
     flows_[activeKey] = FlowStats{}; // Start new flow for same 5-tuple
   }
-}
-
-bool NativeFlowExtractor::parseEthernetAndIp(
-    const std::uint8_t *data, std::uint32_t len, ParsedPacket &pkt,
-    const std::uint8_t *&transportStart, std::uint32_t &remainingLen) {
-  if (len < static_cast<std::uint32_t>(kEthernetHeaderSize))
-    return false;
-
-  auto *eth = reinterpret_cast<const EthernetHeader *>(data); // NOSONAR
-  std::uint16_t etherType = getEtherType(eth);
-  const std::uint8_t *payload = data + kEthernetHeaderSize;
-  std::uint32_t payloadLen =
-      len - static_cast<std::uint32_t>(kEthernetHeaderSize);
-
-  if (etherType == kEtherTypeVlan && payloadLen >= 4) {
-    etherType = static_cast<std::uint16_t>(
-        (static_cast<std::uint16_t>(payload[2]) << 8) | payload[3]);
-    payload += 4;
-    payloadLen -= 4;
-  }
-
-  if (etherType != kEtherTypeIPv4 || payloadLen < 20)
-    return false;
-
-  auto *ip = reinterpret_cast<const IPv4Header *>(payload); // NOSONAR
-  pkt.ipIhl = getIpIhl(ip);
-  pkt.protocol = getIpProtocol(ip);
-  std::uint32_t ipTotalLen = getIpTotalLength(ip);
-  if (payloadLen < pkt.ipIhl || ipTotalLen < pkt.ipIhl)
-    return false;
-
-  pkt.srcIp = getIpSrcStr(ip);
-  pkt.dstIp = getIpDstStr(ip);
-  pkt.totalPacketLen = ipTotalLen;
-  transportStart = payload + pkt.ipIhl;
-  remainingLen = payloadLen;
-  return true;
-}
-
-bool NativeFlowExtractor::parseTransportHeader(
-    ParsedPacket &pkt, const std::uint8_t *transportStart,
-    std::uint32_t payloadLen) {
-  if (pkt.protocol == kIpProtoTcp) {
-    if (payloadLen < pkt.ipIhl + 20u)
-      return false;
-    auto *tcp = reinterpret_cast<const TcpHeader *>(transportStart); // NOSONAR
-    pkt.srcPort = getTcpSrcPort(tcp);
-    pkt.dstPort = getTcpDstPort(tcp);
-    pkt.transportHeaderLen = getTcpDataOffset(tcp);
-    if (pkt.transportHeaderLen < 20)
-      pkt.transportHeaderLen = 20;
-    pkt.transportHeader = transportStart;
-  } else if (pkt.protocol == kIpProtoUdp) {
-    if (payloadLen < pkt.ipIhl + 8u)
-      return false;
-    auto *udp = reinterpret_cast<const UdpHeader *>(transportStart); // NOSONAR
-    pkt.srcPort = getUdpSrcPort(udp);
-    pkt.dstPort = getUdpDstPort(udp);
-    pkt.transportHeaderLen = 8;
-    pkt.transportHeader = transportStart;
-  } else if (pkt.protocol == kIpProtoIcmp) {
-    if (payloadLen < pkt.ipIhl + static_cast<std::uint32_t>(kIcmpHeaderSize))
-      return false;
-    auto *icmp = reinterpret_cast<const IcmpHeader *>(transportStart);
-    pkt.srcPort = icmp->type;
-    pkt.dstPort = 0;
-    pkt.transportHeaderLen = static_cast<std::uint32_t>(kIcmpHeaderSize);
-    pkt.transportHeader = transportStart;
-  } else {
-    return false; // Unsupported protocol
-  }
-  return true;
-}
-
-bool NativeFlowExtractor::parsePacketHeaders(const std::uint8_t *data,
-                                             std::uint32_t len,
-                                             ParsedPacket &pkt) {
-  const std::uint8_t *transportStart = nullptr;
-  std::uint32_t remainingLen = 0;
-
-  if (!parseEthernetAndIp(data, len, pkt, transportStart, remainingLen))
-    return false;
-  if (!parseTransportHeader(pkt, transportStart, remainingLen))
-    return false;
-
-  pkt.headerBytes = pkt.ipIhl + pkt.transportHeaderLen;
-  pkt.payloadSize = pkt.totalPacketLen > pkt.headerBytes
-                        ? pkt.totalPacketLen - pkt.headerBytes
-                        : 0;
-  return true;
 }
 
 NativeFlowExtractor::FlowLookupResult
@@ -735,21 +698,15 @@ void NativeFlowExtractor::updateBwdTcpState(FlowStats &stats,
 }
 
 void NativeFlowExtractor::updateTcpFlags(FlowStats &stats,
-                                         const std::uint8_t *ipPayload,
-                                         std::uint32_t ipIhl,
-                                         std::uint32_t payloadSize,
+                                         const ParsedPacket &pkt,
                                          bool isForward) {
-  auto *tcp = reinterpret_cast<const TcpHeader *>(ipPayload + ipIhl);
-  std::uint8_t flags = getTcpFlags(tcp);
-  std::uint16_t win = getTcpWindow(tcp);
-
   if (isForward) {
-    updateFwdTcpState(stats, flags, win, payloadSize);
+    updateFwdTcpState(stats, pkt.tcpFlags, pkt.tcpWindow, pkt.payloadSize);
   } else {
-    updateBwdTcpState(stats, flags, win);
+    updateBwdTcpState(stats, pkt.tcpFlags, pkt.tcpWindow);
   }
 
-  countGlobalTcpFlags(stats, flags);
+  countGlobalTcpFlags(stats, pkt.tcpFlags);
 }
 
 void NativeFlowExtractor::updateBulkTracking(FlowStats &stats,

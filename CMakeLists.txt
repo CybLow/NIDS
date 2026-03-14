@@ -34,7 +34,7 @@ include(NidsTargetDefaults)
 
 # ── Dependencies ─────────────────────────────────────────────────
 # System packages
-find_package(PCAP REQUIRED)
+find_package(PcapPlusPlus CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
 
@@ -138,10 +138,10 @@ elseif(APPLE)
 else()
     set(CPACK_GENERATOR "DEB;RPM;TGZ")
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "libpcap0.8, libqt6widgets6 (>= 6.2), libqt6gui6 (>= 6.2), libqt6core6 (>= 6.2)")
+        "libqt6widgets6 (>= 6.2), libqt6gui6 (>= 6.2), libqt6core6 (>= 6.2)")
     set(CPACK_DEBIAN_PACKAGE_SECTION "net")
     set(CPACK_RPM_PACKAGE_REQUIRES
-        "libpcap, qt6-qtbase")
+        "qt6-qtbase")
 endif()
 
 include(CPack)

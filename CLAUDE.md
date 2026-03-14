@@ -152,24 +152,12 @@ All code, comments, identifiers, commit messages, and documentation **must** be 
 
 ### 3.2 C Resource Wrappers
 
-Every C resource (pcap handle, file descriptor, socket) **must** be wrapped in an RAII
-type using `std::unique_ptr` with a custom deleter:
+Every C resource (file descriptor, socket) **must** be wrapped in an RAII
+type using `std::unique_ptr` with a custom deleter.
 
-```cpp
-struct PcapDeleter {
-    void operator()(pcap_t* p) const noexcept {
-        if (p) pcap_close(p);
-    }
-};
-using PcapHandle = std::unique_ptr<pcap_t, PcapDeleter>;
-
-struct PcapDumperDeleter {
-    void operator()(pcap_dumper_t* d) const noexcept {
-        if (d) pcap_dump_close(d);
-    }
-};
-using PcapDumper = std::unique_ptr<pcap_dumper_t, PcapDumperDeleter>;
-```
+Packet capture uses PcapPlusPlus, which provides built-in RAII device classes
+(`pcpp::PcapLiveDevice`, `pcpp::PcapFileReaderDevice`, `pcpp::PcapFileWriterDevice`).
+No manual wrappers needed.
 
 ### 3.3 Rule of Five / Zero
 
@@ -339,25 +327,15 @@ Use for encapsulating operations that can be undone, queued, or logged.
 
 ### 7.3 Network Headers
 
-All OS-specific network includes are centralized in a single header:
+Network packet parsing uses **PcapPlusPlus** typed layer classes
+(`pcpp::IPv4Layer`, `pcpp::TcpLayer`, `pcpp::UdpLayer`, `pcpp::IcmpLayer`).
+No OS-specific network struct definitions or `reinterpret_cast` are needed.
+
+Headers are included with the `pcapplusplus/` prefix:
 
 ```cpp
-// infra/platform/NetworkHeaders.h
-#pragma once
-#ifdef _WIN32
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #pragma comment(lib, "ws2_32.lib")
-#else
-    #include <netinet/ip.h>
-    #include <netinet/tcp.h>
-    #include <netinet/udp.h>
-    #include <arpa/inet.h>
-    #include <netinet/if_ether.h>
-#endif
+#include <pcapplusplus/IPv4Layer.h>
+#include <pcapplusplus/TcpLayer.h>
 ```
 
 ### 7.4 File Paths
@@ -511,3 +489,5 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `build`, `ci`, `chore`.
 | `frugally-deep` / `fdeep` | ONNX Runtime via `OnnxAnalyzer` |
 | Direct `OnnxAnalyzer` construction | `AnalyzerFactory::create()` factory method |
 | Hardcoded model paths / thread counts | `Configuration::instance()` singleton |
+| Raw `libpcap` / `<pcap.h>` | PcapPlusPlus via `pcpp::PcapLiveDevice`, `pcpp::PcapFileReaderDevice` |
+| `reinterpret_cast` for packet headers | PcapPlusPlus typed layers (`pcpp::IPv4Layer`, `pcpp::TcpLayer`) |

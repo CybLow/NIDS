@@ -1,10 +1,15 @@
 #include "infra/capture/PcapCapture.h"
-#include "infra/platform/NetworkHeaders.h"
 
-#include <cstdio>
-#include <cstring>
-#include <memory>
-#include <pcap.h>
+#include <pcapplusplus/EthLayer.h>
+#include <pcapplusplus/IPv4Layer.h>
+#include <pcapplusplus/IcmpLayer.h>
+#include <pcapplusplus/Packet.h>
+#include <pcapplusplus/PcapLiveDeviceList.h>
+#include <pcapplusplus/RawPacket.h>
+#include <pcapplusplus/TcpLayer.h>
+#include <pcapplusplus/UdpLayer.h>
+
+#include <string>
 
 namespace nids::infra {
 
@@ -21,115 +26,100 @@ void PcapCaptureWorker::configure(std::string_view iface,
 }
 
 void PcapCaptureWorker::doCapture() {
-  char errbuf[PCAP_ERRBUF_SIZE];
-  auto *rawHandle = pcap_open_live(interface_.c_str(), BUFSIZ, 1, 1000, errbuf);
-  if (!rawHandle) {
-    emit captureError(QString("Failed to open interface: %1").arg(errbuf));
+  device_ = pcpp::PcapLiveDeviceList::getInstance().getDeviceByName(interface_);
+  if (!device_) {
+    emit captureError(
+        QString("Failed to find interface: %1").arg(interface_.c_str()));
     emit captureFinished();
     return;
   }
-  handle_ = makePcapHandle(rawHandle);
+
+  if (!device_->open()) {
+    emit captureError(
+        QString("Failed to open interface: %1").arg(interface_.c_str()));
+    emit captureFinished();
+    return;
+  }
 
   if (!bpfFilter_.empty()) {
-    struct bpf_program fp{};
-    if (pcap_compile(handle_.get(), &fp, bpfFilter_.c_str(), 0,
-                     PCAP_NETMASK_UNKNOWN) != -1) {
-      if (pcap_setfilter(handle_.get(), &fp) == -1) {
-        emit captureError(QString("Could not install filter: %1")
-                              .arg(pcap_geterr(handle_.get())));
-      }
-      pcap_freecode(&fp);
-    } else {
-      emit captureError(QString("Could not compile filter: %1")
-                            .arg(pcap_geterr(handle_.get())));
+    if (!device_->setFilter(bpfFilter_)) {
+      emit captureError(
+          QString("Could not apply filter: %1").arg(bpfFilter_.c_str()));
     }
   }
 
   if (!dumpFile_.empty()) {
-    auto *rawDumper = pcap_dump_open(handle_.get(), dumpFile_.c_str());
-    if (rawDumper) {
-      dumper_ = makePcapDumperHandle(rawDumper);
-    } else {
-      emit captureError(QString("Error opening dump file: %1")
-                            .arg(pcap_geterr(handle_.get())));
+    dumper_ = std::make_unique<pcpp::PcapFileWriterDevice>(dumpFile_);
+    if (!dumper_->open()) {
+      emit captureError(
+          QString("Error opening dump file: %1").arg(dumpFile_.c_str()));
+      dumper_.reset();
     }
   }
 
   capturing_.store(true);
-  auto *ud = reinterpret_cast<unsigned char *>(this); // NOSONAR
-  pcap_loop(handle_.get(), 0, packetCallback, ud);
+  device_->startCapture(packetCallback, this);
 
+  // PcapPlusPlus startCapture() is non-blocking, so block here until stop is
+  // requested.
+  std::unique_lock lock(mutex_);
+  stopCv_.wait(lock, [this] { return !capturing_.load(); });
+
+  device_->stopCapture();
+  device_->close();
   dumper_.reset();
-  handle_.reset();
-  capturing_.store(false);
+  device_ = nullptr;
   emit captureFinished();
 }
 
 void PcapCaptureWorker::requestStop() {
-  if (capturing_.load() && handle_) {
+  if (capturing_.load()) {
     capturing_.store(false);
-    pcap_breakloop(handle_.get());
+    std::scoped_lock lock(mutex_);
+    stopCv_.notify_one();
   }
 }
 
-void PcapCaptureWorker::packetCallback(unsigned char *userData,
-                                       const struct pcap_pkthdr *pkthdr,
-                                       const unsigned char *packet) {
-  auto *self = reinterpret_cast<PcapCaptureWorker *>(userData);
-  self->processPacket(pkthdr, packet);
+void PcapCaptureWorker::packetCallback(pcpp::RawPacket *rawPacket,
+                                       pcpp::PcapLiveDevice * /*dev*/,
+                                       void *userData) {
+  auto *self = static_cast<PcapCaptureWorker *>(userData);
+  self->processPacket(rawPacket);
 }
 
-void PcapCaptureWorker::processPacket(const struct pcap_pkthdr *pkthdr,
-                                      const unsigned char *packet) {
-  using namespace nids::platform;
-
+void PcapCaptureWorker::processPacket(pcpp::RawPacket *rawPacket) {
+  pcpp::Packet parsedPacket(rawPacket);
   nids::core::PacketInfo info;
 
-  EthernetHeader ethHeader;
-  std::memcpy(&ethHeader, packet, sizeof(EthernetHeader));
-  if (getEtherType(&ethHeader) == kEtherTypeIPv4) {
-    const auto *ipData = packet + kEthernetHeaderSize;
-    IPv4Header ipHeader;
-    std::memcpy(&ipHeader, ipData, sizeof(IPv4Header));
+  auto *ipLayer = parsedPacket.getLayerOfType<pcpp::IPv4Layer>();
+  if (ipLayer) {
+    info.ipSource = ipLayer->getSrcIPv4Address().toString();
+    info.ipDestination = ipLayer->getDstIPv4Address().toString();
 
-    info.ipSource = getIpSrcStr(&ipHeader);
-    info.ipDestination = getIpDstStr(&ipHeader);
-
-    auto proto = getIpProtocol(&ipHeader);
-    auto ipHeaderLen = getIpIhl(&ipHeader);
-
-    // Validate IP header length (minimum 20 bytes, must fit in captured packet)
-    if (ipHeaderLen < 20 ||
-        (kEthernetHeaderSize + ipHeaderLen) > pkthdr->caplen) {
-      info.protocol = "Malformed";
-    } else if (proto == kIpProtoTcp) {
-      TcpHeader tcpHeader;
-      std::memcpy(&tcpHeader, ipData + ipHeaderLen, sizeof(TcpHeader));
+    if (auto *tcpLayer = parsedPacket.getLayerOfType<pcpp::TcpLayer>()) {
       info.protocol = "TCP";
-      info.portSource = std::to_string(getTcpSrcPort(&tcpHeader));
-      info.portDestination = std::to_string(getTcpDstPort(&tcpHeader));
+      info.portSource = std::to_string(tcpLayer->getSrcPort());
+      info.portDestination = std::to_string(tcpLayer->getDstPort());
       info.application =
           serviceRegistry_.resolveApplication("", "", info.portDestination);
-    } else if (proto == kIpProtoUdp) {
-      UdpHeader udpHeader;
-      std::memcpy(&udpHeader, ipData + ipHeaderLen, sizeof(UdpHeader));
+    } else if (auto *udpLayer = parsedPacket.getLayerOfType<pcpp::UdpLayer>()) {
       info.protocol = "UDP";
-      info.portSource = std::to_string(getUdpSrcPort(&udpHeader));
-      info.portDestination = std::to_string(getUdpDstPort(&udpHeader));
+      info.portSource = std::to_string(udpLayer->getSrcPort());
+      info.portDestination = std::to_string(udpLayer->getDstPort());
       info.application =
           serviceRegistry_.resolveApplication("", "", info.portDestination);
-    } else if (proto == kIpProtoIcmp) {
+    } else if (parsedPacket.getLayerOfType<pcpp::IcmpLayer>()) {
       info.protocol = "ICMP";
     } else {
       info.protocol = "Unknown";
     }
   }
 
-  info.rawData.assign(packet, packet + pkthdr->len);
+  info.rawData.assign(rawPacket->getRawData(),
+                      rawPacket->getRawData() + rawPacket->getRawDataLen());
 
   if (dumper_) {
-    auto *dp = reinterpret_cast<unsigned char *>(dumper_.get()); // NOSONAR
-    pcap_dump(dp, pkthdr, packet);
+    dumper_->writePacket(*rawPacket);
   }
 
   emit packetCaptured(info);
@@ -206,18 +196,10 @@ void PcapCapture::setErrorCallback(ErrorCallback callback) {
 
 std::vector<std::string> PcapCapture::listInterfaces() {
   std::vector<std::string> result;
-  char errbuf[PCAP_ERRBUF_SIZE];
-  pcap_if_t *interfaces = nullptr;
-
-  if (pcap_findalldevs(&interfaces, errbuf) == -1) {
-    return result;
+  for (auto *dev :
+       pcpp::PcapLiveDeviceList::getInstance().getPcapLiveDevicesList()) {
+    result.emplace_back(dev->getName());
   }
-
-  for (auto *iface = interfaces; iface; iface = iface->next) {
-    result.emplace_back(iface->name);
-  }
-
-  pcap_freealldevs(interfaces);
   return result;
 }
 

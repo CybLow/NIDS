@@ -16,7 +16,7 @@ add_library(nids_infra STATIC
 target_link_libraries(nids_infra
     PUBLIC
         nids_core
-        PCAP::PCAP
+        PcapPlusPlus::PcapPlusPlus
     PRIVATE
         Threads::Threads
         onnxruntime::onnxruntime
@@ -26,15 +26,5 @@ target_link_libraries(nids_infra
 )
 
 target_compile_definitions(nids_infra PRIVATE NIDS_HAS_ONNX)
-
-if(WIN32)
-    target_link_libraries(nids_infra PRIVATE iphlpapi delayimp)
-    # Delay-load npcap DLLs so tests that don't call pcap functions
-    # can run without the npcap runtime installed.
-    target_link_options(nids_infra PUBLIC
-        /DELAYLOAD:wpcap.dll
-        /DELAYLOAD:Packet.dll
-    )
-endif()
 
 nids_set_target_defaults(nids_infra)

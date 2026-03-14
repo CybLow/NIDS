@@ -25,6 +25,11 @@
 #include <unordered_map>
 #include <vector>
 
+namespace pcpp {
+class RawPacket;
+class Packet;
+} // namespace pcpp
+
 namespace nids::infra {
 
 /// Number of flow features produced by toFeatureVector().
@@ -198,18 +203,6 @@ private:
   std::vector<core::FlowInfo> flowMetadata_; ///< Populated by extractFeatures()
   std::int64_t flowTimeoutUs_ = 600'000'000; // 600 seconds default
 
-  void processPacket(const std::uint8_t *data, std::uint32_t len,
-                     std::int64_t timestampUs);
-  void finalizeBulks();
-  void
-  buildFlowMetadata(); ///< Populate flowMetadata_ from completed + active flows
-
-  /// Build feature vectors from completed + active flows (same order as
-  /// flowMetadata_).
-  [[nodiscard]] std::vector<std::vector<float>> buildFeatureVectors() const;
-
-  // -- processPacket() helpers (reduce cognitive complexity) --
-
   /// Parsed packet context passed between processPacket helpers.
   struct ParsedPacket {
     std::string srcIp;
@@ -220,32 +213,26 @@ private:
     std::uint32_t headerBytes = 0;
     std::uint32_t totalPacketLen = 0;
     std::uint32_t payloadSize = 0;
-    const std::uint8_t *transportHeader =
-        nullptr; ///< Pointer to TCP/UDP/ICMP header
     std::uint32_t transportHeaderLen = 0;
     std::uint32_t ipIhl = 0;
+    std::uint8_t tcpFlags = 0;
+    std::uint16_t tcpWindow = 0;
   };
 
-  /// Parse Ethernet + IP + transport headers. Returns false if packet should be
-  /// skipped.
-  [[nodiscard]] static bool parsePacketHeaders(const std::uint8_t *data,
-                                               std::uint32_t len,
+  void processPacket(pcpp::RawPacket &rawPacket, std::int64_t timestampUs);
+  void finalizeBulks();
+  void
+  buildFlowMetadata(); ///< Populate flowMetadata_ from completed + active flows
+
+  /// Build feature vectors from completed + active flows (same order as
+  /// flowMetadata_).
+  [[nodiscard]] std::vector<std::vector<float>> buildFeatureVectors() const;
+
+  /// Parse all layers from a PcapPlusPlus parsed packet into ParsedPacket.
+  [[nodiscard]] static bool parsePacketHeaders(pcpp::Packet &packet,
                                                ParsedPacket &pkt);
 
-  /// Parse Ethernet frame and IP header, producing transport layer start
-  /// pointer.
-  [[nodiscard]] static bool
-  parseEthernetAndIp(const std::uint8_t *data, std::uint32_t len,
-                     ParsedPacket &pkt, const std::uint8_t *&transportStart,
-                     std::uint32_t &remainingLen);
-
-  /// Parse TCP/UDP/ICMP transport header from the position after the IP header.
-  [[nodiscard]] static bool
-  parseTransportHeader(ParsedPacket &pkt, const std::uint8_t *transportStart,
-                       std::uint32_t payloadLen);
-
   /// Evict timed-out flows and resolve the active flow key and direction.
-  /// Returns a reference to the flow stats entry (created if new).
   struct FlowLookupResult {
     FlowKey activeKey;
     bool isForward = false;
@@ -257,9 +244,8 @@ private:
   static void updateDirectionStats(FlowStats &stats, const ParsedPacket &pkt,
                                    std::int64_t timestampUs, bool isForward);
 
-  /// Update TCP flag counters, initial window, and segment tracking.
-  static void updateTcpFlags(FlowStats &stats, const std::uint8_t *ipPayload,
-                             std::uint32_t ipIhl, std::uint32_t payloadSize,
+  /// Update TCP flag counters using already-parsed flags from ParsedPacket.
+  static void updateTcpFlags(FlowStats &stats, const ParsedPacket &pkt,
                              bool isForward);
 
   /// Increment all 8 global TCP flag counters via a data-driven table.

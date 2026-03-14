@@ -8,6 +8,7 @@ class NidsConan(ConanFile):
     Manages lightweight C++ dependencies via Conan Center:
       - spdlog          (logging)
       - nlohmann_json   (JSON parsing)
+      - pcapplusplus    (packet capture & parsing -- replaces raw libpcap)
       - GoogleTest      (unit / integration tests)
 
     Fetched via CMake FetchContent (pre-built binaries):
@@ -15,7 +16,6 @@ class NidsConan(ConanFile):
 
     System-provided (not managed by Conan):
       - Qt 6            (UI framework -- system package, too large for Conan binary cache)
-      - libpcap         (raw packet capture -- system package)
     """
 
     name = "nids"
@@ -26,6 +26,7 @@ class NidsConan(ConanFile):
     def requirements(self):
         self.requires("spdlog/1.15.1")
         self.requires("nlohmann_json/3.11.3")
+        self.requires("pcapplusplus/25.05")
 
     # ── Test-only dependencies ──────────────────────────────────────
     def build_requirements(self):

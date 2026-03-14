@@ -6,7 +6,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc-14 g++-14 \
     cmake ninja-build mold \
-    libpcap-dev \
     qt6-base-dev \
     ca-certificates curl tar pkg-config \
     python3-pip \
@@ -34,7 +33,6 @@ FROM ubuntu:24.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpcap0.8t64 \
     libqt6core6t64 libqt6gui6t64 libqt6widgets6t64 \
     && rm -rf /var/lib/apt/lists/*
 

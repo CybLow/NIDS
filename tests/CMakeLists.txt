@@ -40,8 +40,7 @@ endfunction()
 
 # ══════════════════════════════════════════════════════════════════
 #  Unit tests
-#  Note: transitively links PCAP, ONNX Runtime, Qt Core via nids_infra.
-#  Tests that need pcap runtime use SKIP_IF_NO_PCAP() on Windows.
+#  Note: transitively links PcapPlusPlus, ONNX Runtime, Qt Core via nids_infra.
 # ══════════════════════════════════════════════════════════════════
 
 add_executable(nids_tests
@@ -104,7 +103,7 @@ endif()
 
 # ══════════════════════════════════════════════════════════════════
 #  Stress / performance tests
-#  Pcap-dependent tests use SKIP_IF_NO_PCAP() on Windows.
+#  Pcap-dependent performance tests.
 # ══════════════════════════════════════════════════════════════════
 
 add_executable(nids_stress_tests
