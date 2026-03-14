@@ -1,5 +1,5 @@
 name: Setup Windows Build Environment
-description: Install MSVC, Qt6, Ninja, Conan 2, and cache dependencies
+description: Install MSVC, Qt6, Ninja, npcap, Conan 2, and cache dependencies
 
 inputs:
   build-type:
@@ -31,12 +31,13 @@ runs:
       shell: pwsh
       run: choco install ninja ${{ inputs.extra-choco }} -y
 
-    - name: Install WinPcap runtime
+    - name: Install npcap
       shell: pwsh
       run: |
-        Invoke-WebRequest -Uri "https://www.winpcap.org/install/bin/WinPcap_4_1_3.exe" `
-          -OutFile "$env:TEMP\WinPcap.exe"
-        Start-Process -Wait -FilePath "$env:TEMP\WinPcap.exe" -ArgumentList '/S'
+        Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-1.80.exe" `
+          -OutFile "$env:TEMP\npcap.exe"
+        Start-Process -Wait -FilePath "$env:TEMP\npcap.exe" `
+          -ArgumentList '/S', '/winpcap_mode=yes'
 
     - name: Install Conan
       shell: pwsh
