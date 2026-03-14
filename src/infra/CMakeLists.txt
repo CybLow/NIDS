@@ -16,8 +16,8 @@ add_library(nids_infra STATIC
 target_link_libraries(nids_infra
     PUBLIC
         nids_core
-    PRIVATE
         PCAP::PCAP
+    PRIVATE
         Threads::Threads
         onnxruntime::onnxruntime
         nlohmann_json::nlohmann_json

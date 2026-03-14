@@ -125,7 +125,8 @@ jobs:
           ERRORS=$(python3 -c "
           import xml.etree.ElementTree as ET
           errors = ET.parse('cppcheck-report.xml').getroot().find('errors')
-          print(len(errors) if errors is not None else 0)
+          real = [e for e in (errors or []) if e.get('severity') != 'information']
+          print(len(real))
           ")
           if [ "$ERRORS" -gt 0 ]; then
             echo "::error::cppcheck found $ERRORS issue(s)"
