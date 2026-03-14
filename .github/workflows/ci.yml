@@ -59,17 +59,13 @@ jobs:
 
       - run: cmake --preset ci-msvc
 
-      - name: Build
-        shell: pwsh
-        run: |
-          # gtest_discover_tests runs test exe at build time — needs DLLs findable
-          Copy-Item build\ci-msvc\_deps\onnxruntime-src\lib\onnxruntime.dll build\ci-msvc\tests\
-          cmake --build --preset ci-msvc
+      - run: cmake --build --preset ci-msvc
 
       - name: Test
         shell: pwsh
         run: |
-          Copy-Item build\ci-msvc\_deps\onnxruntime-src\lib\onnxruntime.dll build\ci-msvc\tests\ -ErrorAction SilentlyContinue
+          # Add DLL directories to PATH for test execution
+          $env:PATH = "$PWD\build\ci-msvc\_deps\onnxruntime-src\lib;$env:PATH"
           ctest --test-dir build/ci-msvc --output-on-failure --timeout 120 --exclude-regex 'Stress'
 
   # ── Stage 2: Analysis ────────────────────────────────────────────

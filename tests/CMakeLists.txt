@@ -15,7 +15,32 @@ function(nids_test_coverage target)
     endif()
 endfunction()
 
-# ── Core / Infra / App tests (no Qt, no ONNX Runtime) ───────────
+# ── Helper: register gtest with platform-aware discovery ─────────
+# On Windows, DLLs (ONNX Runtime, Qt, npcap) aren't in PATH at build
+# time, so POST_BUILD discovery fails with 0xc0000135.
+# PRE_TEST defers discovery to ctest execution; TARGET_RUNTIME_DLLS
+# copies known DLLs next to the test exe.
+function(nids_register_gtest target)
+    if(WIN32)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_RUNTIME_DLLS:${target}>
+                    $<TARGET_FILE_DIR:${target}>
+            COMMAND_EXPAND_LISTS
+        )
+
+        gtest_discover_tests(${target}
+            DISCOVERY_MODE PRE_TEST
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            ${ARGN}
+        )
+    else()
+        gtest_discover_tests(${target} ${ARGN})
+    endif()
+endfunction()
+
+# ── Core / Infra / App tests ─────────────────────────────────────
+# Note: transitively links PCAP, ONNX Runtime, Qt Core via nids_infra.
 add_executable(nids_tests
     unit/test_PacketFilter.cpp
     unit/test_ServiceRegistry.cpp
@@ -43,7 +68,7 @@ target_link_libraries(nids_tests PRIVATE
 
 nids_set_target_defaults(nids_tests)
 nids_test_coverage(nids_tests)
-gtest_discover_tests(nids_tests)
+nids_register_gtest(nids_tests)
 
 # ── Qt-dependent tests ───────────────────────────────────────────
 if(Qt6_FOUND)
@@ -66,7 +91,7 @@ if(Qt6_FOUND)
 
     nids_set_target_defaults(nids_qt_tests)
     nids_test_coverage(nids_qt_tests)
-    gtest_discover_tests(nids_qt_tests)
+    nids_register_gtest(nids_qt_tests)
 else()
     message(STATUS "Qt6 not found -- skipping Qt-dependent tests")
 endif()
@@ -96,12 +121,11 @@ target_link_libraries(nids_stress_tests PRIVATE
 
 nids_set_target_defaults(nids_stress_tests)
 nids_test_coverage(nids_stress_tests)
-gtest_discover_tests(nids_stress_tests
+nids_register_gtest(nids_stress_tests
     PROPERTIES TIMEOUT 120
 )
 
 # ── ONNX Runtime tests ──────────────────────────────────────────
-# onnxruntime::onnxruntime is always available via FetchOnnxRuntime.cmake
 if(TARGET onnxruntime::onnxruntime)
     add_executable(nids_onnx_tests
         unit/test_OnnxAnalyzer.cpp
@@ -113,13 +137,12 @@ if(TARGET onnxruntime::onnxruntime)
         GTest::gmock
         nids_core
         nids_infra
+        onnxruntime::onnxruntime
     )
 
     nids_set_target_defaults(nids_onnx_tests)
     nids_test_coverage(nids_onnx_tests)
-    gtest_discover_tests(nids_onnx_tests
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    )
+    nids_register_gtest(nids_onnx_tests)
 else()
     message(STATUS "onnxruntime target not available -- skipping ONNX analyzer tests")
 endif()
