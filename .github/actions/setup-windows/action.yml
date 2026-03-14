@@ -1,0 +1,58 @@
+name: Setup Windows Build Environment
+description: Install MSVC, Qt6, Ninja, npcap SDK, Conan 2, and cache dependencies
+
+inputs:
+  build-type:
+    description: Conan build type
+    default: Release
+  extra-choco:
+    description: Additional Chocolatey packages (space-separated)
+    default: ""
+  qt-version:
+    description: Qt version to install
+    default: "6.7.*"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64
+
+    - name: Install Qt6
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: ${{ inputs.qt-version }}
+        arch: win64_msvc2019_64
+        cache: true
+
+    - name: Install Ninja
+      shell: pwsh
+      run: choco install ninja ${{ inputs.extra-choco }} -y
+
+    - name: Download npcap SDK
+      shell: pwsh
+      run: |
+        Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-sdk-1.13.zip" -OutFile npcap-sdk.zip
+        Expand-Archive -Path npcap-sdk.zip -DestinationPath C:\npcap-sdk
+        echo "NPCAP_SDK=C:\npcap-sdk" >> $env:GITHUB_ENV
+
+    - name: Install Conan
+      shell: pwsh
+      run: pip install conan && conan profile detect --force
+
+    - name: Cache Conan packages
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.conan2
+        key: conan-windows-msvc-${{ inputs.build-type }}-${{ hashFiles('conanfile.py') }}
+        restore-keys: |
+          conan-windows-msvc-${{ inputs.build-type }}-
+          conan-windows-msvc-
+
+    - name: Install Conan dependencies
+      shell: pwsh
+      run: |
+        conan install . -pr:h conan/profiles/windows-msvc17 `
+          -s build_type=${{ inputs.build-type }} --build=missing

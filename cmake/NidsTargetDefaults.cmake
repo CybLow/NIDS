@@ -7,8 +7,8 @@
 #   nids_set_target_defaults(<target_name>)
 
 function(nids_set_target_defaults target)
-    # ── C++20 standard ───────────────────────────────────────────
-    target_compile_features(${target} PRIVATE cxx_std_20)
+    # ── C++23 standard ───────────────────────────────────────────
+    target_compile_features(${target} PRIVATE cxx_std_23)
     set_target_properties(${target} PROPERTIES
         CXX_EXTENSIONS OFF
     )
@@ -56,6 +56,15 @@ function(nids_set_target_defaults target)
                 --coverage -fprofile-arcs -ftest-coverage
             )
             target_link_options(${target} PRIVATE --coverage)
+        endif()
+    endif()
+
+    # ── Warnings as errors (CI only) ──────────────────────────────
+    if(NIDS_WERROR)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(${target} PRIVATE -Werror)
+        elseif(MSVC)
+            target_compile_options(${target} PRIVATE /WX)
         endif()
     endif()
 

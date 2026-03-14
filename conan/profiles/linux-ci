@@ -1,7 +1,7 @@
-# Conan 2 profile: Linux CI (Ubuntu 24.04, GCC 13 native)
+# Conan 2 profile: Linux CI (Ubuntu 24.04, GCC 14)
 #
-# Used by GitHub Actions CI pipeline. Ubuntu 24.04 ships GCC 13
-# as `gcc-13` / `g++-13` packages.
+# Used by GitHub Actions CI pipeline. Ubuntu 24.04 provides GCC 14
+# as `gcc-14` / `g++-14` packages for C++23 support.
 #
 # Usage (CI):
 #   conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
@@ -10,9 +10,9 @@
 os=Linux
 arch=x86_64
 compiler=gcc
-compiler.version=13
+compiler.version=14
 compiler.libcxx=libstdc++11
-compiler.cppstd=20
+compiler.cppstd=23
 build_type=Release
 
 [conf]

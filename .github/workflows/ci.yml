@@ -12,257 +12,241 @@ concurrency:
 
 env:
   CONAN_HOME: ${{ github.workspace }}/.conan2
+  SCCACHE_GHA_ENABLED: "true"
+
+# ════════════════════════════════════════════════════════════════════
+#  Pipeline:
+#
+#  build-linux ──┬── lint
+#                ├── cppcheck
+#  build-windows ├── stress-tests
+#                ├── coverage + SonarCloud
+#                └── docker
+#                      │
+#                quality-gate
+# ════════════════════════════════════════════════════════════════════
 
 jobs:
-  # ── Stage 1: Build + test with GCC ──────────────────────────────
-  build:
-    name: Build & Test
-    runs-on: ubuntu-24.04
+  # ── Stage 1: Build & Test ────────────────────────────────────────
 
+  build-linux:
+    name: Build & Test (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-linux
+      - uses: mozilla-actions/sccache-action@v0.0.9
 
-      - uses: ./.github/actions/setup-build-env
+      - run: cmake --preset ci-gcc-fast
+      - run: cmake --build --preset ci-gcc-fast
+      - run: ctest --test-dir build/ci-gcc-fast --output-on-failure --timeout 120 --exclude-regex 'Stress'
 
-      - name: Configure
-        run: cmake --preset ci-gcc
-
-      - name: Build
-        run: cmake --build --preset ci-gcc
-
-      - name: Unit + integration tests
-        run: |
-          ctest --test-dir build/ci-gcc \
-            --output-on-failure --timeout 120 --exclude-regex 'Stress'
-
-      - name: Upload compile_commands.json
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: compile-commands
-          path: build/ci-gcc/compile_commands.json
+          path: build/ci-gcc-fast/compile_commands.json
           retention-days: 1
 
-  # ── Stage 2a: Stress / performance tests ─────────────────────────
-  stress-tests:
-    name: Stress Tests
-    needs: [build]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-
+  build-windows:
+    name: Build & Test (Windows)
+    runs-on: windows-2022
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-windows
+      - uses: mozilla-actions/sccache-action@v0.0.9
 
-      - uses: ./.github/actions/setup-build-env
+      - run: cmake --preset ci-msvc
+      - run: cmake --build --preset ci-msvc
+      - run: ctest --test-dir build/ci-msvc --output-on-failure --timeout 120 --exclude-regex 'Stress'
 
-      - name: Build stress tests
-        run: |
-          cmake --preset ci-gcc
-          cmake --build --preset ci-gcc --target nids_stress_tests
+  # ── Stage 2: Analysis ────────────────────────────────────────────
 
-      - name: Run stress tests
-        run: |
-          ctest --test-dir build/ci-gcc \
-            --output-on-failure --timeout 300 \
-            --tests-regex 'Stress' --parallel 1
-
-  # ── Stage 2b: clang-tidy lint ────────────────────────────────────
-  # Must run full cmake configure so Conan/FetchContent include paths
-  # (spdlog, onnxruntime, nlohmann_json) exist on disk for clang-tidy.
   lint:
-    name: Lint (clang-tidy)
-    needs: [build]
+    name: clang-tidy
+    needs: build-linux
     runs-on: ubuntu-24.04
-
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-build-env
+      - uses: ./.github/actions/setup-linux
         with:
-          extra-packages: clang-17 clang-tidy-17 clang-tools-17
+          extra-packages: clang-18 clang-tidy-18 clang-tools-18
+      - uses: mozilla-actions/sccache-action@v0.0.9
 
-      - name: Configure (generates compile_commands.json + fetches deps)
-        run: cmake --preset ci-gcc
+      - run: cmake --preset ci-gcc-fast
 
-      - name: Filter out MOC/autogen from compile_commands.json
+      - name: Filter MOC files & run clang-tidy
         run: |
           jq '[.[] | select(.file | test("_autogen") | not)]' \
-            build/ci-gcc/compile_commands.json > build/ci-gcc/compile_commands_filtered.json
-          mv build/ci-gcc/compile_commands_filtered.json build/ci-gcc/compile_commands.json
+            build/ci-gcc-fast/compile_commands.json > /tmp/cc.json
+          mv /tmp/cc.json build/ci-gcc-fast/compile_commands.json
 
-      - name: Run clang-tidy
-        run: |
-          run-clang-tidy-17 -p build/ci-gcc -quiet \
-            'src/.*\.(cpp|h)$' 2>&1 | tee clang-tidy-output.txt
+          run-clang-tidy-18 -p build/ci-gcc-fast -quiet \
+            'src/.*\.(cpp|h)$' 2>&1 | tee clang-tidy.txt
 
-          if grep -qE 'warning:|error:' clang-tidy-output.txt; then
-            # Filter noise: "N warnings generated." lines are not real issues
-            REAL_ISSUES=$(grep -cE ':\d+:\d+: (warning|error):' clang-tidy-output.txt || echo "0")
-            if [ "$REAL_ISSUES" -gt 0 ]; then
-              echo "::error::clang-tidy found $REAL_ISSUES issue(s)"
-              grep -E ':\d+:\d+: (warning|error):' clang-tidy-output.txt
-              exit 1
-            fi
-          fi
-          echo "clang-tidy: 0 issues found"
-
-  # ── Stage 2c: cppcheck ──────────────────────────────────────────
-  # Must run full cmake configure so Conan/FetchContent include paths exist.
-  cppcheck:
-    name: Lint (cppcheck)
-    needs: [build]
-    runs-on: ubuntu-24.04
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-build-env
-        with:
-          extra-packages: cppcheck
-
-      - name: Configure (generates compile_commands.json + fetches deps)
-        run: cmake --preset ci-gcc
-
-      - name: Filter out MOC/autogen from compile_commands.json
-        run: |
-          jq '[.[] | select(.file | test("_autogen") | not)]' \
-            build/ci-gcc/compile_commands.json > build/ci-gcc/compile_commands_filtered.json
-          mv build/ci-gcc/compile_commands_filtered.json build/ci-gcc/compile_commands.json
-
-      - name: Run cppcheck
-        run: |
-          cppcheck --project=build/ci-gcc/compile_commands.json \
-            --enable=all --std=c++20 \
-            --library=qt \
-            --suppress=missingIncludeSystem \
-            --suppress=unusedFunction \
-            --suppress=unusedStructMember \
-            --suppress=unmatchedSuppression \
-            --inline-suppr \
-            -i build/ \
-            --xml --xml-version=2 2> cppcheck-report.xml
-
-          cppcheck --project=build/ci-gcc/compile_commands.json \
-            --enable=all --std=c++20 \
-            --library=qt \
-            --suppress=missingIncludeSystem \
-            --suppress=unusedFunction \
-            --suppress=unusedStructMember \
-            --suppress=unmatchedSuppression \
-            --inline-suppr \
-            -i build/ 2>&1 | tee cppcheck-output.txt
-
-          if grep -qE '\(error\)|\(warning\)|\(style\)|\(performance\)|\(portability\)' cppcheck-output.txt; then
-            echo "::error::cppcheck found issues"
-            grep -E '\(error\)|\(warning\)|\(style\)|\(performance\)|\(portability\)' cppcheck-output.txt
+          ISSUES=$(grep -cE ':\d+:\d+: (warning|error):' clang-tidy.txt || echo "0")
+          if [ "$ISSUES" -gt 0 ]; then
+            echo "::error::clang-tidy found $ISSUES issue(s)"
+            grep -E ':\d+:\d+: (warning|error):' clang-tidy.txt
             exit 1
           fi
-          echo "cppcheck: 0 issues found"
 
-      - name: Upload cppcheck report
+  cppcheck:
+    name: cppcheck
+    needs: build-linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-linux
+        with:
+          extra-packages: cppcheck
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - run: cmake --preset ci-gcc-fast
+
+      - name: Filter MOC files & run cppcheck
+        run: |
+          jq '[.[] | select(.file | test("_autogen") | not)]' \
+            build/ci-gcc-fast/compile_commands.json > /tmp/cc.json
+          mv /tmp/cc.json build/ci-gcc-fast/compile_commands.json
+
+          cppcheck --project=build/ci-gcc-fast/compile_commands.json \
+            --enable=all --std=c++23 --library=qt \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --suppress=unusedStructMember \
+            --suppress=unmatchedSuppression \
+            --inline-suppr -i build/ \
+            --xml --xml-version=2 2> cppcheck-report.xml
+
+          ERRORS=$(python3 -c "
+          import xml.etree.ElementTree as ET
+          errors = ET.parse('cppcheck-report.xml').getroot().find('errors')
+          print(len(errors) if errors is not None else 0)
+          ")
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "::error::cppcheck found $ERRORS issue(s)"
+            python3 -c "
+          import xml.etree.ElementTree as ET
+          for e in ET.parse('cppcheck-report.xml').getroot().find('errors'):
+              locs = e.findall('location')
+              loc = f'{locs[0].get(\"file\")}:{locs[0].get(\"line\")}' if locs else '?'
+              print(f'{loc}: ({e.get(\"severity\")}) {e.get(\"msg\")}')
+          "
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: cppcheck-report
           path: cppcheck-report.xml
           retention-days: 7
 
-  # ── Stage 3a: Code coverage ─────────────────────────────────────
-  # Coverage MUST rebuild with --coverage flags, so it cannot reuse
-  # Stage 1 artifacts. This is inherently a separate build.
-  coverage:
-    name: Code Coverage
-    needs: [build]
+  stress-tests:
+    name: Stress Tests
+    needs: build-linux
     runs-on: ubuntu-24.04
-
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-linux
+      - uses: mozilla-actions/sccache-action@v0.0.9
 
-      - uses: ./.github/actions/setup-build-env
+      - run: cmake --preset ci-gcc-fast
+      - run: cmake --build --preset ci-gcc-fast --target nids_stress_tests
+      - run: |
+          ctest --test-dir build/ci-gcc-fast \
+            --output-on-failure --timeout 300 \
+            --tests-regex 'Stress' --parallel 1
+
+  coverage:
+    name: Coverage & SonarCloud
+    needs: build-linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-linux
         with:
           build-type: Debug
           extra-packages: lcov
           extra-pip: gcovr
+      - uses: mozilla-actions/sccache-action@v0.0.9
 
-      - name: Configure with coverage
-        run: cmake --preset ci-coverage
+      - name: Install SonarCloud build wrapper
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v7
 
-      - name: Build
-        run: cmake --build --preset ci-coverage
+      - run: cmake --preset ci-coverage-fast
 
-      - name: Run all tests
+      - name: Build (wrapped for SonarCloud)
+        run: build-wrapper-linux-x86-64 --out-dir bw-output cmake --build --preset ci-coverage-fast
+
+      - run: ctest --test-dir build/ci-coverage-fast --output-on-failure --timeout 120
+
+      - name: Generate coverage reports
         run: |
-          ctest --test-dir build/ci-coverage \
-            --output-on-failure --timeout 120
-
-      - name: Generate lcov report
-        run: |
-          lcov --capture --directory build/ci-coverage --output-file coverage.info \
-            --gcov-tool gcov-13 --ignore-errors mismatch,negative,gcov
-          lcov --remove coverage.info \
-            '/usr/*' '*/tests/*' '*/build/*' \
+          lcov --capture --directory build/ci-coverage-fast --output-file coverage.info \
+            --gcov-tool gcov-14 --ignore-errors mismatch,negative,gcov
+          lcov --remove coverage.info '/usr/*' '*/tests/*' '*/build/*' \
             --output-file coverage.info --ignore-errors unused
-          lcov --list coverage.info
 
-      - name: Generate Cobertura XML report
-        run: |
-          gcovr --root . build/ci-coverage \
-            --cobertura coverage-cobertura.xml \
-            --cobertura-pretty \
-            --gcov-executable gcov-13 \
+          gcovr --root . build/ci-coverage-fast \
+            --cobertura coverage-cobertura.xml --cobertura-pretty \
+            --gcov-executable gcov-14 \
             --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
-            --exclude-unreachable-branches \
-            --exclude-throw-branches \
-            --filter 'src/' \
-            -e 'src/ui/' -e 'src/server/' -e 'src/client/'
+            --exclude-unreachable-branches --exclude-throw-branches \
+            --filter 'src/' -e 'src/ui/' -e 'src/server/' -e 'src/client/'
           sed -i 's|<source>[^<]*</source>|<source>.</source>|g' coverage-cobertura.xml
 
-      - name: Coverage threshold check
+      - name: Coverage threshold (65%)
         run: |
-          LINE_RATE=$(python3 -c "
+          RATE=$(python3 -c "
           import xml.etree.ElementTree as ET
-          r = ET.parse('coverage-cobertura.xml').getroot()
-          print(f'{float(r.get(\"line-rate\", 0)) * 100:.1f}')
+          print(f'{float(ET.parse(\"coverage-cobertura.xml\").getroot().get(\"line-rate\",0))*100:.1f}')
           ")
-          echo "Line coverage: ${LINE_RATE}%"
-          MIN_LINE=65
-          python3 -c "
-          import sys
-          if float('${LINE_RATE}') < ${MIN_LINE}:
-              print(f'::error::Line coverage ${LINE_RATE}% below ${MIN_LINE}% threshold')
-              sys.exit(1)
-          print(f'Line coverage ${LINE_RATE}% meets ${MIN_LINE}% threshold')
-          "
+          echo "Line coverage: ${RATE}%"
+          python3 -c "import sys; sys.exit(1) if float('${RATE}') < 65 else None"
 
-      - name: Upload coverage to Codecov
+      - name: Upload to Codecov
         if: github.event_name == 'push'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: coverage.info
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Upload coverage artifacts
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.cfamily.compile-commands=bw-output/compile_commands.json
+            -Dsonar.cfamily.cobertura.reportPaths=coverage-cobertura.xml
+
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: coverage-reports
           path: |
             coverage.info
             coverage-cobertura.xml
-            build/ci-coverage/compile_commands.json
           retention-days: 7
 
-  # ── Stage 3b: Docker build ──────────────────────────────────────
   docker:
-    name: Docker Build
-    needs: [build]
+    name: Docker
+    needs: build-linux
     runs-on: ubuntu-24.04
-
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Build production image
         uses: docker/build-push-action@v6
@@ -274,227 +258,38 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build CI image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/ci/Dockerfile
-          push: false
-          tags: nids-ci:${{ github.sha }}
-          cache-from: type=gha,scope=ci
-          cache-to: type=gha,mode=max,scope=ci
+  # ── Stage 3: Quality Gate ────────────────────────────────────────
 
-  # ── Stage 4: SonarQube analysis ─────────────────────────────────
-  sonarqube:
-    name: SonarQube Analysis
-    needs: [coverage, cppcheck]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download coverage artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-reports
-
-      - name: Download compile_commands.json
-        uses: actions/download-artifact@v4
-        with:
-          name: compile-commands
-          path: build/ci-gcc/
-
-      - name: Download cppcheck report
-        uses: actions/download-artifact@v4
-        with:
-          name: cppcheck-report
-
-      - name: Start SonarQube stack
-        run: |
-          docker network create sonar-net
-
-          docker run -d --name sonar-db --network sonar-net \
-            -e POSTGRES_USER=sonarqube \
-            -e POSTGRES_PASSWORD=sonarqube \
-            -e POSTGRES_DB=sonarqube \
-            postgres:16-alpine
-
-          for i in $(seq 1 30); do
-            docker exec sonar-db pg_isready -U sonarqube >/dev/null 2>&1 && break
-            sleep 2
-          done
-
-          docker run -d --name sonarqube --network sonar-net \
-            -p 9000:9000 \
-            -e SONAR_JDBC_URL=jdbc:postgresql://sonar-db:5432/sonarqube \
-            -e SONAR_JDBC_USERNAME=sonarqube \
-            -e SONAR_JDBC_PASSWORD=sonarqube \
-            sonarqube:26.3.0.120487-community
-
-          for i in $(seq 1 60); do
-            STATUS=$(curl -sf http://localhost:9000/api/system/status 2>/dev/null | \
-              python3 -c "import json,sys; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
-            [ "$STATUS" = "UP" ] && break
-            sleep 5
-          done
-
-      - name: Install sonar-cxx plugin and restart
-        run: |
-          curl -sSfL -o /tmp/sonar-cxx-plugin.jar \
-            "https://github.com/SonarOpenCommunity/sonar-cxx/releases/download/cxx-2.2.2/sonar-cxx-plugin-2.2.2.1409.jar"
-          docker cp /tmp/sonar-cxx-plugin.jar sonarqube:/opt/sonarqube/extensions/plugins/
-          docker restart sonarqube
-          sleep 15
-          for i in $(seq 1 60); do
-            STATUS=$(curl -sf http://localhost:9000/api/system/status 2>/dev/null | \
-              python3 -c "import json,sys; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
-            [ "$STATUS" = "UP" ] && break
-            sleep 5
-          done
-
-      - name: Configure SonarQube project
-        run: |
-          SQ="http://localhost:9000"
-          AUTH="admin:admin"
-
-          # Change default admin password (required by SonarQube before API usage)
-          echo "Changing admin password..."
-          curl -s -u "$AUTH" -X POST "$SQ/api/users/change_password" \
-            -d "login=admin&previousPassword=admin&password=NidsCI2026!Secure" \
-            -w "\nHTTP %{http_code}\n"
-          AUTH="admin:NidsCI2026!Secure"
-
-          # Generate analysis token
-          echo "Generating analysis token..."
-          TOKEN_RESP=$(curl -s -u "$AUTH" -X POST "$SQ/api/user_tokens/generate" \
-            -d "name=ci-token" -w "\nHTTP %{http_code}\n")
-          echo "$TOKEN_RESP" | tail -1
-          TOKEN=$(echo "$TOKEN_RESP" | head -1 | \
-            python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
-          if [ -z "$TOKEN" ]; then
-            echo "::warning::Failed to generate SonarQube token, using basic auth"
-          else
-            echo "Token generated successfully"
-          fi
-          echo "SONAR_TOKEN=$TOKEN" >> "$GITHUB_ENV"
-          echo "SQ_AUTH=$AUTH" >> "$GITHUB_ENV"
-
-          # Create project and quality gate
-          curl -s -u "$AUTH" -X POST "$SQ/api/projects/create" \
-            -d "project=nids&name=NIDS" -w " HTTP %{http_code}\n" || true
-
-          QG_ID=$(curl -s -u "$AUTH" -X POST "$SQ/api/qualitygates/create" \
-            -d "name=NIDS" 2>/dev/null | \
-            python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
-          if [ -n "$QG_ID" ]; then
-            curl -s -u "$AUTH" -X POST "$SQ/api/qualitygates/create_condition" \
-              -d "gateName=NIDS&metric=new_coverage&op=LT&error=65" > /dev/null || true
-            curl -s -u "$AUTH" -X POST "$SQ/api/qualitygates/create_condition" \
-              -d "gateName=NIDS&metric=new_violations&op=GT&error=0" > /dev/null || true
-            curl -s -u "$AUTH" -X POST "$SQ/api/qualitygates/create_condition" \
-              -d "gateName=NIDS&metric=new_duplicated_lines_density&op=GT&error=3" > /dev/null || true
-            curl -s -u "$AUTH" -X POST "$SQ/api/qualitygates/select" \
-              -d "gateName=NIDS&projectKey=nids" > /dev/null || true
-          fi
-
-      - name: Run SonarQube scan
-        run: |
-          # Build auth args: prefer token, fall back to basic auth
-          if [ -n "$SONAR_TOKEN" ]; then
-            AUTH_ENV="-e SONAR_TOKEN=$SONAR_TOKEN"
-          else
-            AUTH_ENV="-e SONAR_LOGIN=admin -e SONAR_PASSWORD=NidsCI2026!Secure"
-          fi
-
-          docker run --rm --network=host \
-            -v "${{ github.workspace }}:/usr/src" \
-            -e SONAR_HOST_URL="http://localhost:9000" \
-            $AUTH_ENV \
-            -e SONAR_SCANNER_OPTS="-Dsonar.scm.disabled=true" \
-            sonarsource/sonar-scanner-cli:latest \
-            -Dsonar.projectKey=nids \
-            -Dsonar.projectName=NIDS \
-            -Dsonar.projectVersion=0.2.0 \
-            -Dsonar.sources=src \
-            -Dsonar.tests=tests \
-            -Dsonar.sourceEncoding=UTF-8 \
-            -Dsonar.cxx.file.suffixes=.cpp,.h,.hpp,.cxx,.cc,.hh,.hxx \
-            -Dsonar.cxx.cppcheck.reportPaths=cppcheck-report.xml \
-            -Dsonar.cxx.cobertura.reportPaths=coverage-cobertura.xml \
-            -Dsonar.cxx.jsonCompilationDatabase=build/ci-gcc/compile_commands.json \
-            -Dsonar.cxx.forceIncludes=/usr/src/sonar-qt-compat.h \
-            "-Dsonar.exclusions=**/node_modules/**,**/build/**,**/cmake-build-*/**,**/.opencode/**,**/proto/**" \
-            "-Dsonar.test.exclusions=tests/**" \
-            "-Dsonar.coverage.exclusions=src/ui/**,src/main.cpp,src/server/**,src/client/**,src/infra/platform/SocketInit.cpp,src/infra/platform/SocketInit.h,src/infra/capture/PcapCapture.cpp,src/infra/capture/PcapHandle.h,src/infra/analysis/OnnxAnalyzer.cpp,src/infra/analysis/OnnxAnalyzer.h,src/infra/analysis/AnalyzerFactory.cpp,src/infra/analysis/AnalyzerFactory.h,src/core/services/IPacketAnalyzer.h"
-
-      - name: Check quality gate
-        if: always()
-        run: |
-          sleep 10
-          for i in $(seq 1 30); do
-            IDLE=$(curl -sf -u "$SQ_AUTH" "http://localhost:9000/api/ce/component?component=nids" 2>/dev/null | \
-              python3 -c "
-          import json,sys; d=json.load(sys.stdin)
-          busy=any(t.get('status') in ('PENDING','IN_PROGRESS') for t in [d.get('current',{})]+d.get('queue',[]) if t)
-          print('BUSY' if busy else 'IDLE')" 2>/dev/null || echo "UNKNOWN")
-            [ "$IDLE" = "IDLE" ] && break
-            sleep 5
-          done
-
-          QG=$(curl -sf -u "$SQ_AUTH" "http://localhost:9000/api/qualitygates/project_status?projectKey=nids" 2>/dev/null | \
-            python3 -c "import json,sys; print(json.load(sys.stdin)['projectStatus']['status'])" 2>/dev/null || echo "UNKNOWN")
-          echo "Quality gate: $QG"
-          if [ "$QG" != "OK" ] && [ "$QG" != "NONE" ]; then
-            echo "::warning::SonarQube quality gate: $QG (non-blocking)"
-          fi
-
-      - name: Cleanup containers
-        if: always()
-        run: |
-          docker rm -f sonarqube sonar-db 2>/dev/null || true
-          docker network rm sonar-net 2>/dev/null || true
-
-  # ── Stage 5: Quality gate ───────────────────────────────────────
   quality-gate:
     name: Quality Gate
-    needs: [build, lint, cppcheck, stress-tests, coverage, docker]
-    runs-on: ubuntu-24.04
     if: always()
-
+    needs: [build-linux, build-windows, lint, cppcheck, stress-tests, coverage, docker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - name: Check job results
+      - name: Evaluate
         run: |
-          echo "### Quality Gate Results" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Check | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Quality Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Result |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
 
           FAILED=0
-          check_job() {
-            local name="$1" result="$2"
-            if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
-              echo "| $name | Passed |" >> "$GITHUB_STEP_SUMMARY"
+          check() {
+            if [ "$2" = "success" ] || [ "$2" = "skipped" ]; then
+              echo "| $1 | Passed |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| $name | **FAILED** |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| $1 | **FAILED** |" >> "$GITHUB_STEP_SUMMARY"
               FAILED=1
             fi
           }
 
-          check_job "Build & Test" "${{ needs.build.result }}"
-          check_job "Lint (clang-tidy)" "${{ needs.lint.result }}"
-          check_job "Lint (cppcheck)" "${{ needs.cppcheck.result }}"
-          check_job "Stress Tests" "${{ needs.stress-tests.result }}"
-          check_job "Code Coverage" "${{ needs.coverage.result }}"
-          check_job "Docker Build" "${{ needs.docker.result }}"
+          check "Linux build"  "${{ needs.build-linux.result }}"
+          check "Windows build" "${{ needs.build-windows.result }}"
+          check "clang-tidy"   "${{ needs.lint.result }}"
+          check "cppcheck"     "${{ needs.cppcheck.result }}"
+          check "Stress tests" "${{ needs.stress-tests.result }}"
+          check "Coverage"     "${{ needs.coverage.result }}"
+          check "Docker"       "${{ needs.docker.result }}"
 
-          if [ "$FAILED" -eq 1 ]; then
-            echo "::error::Quality gate failed"
-            exit 1
-          fi
-          echo "**Quality gate: PASSED**" >> "$GITHUB_STEP_SUMMARY"
+          [ "$FAILED" -eq 1 ] && { echo "::error::Quality gate failed"; exit 1; }
+          echo "**PASSED**" >> "$GITHUB_STEP_SUMMARY"

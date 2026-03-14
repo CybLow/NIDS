@@ -27,4 +27,8 @@ target_link_libraries(nids_infra
 
 target_compile_definitions(nids_infra PRIVATE NIDS_HAS_ONNX)
 
+if(WIN32)
+    target_link_libraries(nids_infra PRIVATE iphlpapi)
+endif()
+
 nids_set_target_defaults(nids_infra)

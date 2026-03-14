@@ -1,0 +1,57 @@
+name: Setup Linux Build Environment
+description: Install GCC-14, Qt6, libpcap, mold, Conan 2, and cache dependencies
+
+inputs:
+  build-type:
+    description: Conan build type
+    default: Release
+  extra-packages:
+    description: Additional apt packages (space-separated)
+    default: ""
+  extra-pip:
+    description: Additional pip packages (space-separated)
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install system packages
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          cmake ninja-build libpcap-dev python3-pip \
+          qt6-base-dev libgl1-mesa-dev \
+          libxcb-icccm4-dev libxcb-image0-dev \
+          libxcb-keysyms1-dev libxcb-randr0-dev \
+          libxcb-render-util0-dev libxcb-shape0-dev \
+          libxcb-shm0-dev libxcb-sync-dev \
+          libxcb-xfixes0-dev libxcb-xkb-dev \
+          libxcb-xinput-dev libxcb-cursor-dev \
+          libx11-xcb-dev libxkbcommon-dev \
+          libxkbcommon-x11-dev libegl1-mesa-dev \
+          gcc-14 g++-14 mold \
+          ${{ inputs.extra-packages }}
+
+    - name: Install Python packages
+      shell: bash
+      run: pip3 install --break-system-packages conan ${{ inputs.extra-pip }}
+
+    - name: Detect Conan profile
+      shell: bash
+      run: conan profile detect --force
+
+    - name: Cache Conan packages
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.conan2
+        key: conan-linux-gcc14-${{ inputs.build-type }}-${{ hashFiles('conanfile.py') }}
+        restore-keys: |
+          conan-linux-gcc14-${{ inputs.build-type }}-
+          conan-linux-gcc14-
+
+    - name: Install Conan dependencies
+      shell: bash
+      run: |
+        conan install . -pr:h conan/profiles/linux-ci \
+          -s build_type=${{ inputs.build-type }} --build=missing

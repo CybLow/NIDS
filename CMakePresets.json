@@ -20,55 +20,105 @@
     {
       "name": "Debug",
       "displayName": "Debug",
-      "description": "Development build with sanitizers (ASan/UBSan on Linux).",
+      "description": "Development build with sanitizers, sccache, and mold linker.",
       "inherits": "base",
       "toolchainFile": "${sourceDir}/build/Debug/generators/conan_toolchain.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_LINKER_TYPE": "MOLD",
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
       }
     },
     {
       "name": "Release",
       "displayName": "Release",
-      "description": "Optimised build.",
+      "description": "Optimised build with sccache and mold linker.",
       "inherits": "base",
       "toolchainFile": "${sourceDir}/build/Release/generators/conan_toolchain.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_LINKER_TYPE": "MOLD",
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
       }
     },
 
     {
       "name": "ci-gcc",
       "displayName": "CI GCC",
-      "description": "CI build with GCC-13 + Conan deps. Used by GitHub Actions.",
+      "description": "CI build with GCC-14 + Conan deps (legacy, no sccache/mold).",
       "inherits": "base",
       "toolchainFile": "${sourceDir}/build/Release/generators/conan_toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_C_COMPILER": "gcc-13",
-        "CMAKE_CXX_COMPILER": "g++-13"
+        "CMAKE_C_COMPILER": "gcc-14",
+        "CMAKE_CXX_COMPILER": "g++-14",
+        "NIDS_WERROR": "ON"
+      }
+    },
+    {
+      "name": "ci-gcc-fast",
+      "displayName": "CI GCC (sccache + mold)",
+      "description": "CI build with GCC-14 + sccache + mold. Primary Linux CI preset.",
+      "inherits": "ci-gcc",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=mold",
+        "CMAKE_SHARED_LINKER_FLAGS": "-fuse-ld=mold"
       }
     },
     {
       "name": "ci-coverage",
       "displayName": "CI Coverage",
-      "description": "CI coverage build with GCC-13 + Conan deps.",
+      "description": "CI coverage build with GCC-14 (legacy, no sccache).",
       "inherits": "base",
       "toolchainFile": "${sourceDir}/build/Debug/generators/conan_toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER": "gcc-13",
-        "CMAKE_CXX_COMPILER": "g++-13",
+        "CMAKE_C_COMPILER": "gcc-14",
+        "CMAKE_CXX_COMPILER": "g++-14",
         "NIDS_COVERAGE": "ON"
+      }
+    },
+    {
+      "name": "ci-coverage-fast",
+      "displayName": "CI Coverage (sccache)",
+      "description": "CI coverage build with GCC-14 + sccache.",
+      "inherits": "ci-coverage",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
+      }
+    },
+    {
+      "name": "ci-msvc",
+      "displayName": "CI MSVC",
+      "description": "CI build with MSVC 2022 for Windows.",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/build/Release/generators/conan_toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache",
+        "NIDS_WERROR": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
     }
   ],
   "buildPresets": [
-    { "name": "Debug",        "configurePreset": "Debug" },
-    { "name": "Release",      "configurePreset": "Release" },
-    { "name": "ci-gcc",       "configurePreset": "ci-gcc" },
-    { "name": "ci-coverage",  "configurePreset": "ci-coverage" }
+    { "name": "Debug",            "configurePreset": "Debug" },
+    { "name": "Release",          "configurePreset": "Release" },
+    { "name": "ci-gcc",           "configurePreset": "ci-gcc" },
+    { "name": "ci-gcc-fast",      "configurePreset": "ci-gcc-fast" },
+    { "name": "ci-coverage",      "configurePreset": "ci-coverage" },
+    { "name": "ci-coverage-fast", "configurePreset": "ci-coverage-fast" },
+    { "name": "ci-msvc",          "configurePreset": "ci-msvc" }
   ],
   "testPresets": [
     {
@@ -87,8 +137,23 @@
       "output": { "outputOnFailure": true }
     },
     {
+      "name": "ci-gcc-fast",
+      "configurePreset": "ci-gcc-fast",
+      "output": { "outputOnFailure": true }
+    },
+    {
       "name": "ci-coverage",
       "configurePreset": "ci-coverage",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "ci-coverage-fast",
+      "configurePreset": "ci-coverage-fast",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "ci-msvc",
+      "configurePreset": "ci-msvc",
       "output": { "outputOnFailure": true }
     }
   ]

@@ -1,6 +1,7 @@
 #include "infra/capture/PcapCapture.h"
 #include "infra/platform/NetworkHeaders.h"
 
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <pcap.h>

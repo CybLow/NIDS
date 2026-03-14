@@ -4,32 +4,27 @@ FROM ubuntu:24.04 AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc-13 g++-13 \
-    cmake ninja-build \
+    gcc-14 g++-14 \
+    cmake ninja-build mold \
     libpcap-dev \
     qt6-base-dev \
-    ca-certificates \
-    curl \
-    tar \
-    pkg-config \
+    ca-certificates curl tar pkg-config \
     python3-pip \
     && pip3 install --break-system-packages conan \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy dependency manifests and Conan profiles first for layer caching
+# Copy dependency manifests first for layer caching
 COPY conanfile.py CMakePresets.json ./
 COPY conan/ conan/
 
-# Install Conan deps using in-repo profile
-ENV CC=gcc-13 CXX=g++-13
+ENV CC=gcc-14 CXX=g++-14
 RUN conan profile detect --force && \
     conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
 
 COPY . .
 
-# Configure and build using preset (toolchain embedded in preset)
 RUN cmake --preset ci-gcc -DNIDS_BUILD_TESTS=OFF && \
     cmake --build --preset ci-gcc
 
@@ -45,12 +40,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy the built binary and ONNX Runtime shared library
 COPY --from=builder /app/build/ci-gcc/NIDS /app/NIDS
 COPY --from=builder /app/build/ci-gcc/_deps/onnxruntime-src/lib/*.so* /usr/local/lib/
 RUN ldconfig
 
-# Copy the trained model
 COPY --from=builder /app/models/model.onnx /app/models/model.onnx
 
 RUN useradd -m -s /bin/bash nids
