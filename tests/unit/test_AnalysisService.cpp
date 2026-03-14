@@ -11,10 +11,9 @@
 #include "core/services/IPacketAnalyzer.h"
 #include "infra/flow/NativeFlowExtractor.h" // kFlowFeatureCount
 
-#include <array>
-
-#include <QCoreApplication>
-#include <QSignalSpy>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace nids::core;
 using namespace nids::app;
@@ -74,16 +73,6 @@ public:
 
 class AnalysisServiceTest : public ::testing::Test {
 protected: // NOSONAR
-  void SetUp() override {
-    if (!QCoreApplication::instance()) {
-      static int argc = 1;
-      static std::array<char, 5> appName = {'t', 'e', 's', 't', '\0'};
-      static auto *appNamePtr = appName.data();
-      app_ = std::make_unique<QCoreApplication>(argc, &appNamePtr);
-    }
-  }
-
-  std::unique_ptr<QCoreApplication> app_;
 };
 
 // ── Mock Analyzer with Confidence ────────────────────────────────────
@@ -480,14 +469,16 @@ TEST_F(AnalysisServiceTest, analyzeCapture_extractionFailure_emitsNoFlows) {
   AnalysisService service(std::move(analyzer), std::move(extractor),
                           MockFeatureNormalizer::createPassThrough());
 
-  QSignalSpy startedSpy(&service, &AnalysisService::analysisStarted);
-  QSignalSpy finishedSpy(&service, &AnalysisService::analysisFinished);
+  int startedCount = 0;
+  int finishedCount = 0;
+  service.setStartedCallback([&]() { ++startedCount; });
+  service.setFinishedCallback([&]() { ++finishedCount; });
 
   CaptureSession session;
   service.analyzeCapture("test.pcap", session);
 
-  EXPECT_EQ(startedSpy.count(), 1);
-  EXPECT_EQ(finishedSpy.count(), 1);
+  EXPECT_EQ(startedCount, 1);
+  EXPECT_EQ(finishedCount, 1);
 }
 
 TEST_F(AnalysisServiceTest, analyzeCapture_success_classifiesAllFlows) {
@@ -512,25 +503,32 @@ TEST_F(AnalysisServiceTest, analyzeCapture_success_classifiesAllFlows) {
   AnalysisService service(std::move(analyzer), std::move(extractor),
                           MockFeatureNormalizer::createPassThrough());
 
-  QSignalSpy startedSpy(&service, &AnalysisService::analysisStarted);
-  QSignalSpy progressSpy(&service, &AnalysisService::analysisProgress);
-  QSignalSpy finishedSpy(&service, &AnalysisService::analysisFinished);
-  QSignalSpy errorSpy(&service, &AnalysisService::analysisError);
+  int startedCount = 0;
+  int finishedCount = 0;
+  std::vector<std::string> errors;
+  std::vector<std::pair<int, int>> progressCalls;
+
+  service.setStartedCallback([&]() { ++startedCount; });
+  service.setFinishedCallback([&]() { ++finishedCount; });
+  service.setErrorCallback([&](const std::string &msg) { errors.push_back(msg); });
+  service.setProgressCallback([&](int current, int total) {
+    progressCalls.emplace_back(current, total);
+  });
 
   CaptureSession session;
   service.analyzeCapture("test.pcap", session);
 
-  EXPECT_EQ(startedSpy.count(), 1);
-  EXPECT_EQ(finishedSpy.count(), 1);
-  EXPECT_EQ(errorSpy.count(), 0);
+  EXPECT_EQ(startedCount, 1);
+  EXPECT_EQ(finishedCount, 1);
+  EXPECT_EQ(errors.size(), 0u);
 
   // Progress emitted once per flow
-  EXPECT_EQ(progressSpy.count(), 3);
+  EXPECT_EQ(progressCalls.size(), 3u);
   // Verify progress values: (current, total)
-  EXPECT_EQ(progressSpy.at(0).at(0).toInt(), 1);
-  EXPECT_EQ(progressSpy.at(0).at(1).toInt(), 3);
-  EXPECT_EQ(progressSpy.at(2).at(0).toInt(), 3);
-  EXPECT_EQ(progressSpy.at(2).at(1).toInt(), 3);
+  EXPECT_EQ(progressCalls[0].first, 1);
+  EXPECT_EQ(progressCalls[0].second, 3);
+  EXPECT_EQ(progressCalls[2].first, 3);
+  EXPECT_EQ(progressCalls[2].second, 3);
 
   // Verify results stored in session (via DetectionResult API)
   EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::Benign);
@@ -551,16 +549,22 @@ TEST_F(AnalysisServiceTest,
   AnalysisService service(std::move(analyzer), std::move(extractor),
                           MockFeatureNormalizer::createPassThrough());
 
-  QSignalSpy finishedSpy(&service, &AnalysisService::analysisFinished);
-  QSignalSpy errorSpy(&service, &AnalysisService::analysisError);
-  QSignalSpy progressSpy(&service, &AnalysisService::analysisProgress);
+  int finishedCount = 0;
+  std::vector<std::string> errors;
+  std::vector<std::pair<int, int>> progressCalls;
+
+  service.setFinishedCallback([&]() { ++finishedCount; });
+  service.setErrorCallback([&](const std::string &msg) { errors.push_back(msg); });
+  service.setProgressCallback([&](int current, int total) {
+    progressCalls.emplace_back(current, total);
+  });
 
   CaptureSession session;
   service.analyzeCapture("empty.pcap", session);
 
-  EXPECT_EQ(finishedSpy.count(), 1);
-  EXPECT_EQ(errorSpy.count(), 0);
-  EXPECT_EQ(progressSpy.count(), 0);
+  EXPECT_EQ(finishedCount, 1);
+  EXPECT_EQ(errors.size(), 0u);
+  EXPECT_EQ(progressCalls.size(), 0u);
 }
 
 TEST_F(AnalysisServiceTest, analyzeCapture_singleFlow_correctProgress) {
@@ -577,14 +581,17 @@ TEST_F(AnalysisServiceTest, analyzeCapture_singleFlow_correctProgress) {
   AnalysisService service(std::move(analyzer), std::move(extractor),
                           MockFeatureNormalizer::createPassThrough());
 
-  QSignalSpy progressSpy(&service, &AnalysisService::analysisProgress);
+  std::vector<std::pair<int, int>> progressCalls;
+  service.setProgressCallback([&](int current, int total) {
+    progressCalls.emplace_back(current, total);
+  });
 
   CaptureSession session;
   service.analyzeCapture("single.pcap", session);
 
-  ASSERT_EQ(progressSpy.count(), 1);
-  EXPECT_EQ(progressSpy.at(0).at(0).toInt(), 1);
-  EXPECT_EQ(progressSpy.at(0).at(1).toInt(), 1);
+  ASSERT_EQ(progressCalls.size(), 1u);
+  EXPECT_EQ(progressCalls[0].first, 1);
+  EXPECT_EQ(progressCalls[0].second, 1);
   EXPECT_EQ(session.getDetectionResult(0).finalVerdict,
             AttackType::PortScanning);
 }

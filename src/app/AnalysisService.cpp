@@ -59,10 +59,8 @@ nids::core::FlowMetadata toFlowMetadata(const nids::core::FlowInfo& info) {
 AnalysisService::AnalysisService(
     std::unique_ptr<nids::core::IPacketAnalyzer> analyzer,
     std::unique_ptr<nids::core::IFlowExtractor> extractor,
-    std::unique_ptr<nids::core::IFeatureNormalizer> normalizer,
-    QObject* parent)
-    : QObject(parent)
-    , analyzer_(std::move(analyzer))
+    std::unique_ptr<nids::core::IFeatureNormalizer> normalizer)
+    : analyzer_(std::move(analyzer))
     , extractor_(std::move(extractor))
     , normalizer_(std::move(normalizer)) {}
 
@@ -80,7 +78,7 @@ void AnalysisService::setHybridDetection(HybridDetectionService* service) noexce
 
 void AnalysisService::analyzeCapture(const std::string& pcapPath,
                                        nids::core::CaptureSession& session) {
-    emit analysisStarted();
+    if (onStarted_) onStarted_();
 
     spdlog::info("Extracting and analyzing flow features from '{}' (pipelined mode)",
                  pcapPath);
@@ -100,7 +98,7 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
     worker.setResultCallback(
         [this](std::size_t index, core::DetectionResult /*result*/,
                core::FlowInfo /*metadata*/) {
-            emit analysisProgress(static_cast<int>(index + 1), 0);
+            if (onProgress_) onProgress_(static_cast<int>(index + 1), 0);
         });
     worker.start();
 
@@ -161,7 +159,7 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
                 session.setDetectionResult(idx, mlOnlyResult);
             }
 
-            emit analysisProgress(i + 1, total);
+            if (onProgress_) onProgress_(i + 1, total);
         }
 
         streamedCount = allFeatures.size();
@@ -169,15 +167,15 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
 
     auto total = static_cast<int>(streamedCount);
 
-    // For the streaming path, emit a final progress signal with the correct total
-    // now that all flows have been processed.  The batch fallback already emits
-    // correct (current, total) pairs, so skip the extra signal to avoid duplicates.
+    // For the streaming path, fire a final progress callback with the correct total
+    // now that all flows have been processed.  The batch fallback already fires
+    // correct (current, total) pairs, so skip the extra callback to avoid duplicates.
     if (!usedBatchFallback && total > 0) {
-        emit analysisProgress(total, total);
+        if (onProgress_) onProgress_(total, total);
     }
 
     spdlog::info("Analysis complete: {} flows processed", total);
-    emit analysisFinished();
+    if (onFinished_) onFinished_();
 }
 
 const std::vector<nids::core::FlowInfo>& AnalysisService::lastFlowMetadata() const noexcept {

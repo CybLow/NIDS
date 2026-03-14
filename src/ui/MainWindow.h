@@ -21,9 +21,9 @@
 #include <QSystemTrayIcon>
 #include <QTabWidget>
 #include <QTableView>
-#include <QThread>
 
 #include <memory>
+#include <thread>
 
 namespace nids::ui {
 
@@ -73,7 +73,9 @@ private:
   nids::core::IThreatIntelligence *threatIntel_ = nullptr;     // non-owning
   nids::core::IRuleEngine *ruleEngine_ = nullptr;              // non-owning
   nids::app::HybridDetectionService *hybridService_ = nullptr; // non-owning
-  QThread *analysisThread_ = nullptr;
+
+  void wireControllerCallbacks();
+  void wireAnalysisCallbacks();
 
   // -- Top-level layout --
   FilterPanel *filterPanel_ = nullptr;

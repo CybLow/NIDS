@@ -7,8 +7,7 @@
 #include "core/services/IPacketCapture.h"
 #include "core/services/IFlowExtractor.h"
 
-#include <QObject>
-
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -18,18 +17,30 @@ class LiveDetectionPipeline;
 
 /** Controller that manages live packet capture via an IPacketCapture backend.
  *
+ * Pure C++23 — no Qt dependency.  The UI layer bridges callbacks to its
+ * own event loop (e.g. via QMetaObject::invokeMethod).
+ *
  * When live detection is enabled (via enableLiveDetection()), captured
  * packets are simultaneously fed to a flow extractor for real-time ML
- * detection.  Detection results are emitted via liveFlowDetected().
+ * detection.  Detection results are delivered via the liveFlowDetected
+ * callback.
  */
-class CaptureController : public QObject {
-    Q_OBJECT
-
+class CaptureController {
 public:
+    // ── Callback types ─────────────────────────────────────────────
+    using PacketReceivedCallback = std::function<void(const nids::core::PacketInfo&)>;
+    using CaptureStartedCallback = std::function<void()>;
+    using CaptureStoppedCallback = std::function<void()>;
+    using CaptureErrorCallback   = std::function<void(const std::string& message)>;
+    using LiveFlowCallback       = std::function<void(nids::core::DetectionResult result,
+                                                      nids::core::FlowInfo metadata)>;
+
     /** Construct with an injected packet capture backend. */
-    explicit CaptureController(std::unique_ptr<nids::core::IPacketCapture> capture,
-                               QObject* parent = nullptr);
-    ~CaptureController() override;
+    explicit CaptureController(std::unique_ptr<nids::core::IPacketCapture> capture);
+    ~CaptureController();
+
+    CaptureController(const CaptureController&) = delete;
+    CaptureController& operator=(const CaptureController&) = delete;
 
     /**
      * Enable real-time flow detection during live capture.
@@ -37,8 +48,6 @@ public:
      * The pipeline is started/stopped automatically with capture.
      * Must be called before startCapture().  The pipeline is non-owning —
      * the caller retains ownership and must ensure it outlives the controller.
-     *
-     * @param pipeline  Live detection pipeline (non-owning).
      */
     void enableLiveDetection(LiveDetectionPipeline* pipeline) noexcept;
 
@@ -67,24 +76,25 @@ public:
     /** Return true if live detection is enabled and currently running. */
     [[nodiscard]] bool isLiveDetectionActive() const noexcept;
 
-signals:
-    /** Emitted for each captured packet. */
-    void packetReceived(const nids::core::PacketInfo& info);
-    /** Emitted when capture begins. */
-    void captureStarted();
-    /** Emitted when capture ends. */
-    void captureStopped();
-    /** Emitted when a capture error occurs. */
-    void captureError(const QString& message);
-
-    /** Emitted on the main thread for each flow detected during live capture. */
-    void liveFlowDetected(nids::core::DetectionResult result,
-                          nids::core::FlowInfo metadata);
+    // ── Callback setters ───────────────────────────────────────────
+    void setPacketReceivedCallback(PacketReceivedCallback cb) { onPacketReceived_ = std::move(cb); }
+    void setCaptureStartedCallback(CaptureStartedCallback cb) { onCaptureStarted_ = std::move(cb); }
+    void setCaptureStoppedCallback(CaptureStoppedCallback cb) { onCaptureStopped_ = std::move(cb); }
+    void setCaptureErrorCallback(CaptureErrorCallback cb)     { onCaptureError_   = std::move(cb); }
+    void setLiveFlowCallback(LiveFlowCallback cb)             { onLiveFlow_       = std::move(cb); }
 
 private:
     std::unique_ptr<nids::core::IPacketCapture> capture_;
     nids::core::CaptureSession session_;
     LiveDetectionPipeline* pipeline_ = nullptr;  // non-owning
+
+    // Callbacks (fired on the calling thread — the consumer is responsible
+    // for any thread marshaling).
+    PacketReceivedCallback onPacketReceived_;
+    CaptureStartedCallback onCaptureStarted_;
+    CaptureStoppedCallback onCaptureStopped_;
+    CaptureErrorCallback   onCaptureError_;
+    LiveFlowCallback       onLiveFlow_;
 };
 
 } // namespace nids::app

@@ -5,10 +5,8 @@
 #include "core/services/IPacketCapture.h"
 #include "core/services/PacketFilter.h"
 
-#include <array>
-
-#include <QCoreApplication>
-#include <QSignalSpy>
+#include <string>
+#include <vector>
 
 using namespace nids::core;
 using namespace nids::app;
@@ -35,17 +33,6 @@ public:
 
 class CaptureControllerTest : public ::testing::Test {
 protected: // NOSONAR
-  void SetUp() override {
-    // Ensure QCoreApplication exists for signal/slot processing
-    if (!QCoreApplication::instance()) {
-      static int argc = 1;
-      static std::array<char, 5> appName = {'t', 'e', 's', 't', '\0'};
-      static auto *appNamePtr = appName.data();
-      app_ = std::make_unique<QCoreApplication>(argc, &appNamePtr);
-    }
-  }
-
-  std::unique_ptr<QCoreApplication> app_;
 };
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -70,14 +57,18 @@ TEST_F(CaptureControllerTest, startCapture_initFailure_emitsError) {
   EXPECT_CALL(*mockPtr, startCapture(_)).Times(0);
 
   CaptureController controller(std::move(mock));
-  QSignalSpy errorSpy(&controller, &CaptureController::captureError);
+
+  std::vector<std::string> errors;
+  controller.setCaptureErrorCallback([&](const std::string &msg) {
+    errors.push_back(msg);
+  });
 
   PacketFilter filter;
   filter.networkCard = "eth0";
   controller.startCapture(filter);
 
-  EXPECT_EQ(errorSpy.count(), 1);
-  EXPECT_TRUE(errorSpy.first().at(0).toString().contains("eth0"));
+  EXPECT_EQ(errors.size(), 1u);
+  EXPECT_TRUE(errors[0].find("eth0") != std::string::npos);
 }
 
 TEST_F(CaptureControllerTest, startCapture_initSuccess_emitsStarted) {
@@ -91,13 +82,15 @@ TEST_F(CaptureControllerTest, startCapture_initSuccess_emitsStarted) {
   EXPECT_CALL(*mockPtr, startCapture(_)).Times(1);
 
   CaptureController controller(std::move(mock));
-  QSignalSpy startedSpy(&controller, &CaptureController::captureStarted);
+
+  int startedCount = 0;
+  controller.setCaptureStartedCallback([&]() { ++startedCount; });
 
   PacketFilter filter;
   filter.networkCard = "eth0";
   controller.startCapture(filter);
 
-  EXPECT_EQ(startedSpy.count(), 1);
+  EXPECT_EQ(startedCount, 1);
 }
 
 TEST_F(CaptureControllerTest, startCapture_alreadyCapturing_doesNothing) {
@@ -130,11 +123,13 @@ TEST_F(CaptureControllerTest, stopCapture_whenCapturing_emitsStopped) {
   EXPECT_CALL(*mockPtr, stopCapture()).Times(1);
 
   CaptureController controller(std::move(mock));
-  QSignalSpy stoppedSpy(&controller, &CaptureController::captureStopped);
+
+  int stoppedCount = 0;
+  controller.setCaptureStoppedCallback([&]() { ++stoppedCount; });
 
   controller.stopCapture();
 
-  EXPECT_EQ(stoppedSpy.count(), 1);
+  EXPECT_EQ(stoppedCount, 1);
 }
 
 TEST_F(CaptureControllerTest, stopCapture_whenNotCapturing_doesNothing) {
@@ -147,10 +142,12 @@ TEST_F(CaptureControllerTest, stopCapture_whenNotCapturing_doesNothing) {
   EXPECT_CALL(*mockPtr, stopCapture()).Times(0);
 
   CaptureController controller(std::move(mock));
-  QSignalSpy stoppedSpy(&controller, &CaptureController::captureStopped);
+
+  int stoppedCount = 0;
+  controller.setCaptureStoppedCallback([&]() { ++stoppedCount; });
 
   controller.stopCapture();
-  EXPECT_EQ(stoppedSpy.count(), 0);
+  EXPECT_EQ(stoppedCount, 0);
 }
 
 TEST_F(CaptureControllerTest, packetCallback_forwardsToSession) {
@@ -165,7 +162,11 @@ TEST_F(CaptureControllerTest, packetCallback_forwardsToSession) {
   EXPECT_CALL(*mockPtr, setErrorCallback(_));
 
   CaptureController controller(std::move(mock));
-  QSignalSpy packetSpy(&controller, &CaptureController::packetReceived);
+
+  int packetCount = 0;
+  controller.setPacketReceivedCallback([&](const PacketInfo &) {
+    ++packetCount;
+  });
 
   // Simulate a packet arrival
   PacketInfo pkt;
@@ -175,7 +176,7 @@ TEST_F(CaptureControllerTest, packetCallback_forwardsToSession) {
 
   EXPECT_EQ(controller.session().packetCount(), 1u);
   EXPECT_EQ(controller.session().getPacket(0).protocol, "TCP");
-  EXPECT_EQ(packetSpy.count(), 1);
+  EXPECT_EQ(packetCount, 1);
 }
 
 TEST_F(CaptureControllerTest, errorCallback_emitsCaptureError) {
@@ -190,12 +191,16 @@ TEST_F(CaptureControllerTest, errorCallback_emitsCaptureError) {
       }));
 
   CaptureController controller(std::move(mock));
-  QSignalSpy errorSpy(&controller, &CaptureController::captureError);
+
+  std::vector<std::string> errors;
+  controller.setCaptureErrorCallback([&](const std::string &msg) {
+    errors.push_back(msg);
+  });
 
   storedErrorCb("pcap read error");
 
-  EXPECT_EQ(errorSpy.count(), 1);
-  EXPECT_EQ(errorSpy.first().at(0).toString(), QString("pcap read error"));
+  EXPECT_EQ(errors.size(), 1u);
+  EXPECT_EQ(errors[0], "pcap read error");
 }
 
 TEST_F(CaptureControllerTest, listInterfaces_delegatesToCapture) {

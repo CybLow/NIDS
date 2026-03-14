@@ -6,8 +6,7 @@
 #include "core/services/IFlowExtractor.h"
 #include "core/services/IFeatureNormalizer.h"
 
-#include <QObject>
-
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -15,16 +14,23 @@ namespace nids::app {
 
 class HybridDetectionService;  // forward declaration
 
-/** Service that orchestrates ML-based packet/flow analysis. */
-class AnalysisService : public QObject {
-    Q_OBJECT
-
+/** Service that orchestrates ML-based packet/flow analysis.
+ *
+ * Pure C++23 — no Qt dependency.  The UI layer can bridge callbacks
+ * to its own event loop (e.g. via QMetaObject::invokeMethod).
+ */
+class AnalysisService {
 public:
+    // ── Callback types ─────────────────────────────────────────────
+    using StartedCallback  = std::function<void()>;
+    using ProgressCallback = std::function<void(int current, int total)>;
+    using FinishedCallback = std::function<void()>;
+    using ErrorCallback    = std::function<void(const std::string& message)>;
+
     /** Construct with injected analyzer, flow extractor, and feature normalizer. */
     explicit AnalysisService(std::unique_ptr<nids::core::IPacketAnalyzer> analyzer,
                              std::unique_ptr<nids::core::IFlowExtractor> extractor,
-                             std::unique_ptr<nids::core::IFeatureNormalizer> normalizer,
-                             QObject* parent = nullptr);
+                             std::unique_ptr<nids::core::IFeatureNormalizer> normalizer);
 
     /** Load the ONNX model from the given path. Returns false on failure. */
     [[nodiscard]] bool loadModel(const std::string& modelPath);
@@ -50,21 +56,24 @@ public:
     /// Indexed in the same order as detection results in the CaptureSession.
     [[nodiscard]] const std::vector<nids::core::FlowInfo>& lastFlowMetadata() const noexcept;
 
-signals:
-    /** Emitted when analysis begins. */
-    void analysisStarted();
-    /** Emitted to report progress (current flow out of total). */
-    void analysisProgress(int current, int total);
-    /** Emitted when analysis completes successfully. */
-    void analysisFinished();
-    /** Emitted when an error occurs during analysis. */
-    void analysisError(const QString& message);
+    // ── Callback setters ───────────────────────────────────────────
+    void setStartedCallback(StartedCallback cb)   { onStarted_  = std::move(cb); }
+    void setProgressCallback(ProgressCallback cb)  { onProgress_ = std::move(cb); }
+    void setFinishedCallback(FinishedCallback cb)  { onFinished_ = std::move(cb); }
+    void setErrorCallback(ErrorCallback cb)        { onError_    = std::move(cb); }
 
 private:
     std::unique_ptr<nids::core::IPacketAnalyzer> analyzer_;
     std::unique_ptr<nids::core::IFlowExtractor> extractor_;
     std::unique_ptr<nids::core::IFeatureNormalizer> normalizer_;
     HybridDetectionService* hybridService_ = nullptr;  // non-owning
+
+    // Callbacks (fired on the calling thread — the consumer is responsible
+    // for any thread marshaling).
+    StartedCallback  onStarted_;
+    ProgressCallback onProgress_;
+    FinishedCallback onFinished_;
+    ErrorCallback    onError_;
 };
 
 } // namespace nids::app

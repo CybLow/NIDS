@@ -22,7 +22,6 @@ target_link_libraries(nids_infra
         onnxruntime::onnxruntime
         nlohmann_json::nlohmann_json
         spdlog::spdlog
-        Qt::Core
 )
 
 target_compile_definitions(nids_infra PRIVATE NIDS_HAS_ONNX)

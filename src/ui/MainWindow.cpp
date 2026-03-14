@@ -40,23 +40,14 @@ MainWindow::MainWindow(
       analysisService_(std::move(analysisService)), threatIntel_(threatIntel),
       ruleEngine_(ruleEngine), hybridService_(hybridService) {
   setupUi();
+  wireControllerCallbacks();
+  wireAnalysisCallbacks();
   connectSignals();
-
-  // Move analysis service to a dedicated worker thread so analyzeCapture()
-  // does not block the UI.  Signals from AnalysisService are already
-  // connected with Qt::QueuedConnection, so they cross threads safely.
-  analysisThread_ = new QThread(this); // NOSONAR
-  analysisService_->moveToThread(analysisThread_);
-  analysisThread_->start();
 }
 
 MainWindow::~MainWindow() {
   if (controller_ && controller_->isCapturing()) {
     controller_->stopCapture();
-  }
-  if (analysisThread_) {
-    analysisThread_->quit();
-    analysisThread_->wait();
   }
 }
 
@@ -169,59 +160,66 @@ void MainWindow::connectSignals() {
   connect(flowTable_->selectionModel(), &QItemSelectionModel::selectionChanged,
           this, &MainWindow::onFlowSelectionChanged);
 
-  connect(controller_.get(), &nids::app::CaptureController::packetReceived,
-          this, &MainWindow::onPacketReceived, Qt::QueuedConnection);
+}
 
-  // Live detection: each flow result is added to the FlowTableModel incrementally.
-  connect(
-      controller_.get(), &nids::app::CaptureController::liveFlowDetected, this,
-      [this](const nids::core::DetectionResult &result,
-             const nids::core::FlowInfo &metadata) {
-        flowModel_->addFlowResult(result, metadata);
-      },
-      Qt::QueuedConnection);
+void MainWindow::wireControllerCallbacks() {
+  // CaptureController callbacks may fire on the capture thread —
+  // marshal all UI updates to the main thread via QMetaObject::invokeMethod.
 
-  connect(
-      controller_.get(), &nids::app::CaptureController::captureError, this,
-      [this](const QString &message) {
-        QMessageBox::warning(this, "Capture Error", message);
-      },
-      Qt::QueuedConnection);
+  controller_->setPacketReceivedCallback(
+      [this](const nids::core::PacketInfo &info) {
+        QMetaObject::invokeMethod(this, [this, info]() {
+          onPacketReceived(info);
+        }, Qt::QueuedConnection);
+      });
 
-  // Analysis service signals
-  connect(
-      analysisService_.get(), &nids::app::AnalysisService::analysisStarted,
-      this,
-      [this]() {
-        analysisProgress_->setVisible(true);
-        analysisProgress_->setValue(0);
-      },
-      Qt::QueuedConnection);
+  controller_->setLiveFlowCallback(
+      [this](nids::core::DetectionResult result,
+             nids::core::FlowInfo metadata) {
+        QMetaObject::invokeMethod(this, [this, r = std::move(result),
+                                         m = std::move(metadata)]() {
+          flowModel_->addFlowResult(r, m);
+        }, Qt::QueuedConnection);
+      });
 
-  connect(
-      analysisService_.get(), &nids::app::AnalysisService::analysisProgress,
-      this,
-      [this](int current, int total) {
-        analysisProgress_->setMaximum(total);
-        analysisProgress_->setValue(current);
-      },
-      Qt::QueuedConnection);
+  controller_->setCaptureErrorCallback(
+      [this](const std::string &message) {
+        QMetaObject::invokeMethod(this, [this, msg = QString::fromStdString(message)]() {
+          QMessageBox::warning(this, "Capture Error", msg);
+        }, Qt::QueuedConnection);
+      });
+}
 
-  connect(
-      analysisService_.get(), &nids::app::AnalysisService::analysisFinished,
-      this,
-      [this]() {
-        analysisProgress_->setVisible(false);
-        populateFlowResults();
-      },
-      Qt::QueuedConnection);
+void MainWindow::wireAnalysisCallbacks() {
+  // AnalysisService callbacks fire on the analysis worker thread —
+  // marshal all UI updates to the main thread.
 
-  connect(
-      analysisService_.get(), &nids::app::AnalysisService::analysisError, this,
-      [this](const QString &message) {
-        QMessageBox::warning(this, "Analysis Error", message);
-      },
-      Qt::QueuedConnection);
+  analysisService_->setStartedCallback([this]() {
+    QMetaObject::invokeMethod(this, [this]() {
+      analysisProgress_->setVisible(true);
+      analysisProgress_->setValue(0);
+    }, Qt::QueuedConnection);
+  });
+
+  analysisService_->setProgressCallback([this](int current, int total) {
+    QMetaObject::invokeMethod(this, [this, current, total]() {
+      analysisProgress_->setMaximum(total);
+      analysisProgress_->setValue(current);
+    }, Qt::QueuedConnection);
+  });
+
+  analysisService_->setFinishedCallback([this]() {
+    QMetaObject::invokeMethod(this, [this]() {
+      analysisProgress_->setVisible(false);
+      populateFlowResults();
+    }, Qt::QueuedConnection);
+  });
+
+  analysisService_->setErrorCallback([this](const std::string &message) {
+    QMetaObject::invokeMethod(this, [this, msg = QString::fromStdString(message)]() {
+      QMessageBox::warning(this, "Analysis Error", msg);
+    }, Qt::QueuedConnection);
+  });
 }
 
 void MainWindow::toggleCapture() {
@@ -263,15 +261,14 @@ void MainWindow::toggleCapture() {
 
 void MainWindow::runAnalysis() {
   auto dumpFile = nids::core::Configuration::instance().defaultDumpFile();
-  // Dispatch analysis to the worker thread via queued invocation.
+  // Run analysis on a detached std::jthread.  AnalysisService callbacks
+  // are already wired to marshal results back to the main thread via
+  // QMetaObject::invokeMethod (see wireAnalysisCallbacks()).
   // CaptureSession is mutex-protected, so the reference is safe to use
   // from the worker thread while the UI thread reads packet data.
-  QMetaObject::invokeMethod(
-      analysisService_.get(),
-      [this, dumpFile]() {
-        analysisService_->analyzeCapture(dumpFile, controller_->session());
-      },
-      Qt::QueuedConnection);
+  std::jthread([this, dumpFile]() {
+    analysisService_->analyzeCapture(dumpFile, controller_->session());
+  }).detach();
 }
 
 void MainWindow::onPacketReceived(const nids::core::PacketInfo &info) {

@@ -11,11 +11,9 @@
 #include "core/services/IPacketCapture.h"
 #include "infra/flow/NativeFlowExtractor.h" // kFlowFeatureCount
 
-#include <array>
 #include <format>
-
-#include <QCoreApplication>
-#include <QSignalSpy>
+#include <string>
+#include <vector>
 
 using namespace nids::core;
 using namespace nids::app;
@@ -88,16 +86,6 @@ public:
 
 class PipelineTest : public ::testing::Test {
 protected: // NOSONAR
-  void SetUp() override {
-    if (!QCoreApplication::instance()) {
-      static int argc = 1;
-      static std::array<char, 5> appName = {'t', 'e', 's', 't', '\0'};
-      static auto *appNamePtr = appName.data();
-      app_ = std::make_unique<QCoreApplication>(argc, &appNamePtr);
-    }
-  }
-
-  std::unique_ptr<QCoreApplication> app_;
 };
 
 // ── Integration: Capture -> Analysis Pipeline ────────────────────────
@@ -161,14 +149,16 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
   AnalysisService analysisService(std::move(analyzer), std::move(extractor),
                                   MockNormalizer::createPassThrough());
 
-  QSignalSpy startedSpy(&analysisService, &AnalysisService::analysisStarted);
-  QSignalSpy finishedSpy(&analysisService, &AnalysisService::analysisFinished);
+  int startedCount = 0;
+  int finishedCount = 0;
+  analysisService.setStartedCallback([&]() { ++startedCount; });
+  analysisService.setFinishedCallback([&]() { ++finishedCount; });
 
   // Run analysis on the captured session
   analysisService.analyzeCapture("dump.pcap", controller.session());
 
-  EXPECT_EQ(startedSpy.count(), 1);
-  EXPECT_EQ(finishedSpy.count(), 1);
+  EXPECT_EQ(startedCount, 1);
+  EXPECT_EQ(finishedCount, 1);
 
   // Verify analysis results are stored in session (via DetectionResult API)
   EXPECT_EQ(controller.session().getDetectionResult(0).finalVerdict,
@@ -187,13 +177,17 @@ TEST_F(PipelineTest, captureFailure_doesNotProceedToAnalysis) {
   EXPECT_CALL(*capturePtr, initialize(_, _)).WillOnce(Return(false));
 
   CaptureController controller(std::move(capture));
-  QSignalSpy errorSpy(&controller, &CaptureController::captureError);
+
+  std::vector<std::string> errors;
+  controller.setCaptureErrorCallback([&](const std::string &msg) {
+    errors.push_back(msg);
+  });
 
   PacketFilter filter;
   filter.networkCard = "bad_iface";
   controller.startCapture(filter);
 
-  EXPECT_EQ(errorSpy.count(), 1);
+  EXPECT_EQ(errors.size(), 1u);
   EXPECT_EQ(controller.session().packetCount(), 0u);
 }
 

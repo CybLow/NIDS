@@ -17,8 +17,6 @@ namespace nids::infra {
 
 // --- PcapCaptureWorker ---
 
-PcapCaptureWorker::PcapCaptureWorker(QObject *parent) : QObject(parent) {}
-
 void PcapCaptureWorker::configure(std::string_view iface,
                                   std::string_view bpfFilter,
                                   std::string_view dumpFile) {
@@ -27,32 +25,57 @@ void PcapCaptureWorker::configure(std::string_view iface,
   dumpFile_ = dumpFile;
 }
 
+void PcapCaptureWorker::setPacketCallback(PacketCallback cb) {
+  packetCallback_ = std::move(cb);
+}
+
+void PcapCaptureWorker::setErrorCallback(ErrorCallback cb) {
+  errorCallback_ = std::move(cb);
+}
+
+void PcapCaptureWorker::setFinishedCallback(std::function<void()> cb) {
+  finishedCallback_ = std::move(cb);
+}
+
+void PcapCaptureWorker::setRawPacketCallback(RawPacketCallback cb) {
+  std::scoped_lock lock(rawCallbackMutex_);
+  rawPacketCallback_ = std::move(cb);
+}
+
 void PcapCaptureWorker::doCapture() {
   device_ = pcpp::PcapLiveDeviceList::getInstance().getDeviceByName(interface_);
   if (!device_) {
-    emit captureError(
-        QString("Failed to find interface: %1").arg(interface_.c_str()));
-    emit captureFinished();
+    if (errorCallback_) {
+      errorCallback_("Failed to find interface: " + interface_);
+    }
+    if (finishedCallback_) {
+      finishedCallback_();
+    }
     return;
   }
 
   if (!device_->open()) {
-    emit captureError(
-        QString("Failed to open interface: %1").arg(interface_.c_str()));
-    emit captureFinished();
+    if (errorCallback_) {
+      errorCallback_("Failed to open interface: " + interface_);
+    }
+    if (finishedCallback_) {
+      finishedCallback_();
+    }
     return;
   }
 
   if (!bpfFilter_.empty() && !device_->setFilter(bpfFilter_)) {
-    emit captureError(
-        QString("Could not apply filter: %1").arg(bpfFilter_.c_str()));
+    if (errorCallback_) {
+      errorCallback_("Could not apply filter: " + bpfFilter_);
+    }
   }
 
   if (!dumpFile_.empty()) {
     dumper_ = std::make_unique<pcpp::PcapFileWriterDevice>(dumpFile_);
     if (!dumper_->open()) {
-      emit captureError(
-          QString("Error opening dump file: %1").arg(dumpFile_.c_str()));
+      if (errorCallback_) {
+        errorCallback_("Error opening dump file: " + dumpFile_);
+      }
       dumper_.reset();
     }
   }
@@ -69,7 +92,10 @@ void PcapCaptureWorker::doCapture() {
   device_->close();
   dumper_.reset();
   device_ = nullptr;
-  emit captureFinished();
+
+  if (finishedCallback_) {
+    finishedCallback_();
+  }
 }
 
 void PcapCaptureWorker::requestStop() {
@@ -85,12 +111,6 @@ void PcapCaptureWorker::packetCallback(pcpp::RawPacket *rawPacket,
                                        void *userData) {
   auto *self = static_cast<PcapCaptureWorker *>(userData);
   self->processPacket(rawPacket);
-}
-
-void PcapCaptureWorker::setRawPacketCallback(
-    nids::core::IPacketCapture::RawPacketCallback cb) {
-  std::scoped_lock lock(rawCallbackMutex_);
-  rawPacketCallback_ = std::move(cb);
 }
 
 void PcapCaptureWorker::processPacket(pcpp::RawPacket *rawPacket) {
@@ -151,45 +171,15 @@ void PcapCaptureWorker::processPacket(pcpp::RawPacket *rawPacket) {
   info.rawData.assign(rawPacket->getRawData(),
                       rawPacket->getRawData() + rawPacket->getRawDataLen());
 
-  emit packetCaptured(info);
+  if (packetCallback_) {
+    packetCallback_(info);
+  }
 }
 
 // --- PcapCapture ---
 
-PcapCapture::PcapCapture(QObject *parent) : QObject(parent) {
-  auto workerPtr = std::make_unique<PcapCaptureWorker>();
-  worker_ = workerPtr.release(); // Qt takes ownership via deleteLater
-  worker_->moveToThread(&workerThread_);
-
-  connect(&workerThread_, &QThread::finished, worker_, &QObject::deleteLater);
-  connect(
-      worker_, &PcapCaptureWorker::packetCaptured, this,
-      [this](const nids::core::PacketInfo &info) {
-        if (callback_)
-          callback_(info);
-        emit packetReceived(info);
-      },
-      Qt::QueuedConnection);
-  connect(
-      worker_, &PcapCaptureWorker::captureFinished, this,
-      [this]() { capturing_.store(false); }, Qt::QueuedConnection);
-  connect(
-      worker_, &PcapCaptureWorker::captureError, this,
-      [this](const QString &message) {
-        if (errorCallback_)
-          errorCallback_(message.toStdString());
-      },
-      Qt::QueuedConnection);
-
-  workerThread_.start();
-}
-
 PcapCapture::~PcapCapture() {
-  // Call the final override directly to avoid virtual dispatch in destructor.
-  // cppcheck-suppress virtualCallInConstructor
   PcapCapture::stopCapture();
-  workerThread_.quit();
-  workerThread_.wait();
 }
 
 bool PcapCapture::initialize(const std::string &iface,
@@ -203,14 +193,33 @@ void PcapCapture::startCapture(const std::string &dumpFile) {
   if (capturing_.load())
     return;
   capturing_.store(true);
+
+  // Create a fresh worker for each capture session.
+  worker_ = std::make_unique<PcapCaptureWorker>();
   worker_->configure(interface_, bpfFilter_, dumpFile);
-  QMetaObject::invokeMethod(worker_, "doCapture", Qt::QueuedConnection);
+  worker_->setPacketCallback(callback_);
+  worker_->setErrorCallback(errorCallback_);
+  worker_->setRawPacketCallback(rawCallback_);
+  worker_->setFinishedCallback([this]() { capturing_.store(false); });
+
+  captureThread_ = std::jthread([w = worker_.get()](std::stop_token /*st*/) {
+    w->doCapture();
+  });
 }
 
 void PcapCapture::stopCapture() {
-  if (!capturing_.load())
+  if (!capturing_.load() && !worker_)
     return;
-  QMetaObject::invokeMethod(worker_, "requestStop", Qt::QueuedConnection);
+
+  if (worker_) {
+    worker_->requestStop();
+  }
+
+  if (captureThread_.joinable()) {
+    captureThread_.join();
+  }
+
+  worker_.reset();
 }
 
 bool PcapCapture::isCapturing() const { return capturing_.load(); }
@@ -224,7 +233,10 @@ void PcapCapture::setErrorCallback(ErrorCallback callback) {
 }
 
 void PcapCapture::setRawPacketCallback(RawPacketCallback callback) {
-  worker_->setRawPacketCallback(std::move(callback));
+  rawCallback_ = std::move(callback);
+  if (worker_) {
+    worker_->setRawPacketCallback(rawCallback_);
+  }
 }
 
 std::vector<std::string> PcapCapture::listInterfaces() {

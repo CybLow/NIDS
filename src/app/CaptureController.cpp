@@ -4,24 +4,19 @@
 
 #include <spdlog/spdlog.h>
 
-#include <QMetaObject>
-#include <QString>
-
 namespace nids::app {
 
 CaptureController::CaptureController(
-    std::unique_ptr<nids::core::IPacketCapture> capture,
-    QObject* parent)
-    : QObject(parent)
-    , capture_(std::move(capture)) {
+    std::unique_ptr<nids::core::IPacketCapture> capture)
+    : capture_(std::move(capture)) {
 
     capture_->setPacketCallback([this](const nids::core::PacketInfo& info) {
         session_.addPacket(info);
-        emit packetReceived(info);
+        if (onPacketReceived_) onPacketReceived_(info);
     });
 
     capture_->setErrorCallback([this](const std::string& message) {
-        emit captureError(QString::fromStdString(message));
+        if (onCaptureError_) onCaptureError_(message);
     });
 }
 
@@ -53,9 +48,8 @@ void CaptureController::startCapture(const nids::core::PacketFilter& filter,
 
     if (std::string bpf = filter.generateBpfString(); !capture_->initialize(filter.networkCard, bpf)) {
         spdlog::error("Failed to initialize capture on interface '{}'", filter.networkCard);
-        // cppcheck-suppress shadowFunction  // Qt signal emission, not a shadowing variable
-        emit captureError(
-            QString::fromStdString("Failed to initialize capture on interface: " + filter.networkCard));
+        if (onCaptureError_)
+            onCaptureError_("Failed to initialize capture on interface: " + filter.networkCard);
         return;
     }
 
@@ -64,13 +58,9 @@ void CaptureController::startCapture(const nids::core::PacketFilter& filter,
         pipeline_->setResultCallback(
             [this](std::size_t /*idx*/, nids::core::DetectionResult result,
                    nids::core::FlowInfo metadata) {
-                // Bridge from the worker thread to the main thread.
-                QMetaObject::invokeMethod(
-                    this,
-                    [this, r = std::move(result), m = std::move(metadata)]() {
-                        emit liveFlowDetected(r, m);
-                    },
-                    Qt::QueuedConnection);
+                // Fire callback directly — consumer is responsible for
+                // thread marshaling if needed.
+                if (onLiveFlow_) onLiveFlow_(std::move(result), std::move(metadata));
             });
         pipeline_->start();
 
@@ -89,7 +79,7 @@ void CaptureController::startCapture(const nids::core::PacketFilter& filter,
         : dumpFile;
 
     capture_->startCapture(actualDumpFile);
-    emit captureStarted();
+    if (onCaptureStarted_) onCaptureStarted_();
 }
 
 void CaptureController::stopCapture() {
@@ -105,7 +95,7 @@ void CaptureController::stopCapture() {
                      pipeline_->flowsDetected());
     }
 
-    emit captureStopped();
+    if (onCaptureStopped_) onCaptureStopped_();
 }
 
 bool CaptureController::isCapturing() const {

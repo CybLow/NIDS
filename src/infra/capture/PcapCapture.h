@@ -6,15 +6,14 @@
 #include <pcapplusplus/PcapFileDevice.h>
 #include <pcapplusplus/PcapLiveDevice.h>
 
-#include <QObject>
-#include <QThread>
-
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace pcpp {
@@ -23,13 +22,19 @@ class RawPacket;
 
 namespace nids::infra {
 
-/** Worker object that runs the pcap capture loop on a dedicated QThread. */
-class PcapCaptureWorker : public QObject {
-  Q_OBJECT
-
+/** Worker that runs the pcap capture loop on a dedicated thread.
+ *
+ *  Pure C++23 — no Qt dependency.  Communicates results via
+ *  std::function callbacks set before capture starts.
+ */
+class PcapCaptureWorker {
 public:
-  /** Construct a capture worker, optionally parented to @p parent. */
-  explicit PcapCaptureWorker(QObject *parent = nullptr);
+  /** Callback types matching IPacketCapture conventions. */
+  using PacketCallback = nids::core::IPacketCapture::PacketCallback;
+  using ErrorCallback = nids::core::IPacketCapture::ErrorCallback;
+  using RawPacketCallback = nids::core::IPacketCapture::RawPacketCallback;
+
+  PcapCaptureWorker() = default;
 
   /**
    * Configure the capture session parameters before starting.
@@ -40,23 +45,20 @@ public:
   void configure(std::string_view iface, std::string_view bpfFilter,
                  std::string_view dumpFile);
 
+  /** Set the callback invoked for each parsed packet (on the capture thread). */
+  void setPacketCallback(PacketCallback cb);
+  /** Set the callback invoked on capture errors (on the capture thread). */
+  void setErrorCallback(ErrorCallback cb);
   /** Register a callback for raw packet data on the capture thread.
    *  Thread-safe: may be called from any thread before or during capture. */
-  void setRawPacketCallback(nids::core::IPacketCapture::RawPacketCallback cb);
+  void setRawPacketCallback(RawPacketCallback cb);
+  /** Set the callback invoked when capture finishes (on the capture thread). */
+  void setFinishedCallback(std::function<void()> cb);
 
-public slots:
   /** Start the capture loop. Blocks until requestStop() is called. */
   void doCapture();
-  /** Signal the capture loop to stop. */
+  /** Signal the capture loop to stop. Thread-safe. */
   void requestStop();
-
-signals:
-  /** Emitted for each captured packet with parsed metadata. */
-  void packetCaptured(const nids::core::PacketInfo &info);
-  /** Emitted when the capture loop exits normally. */
-  void captureFinished();
-  /** Emitted when a capture error occurs. */
-  void captureError(const QString &message);
 
 private:
   static void packetCallback(pcpp::RawPacket *rawPacket,
@@ -72,19 +74,21 @@ private:
   std::mutex mutex_;
   std::condition_variable stopCv_;
 
-  nids::core::IPacketCapture::RawPacketCallback rawPacketCallback_;
-  std::mutex rawCallbackMutex_;  ///< Protects rawPacketCallback_ for thread-safe set/read.
+  PacketCallback packetCallback_;
+  ErrorCallback errorCallback_;
+  std::function<void()> finishedCallback_;
+  RawPacketCallback rawPacketCallback_;
+  std::mutex rawCallbackMutex_; ///< Protects rawPacketCallback_ for thread-safe set/read.
   nids::core::ServiceRegistry serviceRegistry_;
 };
 
 /** Pcap-based packet capture implementing IPacketCapture via a worker thread.
+ *
+ *  Pure C++23 — no Qt dependency.  Uses std::jthread for the capture thread.
  */
-class PcapCapture : public QObject, public nids::core::IPacketCapture {
-  Q_OBJECT
-
+class PcapCapture : public nids::core::IPacketCapture {
 public:
-  /** Construct the capture manager, optionally parented to @p parent. */
-  explicit PcapCapture(QObject *parent = nullptr);
+  PcapCapture() = default;
   ~PcapCapture() override;
 
   PcapCapture(const PcapCapture &) = delete;
@@ -103,15 +107,12 @@ public:
   void setRawPacketCallback(RawPacketCallback callback) override;
   [[nodiscard]] std::vector<std::string> listInterfaces() override;
 
-signals:
-  /** Emitted for each captured packet, forwarded from the worker thread. */
-  void packetReceived(const nids::core::PacketInfo &info);
-
 private:
-  QThread workerThread_;
-  PcapCaptureWorker *worker_ = nullptr;
+  std::unique_ptr<PcapCaptureWorker> worker_;
+  std::jthread captureThread_;
   PacketCallback callback_;
   ErrorCallback errorCallback_;
+  RawPacketCallback rawCallback_;
   std::string interface_;
   std::string bpfFilter_;
   std::atomic<bool> capturing_{false};
