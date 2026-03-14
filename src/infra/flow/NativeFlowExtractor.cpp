@@ -550,7 +550,8 @@ bool NativeFlowExtractor::parseEthernetAndIp(
       len - static_cast<std::uint32_t>(kEthernetHeaderSize);
 
   if (etherType == kEtherTypeVlan && payloadLen >= 4) {
-    etherType = (static_cast<std::uint16_t>(payload[2]) << 8) | payload[3];
+    etherType = static_cast<std::uint16_t>(
+        (static_cast<std::uint16_t>(payload[2]) << 8) | payload[3]);
     payload += 4;
     payloadLen -= 4;
   }

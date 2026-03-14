@@ -96,6 +96,7 @@ jobs:
           mv /tmp/cc.json build/ci-gcc-fast/compile_commands.json
 
           run-clang-tidy-18 -p build/ci-gcc-fast -quiet \
+            -extra-arg=-Wno-unknown-warning-option \
             'src/.*\.(cpp|h)$' 2>&1 | tee clang-tidy.txt
 
           ISSUES=$(grep -cE ':\d+:\d+: (warning|error):' clang-tidy.txt || echo "0")
@@ -137,7 +138,7 @@ jobs:
           ERRORS=$(python3 -c "
           import xml.etree.ElementTree as ET
           errors = ET.parse('cppcheck-report.xml').getroot().find('errors')
-          real = [e for e in (errors or []) if e.get('severity') != 'information']
+          real = [e for e in (errors if errors is not None else []) if e.get('severity') != 'information']
           print(len(real))
           ")
           if [ "$ERRORS" -gt 0 ]; then

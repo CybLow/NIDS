@@ -174,7 +174,7 @@ void FilterPanel::onApplicationChanged(int index) {
       selected == "Other...") {
     ServiceDialog dialog(serviceRegistry_.getUniqueServices(), this);
     if (dialog.exec() == QDialog::Accepted) {
-      QString service = dialog.getSelectedService();
+      const QString &service = dialog.getSelectedService();
       if (!service.isEmpty()) {
         if (int existing = applicationCombo_->findText(lastCustomService_);
             existing != -1) {
