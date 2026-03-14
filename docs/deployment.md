@@ -8,20 +8,17 @@
 # Install system dependencies
 sudo apt update && sudo apt install -y \
     cmake g++ ninja-build \
-    qt6-base-dev \
-    libpcap-dev
+    qt6-base-dev
 
-# Clone and build with vcpkg
+# Clone and build with Conan 2
 git clone https://github.com/CybLow/NIDS.git
 cd NIDS
-git clone https://github.com/microsoft/vcpkg
-./vcpkg/bootstrap-vcpkg.sh
+pip install conan
+conan profile detect --force
+conan install . -s build_type=Release --build=missing
 
-cmake -B build -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake
-
-cmake --build build --parallel
+cmake --preset Release
+cmake --build --preset Release
 ```
 
 ### Install System-Wide
@@ -50,17 +47,16 @@ sudo setcap cap_net_raw+eip /usr/local/bin/NIDS
 ### Debian/Ubuntu (.deb)
 
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake
-cmake --build build --parallel
-cd build && cpack -G DEB
+cmake --preset Release
+cmake --build --preset Release
+cd build/Release && cpack -G DEB
 sudo dpkg -i nids-*.deb
 ```
 
 ### RPM (Fedora/RHEL)
 
 ```bash
-cd build && cpack -G RPM
+cd build/Release && cpack -G RPM
 sudo rpm -i nids-*.rpm
 ```
 

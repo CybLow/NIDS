@@ -1,6 +1,6 @@
 # NIDS Roadmap
 
-> Last updated: 2026-03-10
+> Last updated: 2026-03-14
 
 This document consolidates **all** planned work — features, cleanup, tests, docs, and
 operational tasks — into a single prioritized roadmap. Items are organized into phases
@@ -14,7 +14,8 @@ Cross-references: [ADR-004](adr/004-model-benchmark-analysis.md),
 
 ## Completed Work
 
-- [x] 9 phases of C++20/Qt6 modernization
+- [x] 9 phases of C++23/Qt6 modernization
+- [x] PcapPlusPlus migration (replaced raw libpcap with PcapPlusPlus 25.05)
 - [x] ONNX Runtime ML inference (replaces frugally-deep)
 - [x] CNN-BiLSTM model trained on LSNM2024 (87.78% accuracy, 97.78% attack recall)
 - [x] Native C++ flow feature extraction (77 bidirectional flow features)
@@ -193,9 +194,10 @@ documented in ADR-004.
 - `std::jthread` for non-Qt threads (per AGENTS.md Section 4.1)
 - Connect results back to UI via `Qt::QueuedConnection` signals
 
-### 8.6 — Live pcap via `pcap_open_live()`
+### 8.6 — Live capture via PcapPlusPlus
 
 - Currently `NativeFlowExtractor::extractFeatures()` reads from a saved `.pcap` file
+  via `pcpp::PcapFileReaderDevice`
 - Add an overload or mode that accepts packets from the live `PcapCapture` callback
 - This enables real-time detection during capture, not just post-capture
 
@@ -294,7 +296,7 @@ remote monitoring.
 ### 11.3 — Enforce test coverage threshold
 
 - Add coverage gate in CI (fail build if `core/` + `app/` < 80%)
-- Track with Codecov or similar
+- Track with SonarCloud quality gate
 
 ---
 

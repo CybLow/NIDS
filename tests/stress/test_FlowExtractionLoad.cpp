@@ -16,13 +16,16 @@
 #include <numeric>
 #include <string>
 
-// Skip tests requiring pcap runtime (not available on Windows CI)
+// PcapPlusPlus uses pcap_open_offline_with_tstamp_precision (npcap-only).
+// On Windows CI without npcap, pcap-dependent tests are skipped.
 #ifdef _WIN32
-#define SKIP_IF_NO_PCAP() GTEST_SKIP() << "npcap runtime not available"
+#define SKIP_IF_NO_PCAP()                                                      \
+  GTEST_SKIP() << "npcap runtime not available on Windows CI"
 #else
-#define SKIP_IF_NO_PCAP() do {} while(0)
+#define SKIP_IF_NO_PCAP()                                                      \
+  do {                                                                         \
+  } while (0)
 #endif
-
 
 namespace fs = std::filesystem;
 using nids::infra::kFlowFeatureCount;
@@ -47,6 +50,7 @@ protected: // NOSONAR
 
 TEST_F(FlowExtractionLoadTest, manyFlows_5000distinct) {
   SKIP_IF_NO_PCAP();
+
   constexpr std::uint32_t kPackets = 50'000;
   constexpr std::uint32_t kFlows = 5'000;
   // 10 packets per flow on average, below kMaxFlowPackets
@@ -75,6 +79,7 @@ TEST_F(FlowExtractionLoadTest, manyFlows_5000distinct) {
 
 TEST_F(FlowExtractionLoadTest, flowSplitting_megaFlow) {
   SKIP_IF_NO_PCAP();
+
   // One mega-flow with many packets -> should split at kMaxFlowPackets boundary
   constexpr std::uint32_t kPackets = 1'000;
   constexpr std::uint32_t kFlows = 1; // All packets in one flow
@@ -100,6 +105,7 @@ TEST_F(FlowExtractionLoadTest, flowSplitting_megaFlow) {
 
 TEST_F(FlowExtractionLoadTest, flowTimeout_oldFlowsEvicted) {
   SKIP_IF_NO_PCAP();
+
   // Generate packets with large inter-arrival time that exceeds flow timeout
   constexpr std::uint32_t kPackets = 100;
   constexpr std::uint32_t kFlows = 1;
@@ -124,6 +130,7 @@ TEST_F(FlowExtractionLoadTest, flowTimeout_oldFlowsEvicted) {
 
 TEST_F(FlowExtractionLoadTest, largeScale_10kFlows_100kPackets) {
   SKIP_IF_NO_PCAP();
+
   constexpr std::uint32_t kPackets = 100'000;
   constexpr std::uint32_t kFlows = 10'000;
 
@@ -159,6 +166,7 @@ TEST_F(FlowExtractionLoadTest, largeScale_10kFlows_100kPackets) {
 
 TEST_F(FlowExtractionLoadTest, featureValues_noNanNoInf) {
   SKIP_IF_NO_PCAP();
+
   constexpr std::uint32_t kPackets = 20'000;
   constexpr std::uint32_t kFlows = 200;
 
@@ -184,6 +192,7 @@ TEST_F(FlowExtractionLoadTest, featureValues_noNanNoInf) {
 
 TEST_F(FlowExtractionLoadTest, repeatedExtraction_noStateLeakage) {
   SKIP_IF_NO_PCAP();
+
   constexpr std::uint32_t kPackets = 1'000;
   constexpr std::uint32_t kFlows = 10;
 

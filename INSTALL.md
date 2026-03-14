@@ -3,14 +3,13 @@
 ## Requirements
 
 - **CMake** >= 3.20
-- **C++20** compiler (GCC 13+, Clang 17+, MSVC 2022+)
+- **C++23** compiler (GCC 14+, Clang 18+, MSVC 2022+)
 - **Qt6** (Core, Gui, Widgets) -- system package
-- **libpcap** (Linux/macOS) or **Npcap SDK** (Windows) -- system package
 - **Python 3** + pip (for Conan package manager)
 - **Conan 2** (installed via pip)
 - **Ninja** (build system)
 
-Conan 2 manages: spdlog, nlohmann_json, GoogleTest.
+Conan 2 manages: spdlog, nlohmann_json, GoogleTest, PcapPlusPlus.
 ONNX Runtime is fetched automatically via CMake FetchContent (pre-built binaries).
 
 ## Linux (Ubuntu/Debian)
@@ -25,7 +24,7 @@ cd NIDS
 
 The script:
 1. Detects your distro (Fedora, Ubuntu, Debian)
-2. Installs system packages (GCC, CMake, Ninja, Qt6, libpcap)
+2. Installs system packages (GCC, CMake, Ninja, Qt6)
 3. Installs Conan 2 via pip
 4. Runs `conan install` for Debug + Release using the in-repo profile
 
@@ -46,7 +45,6 @@ ctest --preset Debug
 sudo apt update && sudo apt install -y \
     gcc g++ cmake ninja-build \
     qt6-base-dev qt6-base-dev-tools \
-    libpcap-dev \
     python3 python3-pip \
     curl tar pkg-config
 
@@ -54,7 +52,6 @@ sudo apt update && sudo apt install -y \
 sudo dnf install -y \
     gcc gcc-c++ cmake ninja-build \
     qt6-qtbase-devel \
-    libpcap-devel \
     python3 python3-pip \
     git curl tar pkg-config
 ```
@@ -137,7 +134,7 @@ The script:
 
 #### Prerequisites
 
-1. **Visual Studio 2022** with C++ workload (for C++20 support)
+1. **Visual Studio 2022** with C++ workload (for C++23 support)
 2. **CMake** >= 3.20
 3. **Ninja** build system
 4. **Python 3** + pip
@@ -176,7 +173,7 @@ cmake --build --preset Release
 ## macOS
 
 ```bash
-brew install cmake qt@6 libpcap ninja python3
+brew install cmake qt@6 ninja python3
 pip3 install conan
 
 conan install . -pr:h conan/profiles/linux-gcc13 -s build_type=Release --build=missing

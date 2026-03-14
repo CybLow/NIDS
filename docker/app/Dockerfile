@@ -1,12 +1,11 @@
-# Stage 1: Build
+# Stage 1: Build (gcc needed for Conan build-requires: flex, bison, libpcap)
 FROM ubuntu:24.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc-14 g++-14 \
-    cmake ninja-build mold \
-    libpcap-dev \
+    gcc g++ gcc-14 g++-14 \
+    cmake ninja-build make mold \
     qt6-base-dev \
     ca-certificates curl tar pkg-config \
     python3-pip \
@@ -17,7 +16,7 @@ WORKDIR /app
 
 # Copy dependency manifests first for layer caching
 COPY conanfile.py CMakePresets.json ./
-COPY conan/ conan/
+COPY conan/ cowhy nan/
 
 ENV CC=gcc-14 CXX=g++-14
 RUN conan profile detect --force && \
@@ -34,7 +33,6 @@ FROM ubuntu:24.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpcap0.8t64 \
     libqt6core6t64 libqt6gui6t64 libqt6widgets6t64 \
     && rm -rf /var/lib/apt/lists/*
 

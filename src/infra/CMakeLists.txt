@@ -16,7 +16,7 @@ add_library(nids_infra STATIC
 target_link_libraries(nids_infra
     PUBLIC
         nids_core
-        PCAP::PCAP
+        PcapPlusPlus::PcapPlusPlus
     PRIVATE
         Threads::Threads
         onnxruntime::onnxruntime
@@ -28,9 +28,12 @@ target_link_libraries(nids_infra
 target_compile_definitions(nids_infra PRIVATE NIDS_HAS_ONNX)
 
 if(WIN32)
-    target_link_libraries(nids_infra PRIVATE iphlpapi delayimp)
-    # Delay-load npcap DLLs so tests that don't call pcap functions
-    # can run without the npcap runtime installed.
+    # Delay-load npcap DLLs so test discovery and non-pcap tests can run
+    # without npcap runtime installed. Pcap-dependent tests use GTEST_SKIP
+    # on Windows CI (PcapPlusPlus uses pcap_open_offline_with_tstamp_precision
+    # which requires npcap; WinPcap is too old). To run all tests on Windows,
+    # install npcap (free: npcap.com, or OEM for CI: fyodor@nmap.org).
+    target_link_libraries(nids_infra PRIVATE delayimp)
     target_link_options(nids_infra PUBLIC
         /DELAYLOAD:wpcap.dll
         /DELAYLOAD:Packet.dll
