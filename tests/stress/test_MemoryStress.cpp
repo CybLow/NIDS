@@ -27,6 +27,15 @@ using nids::test::StubAnalyzer;
 using nids::test::StubRuleEngine;
 using nids::test::StubThreatIntel;
 
+// PcapPlusPlus file reader requires npcap runtime (not available on Windows CI)
+#ifdef _WIN32
+#define SKIP_IF_NO_PCAP() GTEST_SKIP() << "npcap runtime not available"
+#else
+#define SKIP_IF_NO_PCAP()                                                      \
+  do {                                                                         \
+  } while (0)
+#endif
+
 class MemoryStressTest : public ::testing::Test {
 protected: // NOSONAR
   std::string pcapPath_;
@@ -42,6 +51,7 @@ protected: // NOSONAR
 };
 
 TEST_F(MemoryStressTest, repeatedExtraction_noMemoryLeak) {
+  SKIP_IF_NO_PCAP();
 
   constexpr std::uint32_t kPackets = 10'000;
   constexpr std::uint32_t kFlows = 100;
@@ -91,6 +101,7 @@ TEST_F(MemoryStressTest, repeatedExtraction_noMemoryLeak) {
 }
 
 TEST_F(MemoryStressTest, largeFlowTable_memoryBounded) {
+  SKIP_IF_NO_PCAP();
 
   // Generate pcap with many distinct flows — stresses the hash map
   constexpr std::uint32_t kPackets = 50'000;
@@ -125,6 +136,7 @@ TEST_F(MemoryStressTest, largeFlowTable_memoryBounded) {
 }
 
 TEST_F(MemoryStressTest, sustainedEvaluation_memoryStable) {
+  SKIP_IF_NO_PCAP();
 
   // Run HybridDetectionService evaluations in a loop and track memory
   StubThreatIntel ti;
@@ -184,6 +196,7 @@ TEST_F(MemoryStressTest, sustainedEvaluation_memoryStable) {
 }
 
 TEST_F(MemoryStressTest, predictorMemory_noAccumulation) {
+  SKIP_IF_NO_PCAP();
 
   // Ensure StubAnalyzer (and by extension OnnxAnalyzer pattern) doesn't leak
   StubAnalyzer analyzer;
