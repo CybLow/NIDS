@@ -26,7 +26,8 @@ namespace {
 FARPROC WINAPI stubFunction() { return reinterpret_cast<FARPROC>(-1); }
 
 // Delay-load failure hook: called when a function cannot be resolved.
-FARPROC WINAPI delayLoadFailureHook(unsigned dliNotify, PDelayLoadInfo pdli) {
+FARPROC WINAPI delayLoadFailureHook(unsigned dliNotify,
+                                    PDelayLoadInfo /*pdli*/) {
   if (dliNotify == dliFailGetProc) {
     // A specific function was not found in the DLL.
     // Return a stub instead of crashing.
