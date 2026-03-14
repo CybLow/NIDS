@@ -1,4 +1,4 @@
-# Stage 1: Build
+# Stage 1: Build (gcc needed for Conan build-requires: flex, bison, libpcap)
 FROM ubuntu:24.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
