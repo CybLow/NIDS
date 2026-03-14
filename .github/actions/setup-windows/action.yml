@@ -27,9 +27,15 @@ runs:
         arch: win64_msvc2019_64
         cache: true
 
-    - name: Install Ninja and npcap
+    - name: Install Ninja
       shell: pwsh
-      run: choco install ninja npcap ${{ inputs.extra-choco }} -y
+      run: choco install ninja ${{ inputs.extra-choco }} -y
+
+    - name: Install npcap runtime
+      shell: pwsh
+      run: |
+        Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-1.80.exe" -OutFile "$env:TEMP\npcap.exe"
+        Start-Process -Wait -FilePath "$env:TEMP\npcap.exe" -ArgumentList '/S'
 
     - name: Install Conan
       shell: pwsh

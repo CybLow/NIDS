@@ -4,7 +4,7 @@ FROM ubuntu:24.04 AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc-14 g++-14 \
+    gcc g++ gcc-14 g++-14 \
     cmake ninja-build mold \
     qt6-base-dev \
     ca-certificates curl tar pkg-config \
@@ -19,9 +19,7 @@ COPY conanfile.py CMakePresets.json ./
 COPY conan/ conan/
 
 ENV CC=gcc-14 CXX=g++-14
-RUN ln -sf /usr/bin/gcc-14 /usr/local/bin/cc && \
-    ln -sf /usr/bin/gcc-14 /usr/local/bin/gcc && \
-    conan profile detect --force && \
+RUN conan profile detect --force && \
     conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
 
 COPY . .
