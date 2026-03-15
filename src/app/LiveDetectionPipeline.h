@@ -131,6 +131,8 @@ private:
     std::unique_ptr<FlowAnalysisWorker> worker_;
     std::atomic<bool> running_{false};
     std::atomic<std::size_t> droppedFlows_{0};
+    std::atomic<std::size_t> feedPacketCount_{0}; ///< Total feedPacket() calls.
+    std::atomic<std::size_t> queuePushCount_{0};  ///< Successful queue pushes.
 };
 
 } // namespace nids::app

@@ -1990,3 +1990,125 @@ TEST(NativeFlowExtractor, Reset_allowsNewSession) {
   EXPECT_EQ(cbMeta[0].dstPort, 443);
   EXPECT_EQ(cbMeta[0].protocol, 17);
 }
+
+// ── Time-window flow splitting ───────────────────────────────────────
+
+TEST(NativeFlowExtractor, ProcessPacket_durationSplit_completesLongFlow) {
+  NativeFlowExtractor extractor;
+  extractor.setMaxFlowDuration(10'000'000); // 10 seconds
+
+  int cbCount = 0;
+  std::vector<nids::core::FlowInfo> cbMeta;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
+        ++cbCount;
+        cbMeta.push_back(std::move(info));
+      });
+
+  // Use non-zero base time to avoid startTimeUs==0 ambiguity.
+  constexpr std::int64_t kBase = 1'000'000'000;
+  // Feed packets spanning 25 seconds for the same flow.
+  // With 10s max duration: splits at ~10s and ~20s, finalize remainder.
+  for (int i = 0; i < 25; ++i) {
+    auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
+    extractor.processPacket(pkt.data(), pkt.size(),
+                            kBase + static_cast<std::int64_t>(i) * 1'000'000);
+  }
+
+  // At least 2 duration-based splits during capture (at t+10s and t+20s)
+  EXPECT_GE(cbCount, 2);
+
+  extractor.finalizeAllFlows();
+  // Total: 2 splits + 1 finalized = at least 3
+  EXPECT_GE(cbCount, 3);
+
+  // All completed flows should be the same 5-tuple
+  for (const auto &m : cbMeta) {
+    EXPECT_EQ(m.srcIp, "10.0.0.1");
+    EXPECT_EQ(m.dstIp, "10.0.0.2");
+    EXPECT_EQ(m.dstPort, 80);
+  }
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_durationSplit_disabledWhenZero) {
+  NativeFlowExtractor extractor;
+  extractor.setMaxFlowDuration(0); // Disabled
+
+  int cbCount = 0;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
+
+  // Use non-zero base time to avoid startTimeUs==0 ambiguity.
+  constexpr std::int64_t kBase = 1'000'000'000;
+  // Feed 20 packets spanning 30 seconds — with duration split disabled,
+  // no completions (no FIN/RST, below kMaxFlowPackets=200)
+  for (int i = 0; i < 20; ++i) {
+    auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
+    extractor.processPacket(pkt.data(), pkt.size(),
+                            kBase + static_cast<std::int64_t>(i) * 1'500'000);
+  }
+
+  EXPECT_EQ(cbCount, 0);
+
+  extractor.finalizeAllFlows();
+  EXPECT_EQ(cbCount, 1); // Only finalization
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_durationSplit_restartsFreshStats) {
+  NativeFlowExtractor extractor;
+  extractor.setMaxFlowDuration(5'000'000); // 5 seconds
+
+  std::vector<nids::core::FlowInfo> cbMeta;
+  extractor.setFlowCompletionCallback(
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
+        cbMeta.push_back(std::move(info));
+      });
+
+  // Use non-zero base time (startTimeUs==0 means "uninitialized" in FlowStats).
+  constexpr std::int64_t kBase = 1'000'000'000; // 1000 seconds
+  // 3 packets at t+0, t+2s, t+4s (within 5s window)
+  // 1 packet at t+6s (exceeds 5s → split, starts new window)
+  // 1 packet at t+8s (within new window)
+  auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
+  extractor.processPacket(pkt.data(), pkt.size(), kBase);
+  extractor.processPacket(pkt.data(), pkt.size(), kBase + 2'000'000);
+  extractor.processPacket(pkt.data(), pkt.size(), kBase + 4'000'000);
+  extractor.processPacket(pkt.data(), pkt.size(), kBase + 6'000'000); // triggers split
+  extractor.processPacket(pkt.data(), pkt.size(), kBase + 8'000'000);
+
+  ASSERT_EQ(cbMeta.size(), 1u); // First window completed at t+6s
+
+  // First window: packets at t+0, t+2, t+4, t+6 = 4 packets (t+6 counted before split)
+  EXPECT_EQ(cbMeta[0].totalFwdPackets + cbMeta[0].totalBwdPackets, 4u);
+
+  extractor.finalizeAllFlows();
+  ASSERT_EQ(cbMeta.size(), 2u); // Second window finalized
+
+  // Second window: packet at t+8 only = 1 packet
+  EXPECT_EQ(cbMeta[1].totalFwdPackets + cbMeta[1].totalBwdPackets, 1u);
+}
+
+TEST(NativeFlowExtractor, ProcessPacket_durationSplit_diagnosticsCounted) {
+  NativeFlowExtractor extractor;
+  extractor.setMaxFlowDuration(5'000'000); // 5 seconds
+
+  extractor.setFlowCompletionCallback(
+      [](std::vector<float> &&, nids::core::FlowInfo &&) {});
+
+  // Use non-zero base time to avoid startTimeUs==0 ambiguity.
+  constexpr std::int64_t kBase = 1'000'000'000;
+  // 10 packets over 15 seconds — should trigger 2 duration splits
+  for (int i = 0; i < 10; ++i) {
+    auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
+    extractor.processPacket(pkt.data(), pkt.size(),
+                            kBase + static_cast<std::int64_t>(i) * 1'600'000);
+  }
+
+  const auto &diag = extractor.diagCounters();
+  EXPECT_EQ(diag.packetsReceived, 10u);
+  EXPECT_EQ(diag.packetsParsed, 10u);
+  EXPECT_EQ(diag.packetsSkipped, 0u);
+  EXPECT_GE(diag.flowsCompletedDuration, 2u);
+  EXPECT_EQ(diag.flowsCompletedFinRst, 0u);
+  EXPECT_EQ(diag.flowsCompletedMaxPkts, 0u);
+}

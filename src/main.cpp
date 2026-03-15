@@ -124,6 +124,7 @@ int main(int argc, char *argv[]) {
   // post-capture analysis never share mutable state.
   auto liveFlowExtractor = std::make_unique<nids::infra::NativeFlowExtractor>();
   liveFlowExtractor->setFlowTimeout(config.liveFlowTimeoutUs());
+  liveFlowExtractor->setMaxFlowDuration(config.maxFlowDurationUs());
   auto liveNormalizer = std::make_unique<nids::infra::FeatureNormalizer>();
   if (!liveNormalizer->loadMetadata(config.modelMetadataPath().string())) {
     spdlog::warn("Live detection normalizer metadata not loaded — "

@@ -50,6 +50,11 @@ public:
      *  Used for real-time capture where flows must be delivered promptly.
      *  Default: 60 seconds. */
     [[nodiscard]] int64_t liveFlowTimeoutUs() const;
+    /** Get the maximum flow duration in microseconds for time-window splitting.
+     *  Active flows exceeding this age are completed and restarted, ensuring
+     *  long-lived connections produce periodic ML verdicts.
+     *  Default: 15 seconds (inline IPS mode). */
+    [[nodiscard]] int64_t maxFlowDurationUs() const;
     /** Get the idle threshold in microseconds for flow expiry. */
     [[nodiscard]] int64_t idleThresholdUs() const;
 
@@ -59,6 +64,8 @@ public:
     void setFlowTimeoutUs(int64_t timeoutUs);
     /** Set the live-mode flow timeout in microseconds. */
     void setLiveFlowTimeoutUs(int64_t timeoutUs);
+    /** Set the maximum flow duration in microseconds for time-window splitting. */
+    void setMaxFlowDurationUs(int64_t durationUs);
     /** Set the idle threshold in microseconds. */
     void setIdleThresholdUs(int64_t thresholdUs);
 
@@ -115,6 +122,7 @@ private:
     std::string defaultDumpFile_{"dump.pcap"};
     int64_t flowTimeoutUs_ = 600'000'000;       // 10 minutes (batch)
     int64_t liveFlowTimeoutUs_ = 60'000'000;    // 60 seconds (live capture)
+    int64_t maxFlowDurationUs_ = 15'000'000;    // 15 seconds (time-window split)
     int64_t idleThresholdUs_ = 5'000'000;       // 5 seconds
     int onnxIntraOpThreads_ = 1;
     float mlConfidenceThreshold_ = 0.7f;

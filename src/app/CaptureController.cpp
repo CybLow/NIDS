@@ -90,9 +90,12 @@ void CaptureController::stopCapture() {
     // Stop live detection: finalize flows and drain the pipeline.
     if (pipeline_ && pipeline_->isRunning()) {
         capture_->setRawPacketCallback(nullptr);
+        // Read flow count before stop() resets the worker (which zeroes the count).
+        auto preStopFlows = pipeline_->flowsDetected();
         pipeline_->stop();
-        spdlog::info("Live detection stopped: {} flows detected",
-                     pipeline_->flowsDetected());
+        spdlog::info("Live detection stopped: {} flows detected during capture, "
+                     "see pipeline diagnostics above for full breakdown",
+                     preStopFlows);
     }
 
     if (onCaptureStopped_) onCaptureStopped_();

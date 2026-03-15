@@ -119,6 +119,8 @@ private:
 
     std::jthread thread_;
     std::atomic<std::size_t> processedCount_{0};
+    std::atomic<std::size_t> batchCount_{0};     ///< Number of batches processed.
+    std::atomic<std::size_t> callbacksFired_{0}; ///< Number of result callbacks fired.
     std::atomic<bool> running_{false};
 };
 

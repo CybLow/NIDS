@@ -140,6 +140,7 @@ int main(int argc, char* argv[]) {
     // -- Flow Extractor + Normalizer --
     auto flowExtractor = std::make_unique<nids::infra::NativeFlowExtractor>();
     flowExtractor->setFlowTimeout(config.liveFlowTimeoutUs());
+    flowExtractor->setMaxFlowDuration(config.maxFlowDurationUs());
     auto normalizer = std::make_unique<nids::infra::FeatureNormalizer>();
     if (!normalizer->loadMetadata(config.modelMetadataPath().string())) {
         spdlog::warn("Feature normalization metadata not loaded -- "

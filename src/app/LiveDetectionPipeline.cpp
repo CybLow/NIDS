@@ -45,6 +45,8 @@ void LiveDetectionPipeline::start() {
     // Reset flow extractor state for the new capture session.
     extractor_.reset();
     droppedFlows_.store(0, std::memory_order_relaxed);
+    feedPacketCount_.store(0, std::memory_order_relaxed);
+    queuePushCount_.store(0, std::memory_order_relaxed);
 
     // Create the bounded queue and worker.
     queue_ = std::make_unique<nids::core::BoundedQueue<FlowWorkItem>>(kQueueCapacity);
@@ -91,8 +93,10 @@ void LiveDetectionPipeline::start() {
     // rather than stalling the PcapPlusPlus capture thread.
     extractor_.setFlowCompletionCallback(
         [this](std::vector<float>&& features, nids::core::FlowInfo&& info) {
-            if (!queue_->tryPush(
+            if (queue_->tryPush(
                     FlowWorkItem{std::move(features), std::move(info)})) {
+                queuePushCount_.fetch_add(1, std::memory_order_relaxed);
+            } else {
                 droppedFlows_.fetch_add(1, std::memory_order_relaxed);
             }
         });
@@ -105,6 +109,7 @@ void LiveDetectionPipeline::start() {
 void LiveDetectionPipeline::feedPacket(const std::uint8_t* data,
                                        std::size_t length,
                                        std::int64_t timestampUs) {
+    feedPacketCount_.fetch_add(1, std::memory_order_relaxed);
     extractor_.processPacket(data, length, timestampUs);
 }
 
@@ -131,8 +136,14 @@ void LiveDetectionPipeline::stop() {
 
     auto detected = flowsDetected();
     auto dropped = droppedFlows_.load(std::memory_order_relaxed);
-    spdlog::info("LiveDetectionPipeline stopped: {} flows detected, {} dropped",
-                 detected, dropped);
+    auto fed = feedPacketCount_.load(std::memory_order_relaxed);
+    auto pushed = queuePushCount_.load(std::memory_order_relaxed);
+    spdlog::info("=== LiveDetectionPipeline Diagnostics ===");
+    spdlog::info("  feedPacket() calls:   {}", fed);
+    spdlog::info("  Queue pushes (ok):    {}", pushed);
+    spdlog::info("  Queue drops (full):   {}", dropped);
+    spdlog::info("  Flows detected:       {}", detected);
+    spdlog::info("=========================================");
 
     if (dropped > 0) {
         spdlog::warn("LiveDetectionPipeline dropped {} flows due to queue "

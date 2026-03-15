@@ -262,6 +262,22 @@ public:
   void setFlowTimeout(std::int64_t timeoutUs);
 
   /**
+   * Set the maximum flow duration for time-window splitting.
+   *
+   * Active flows whose age (lastTimeUs - startTimeUs) exceeds this limit
+   * are completed and restarted with fresh stats.  This ensures long-lived
+   * connections (HTTP/2, WebSocket, SSH) produce periodic ML verdicts
+   * rather than accumulating indefinitely.
+   *
+   * Set to 0 to disable duration-based splitting (packet-count split still
+   * applies via kMaxFlowPackets).
+   *
+   * @param durationUs  Maximum flow age in microseconds.  Default: 15 seconds
+   *                    (from Configuration::maxFlowDurationUs()).
+   */
+  void setMaxFlowDuration(std::int64_t durationUs);
+
+  /**
    * Sweep all active flows and expire those idle longer than flowTimeoutUs_.
    *
    * @param nowUs  Current time in microseconds (e.g., packet timestamp or
@@ -291,15 +307,38 @@ public:
   /// Reset all internal state for a new capture session.
   void reset() override;
 
+  /// Diagnostic counters for live detection pipeline analysis.
+  struct DiagCounters {
+    std::uint64_t packetsReceived = 0;   ///< Total calls to processPacket().
+    std::uint64_t packetsParsed = 0;     ///< Packets that passed parsePacketHeaders().
+    std::uint64_t packetsSkipped = 0;    ///< Packets rejected by parsePacketHeaders().
+    std::uint64_t flowsCompletedFinRst = 0;  ///< Flows completed by TCP FIN/RST.
+    std::uint64_t flowsCompletedMaxPkts = 0; ///< Flows completed by kMaxFlowPackets split.
+    std::uint64_t flowsCompletedTimeout = 0; ///< Flows expired by idle timeout sweep.
+    std::uint64_t flowsCompletedDuration = 0; ///< Flows split by max duration (time-window).
+    std::uint64_t flowsCompletedFinalize = 0; ///< Flows finalized at shutdown.
+    std::uint64_t sweepCount = 0;        ///< Number of sweep passes executed.
+  };
+
+  /// Access diagnostic counters (read-only snapshot).
+  [[nodiscard]] const DiagCounters& diagCounters() const noexcept {
+    return diag_;
+  }
+
+  /// Log a summary of diagnostic counters via spdlog.
+  void logDiagnostics() const;
+
 private:
   std::unordered_map<FlowKey, FlowStats, FlowKeyHash> flows_;
   std::vector<std::pair<FlowKey, FlowStats>> completedFlows_;
   std::vector<core::FlowInfo> flowMetadata_; ///< Populated by extractFeatures()
   core::IFlowExtractor::FlowCompletionCallback flowCompletionCallback_;
   std::int64_t flowTimeoutUs_;      ///< Flow inactivity timeout (from Configuration).
+  std::int64_t maxFlowDurationUs_;  ///< Max flow age before time-window split (0=disabled).
   std::int64_t idleThresholdUs_;    ///< Idle vs active period threshold (from Configuration).
   std::int64_t lastSweepTimeUs_ = 0; ///< Timestamp of the last periodic sweep.
   bool liveMode_ = false; ///< True when processPacket() has been called (live capture).
+  DiagCounters diag_; ///< Diagnostic counters for pipeline analysis.
 
   /// Parsed packet context passed between processPacket helpers.
   struct ParsedPacket {

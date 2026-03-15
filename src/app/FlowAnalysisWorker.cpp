@@ -78,6 +78,8 @@ void FlowAnalysisWorker::start() {
     }
     running_.store(true, std::memory_order_relaxed);
     processedCount_.store(0, std::memory_order_relaxed);
+    batchCount_.store(0, std::memory_order_relaxed);
+    callbacksFired_.store(0, std::memory_order_relaxed);
     thread_ = std::jthread([this](std::stop_token /*st*/) { run(); });
     spdlog::debug("FlowAnalysisWorker started");
 }
@@ -94,8 +96,11 @@ void FlowAnalysisWorker::stop() {
         thread_.join();
     }
     running_.store(false, std::memory_order_relaxed);
-    spdlog::debug("FlowAnalysisWorker stopped after processing {} flows",
-                  processedCount_.load(std::memory_order_relaxed));
+    spdlog::info("=== FlowAnalysisWorker Diagnostics ===");
+    spdlog::info("  Flows processed:    {}", processedCount_.load(std::memory_order_relaxed));
+    spdlog::info("  Batches processed:  {}", batchCount_.load(std::memory_order_relaxed));
+    spdlog::info("  Callbacks fired:    {}", callbacksFired_.load(std::memory_order_relaxed));
+    spdlog::info("======================================");
 }
 
 std::size_t FlowAnalysisWorker::processedCount() const noexcept {
@@ -116,6 +121,7 @@ void FlowAnalysisWorker::run() {
             break; // Queue closed and drained.
         }
 
+        batchCount_.fetch_add(1, std::memory_order_relaxed);
         auto startIndex = processedCount_.load(std::memory_order_relaxed);
         processBatch(batch, startIndex);
         processedCount_.fetch_add(batch.size(), std::memory_order_relaxed);
@@ -177,6 +183,7 @@ void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem>& items,
         session_.setDetectionResult(index, result);
 
         if (resultCallback_) {
+            callbacksFired_.fetch_add(1, std::memory_order_relaxed);
             resultCallback_(index, std::move(result),
                             std::move(items[i].metadata));
         }

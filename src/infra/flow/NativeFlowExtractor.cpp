@@ -44,7 +44,14 @@ constexpr std::uint8_t kTcpEce = 0x40;
 /// Triggered when the packet timestamp has advanced by at least this amount
 /// since the last sweep.  30 seconds balances memory savings against the
 /// O(n) sweep cost.
-constexpr std::int64_t kSweepIntervalUs = 30'000'000; // 30 seconds
+constexpr std::int64_t kBatchSweepIntervalUs = 30'000'000; // 30 seconds
+
+/// Interval between periodic sweeps during live capture.
+/// Shorter than batch mode to provide more responsive flow detection —
+/// idle flows are expired sooner, producing timely results for the UI.
+/// 5 seconds is cheap: typical flow tables have <1000 entries, so
+/// O(n) sweeps at this frequency are negligible.
+constexpr std::int64_t kLiveSweepIntervalUs = 5'000'000; // 5 seconds
 
 /// Push max, min, mean, std from an accumulator, or 4 zeros if empty.
 void pushLengthStats(std::vector<float> &features,
@@ -283,6 +290,7 @@ const std::vector<std::string> &flowFeatureNames() {
 
 NativeFlowExtractor::NativeFlowExtractor()
     : flowTimeoutUs_(core::Configuration::instance().flowTimeoutUs()),
+      maxFlowDurationUs_(core::Configuration::instance().maxFlowDurationUs()),
       idleThresholdUs_(core::Configuration::instance().idleThresholdUs()) {}
 
 void NativeFlowExtractor::setFlowCompletionCallback(
@@ -294,10 +302,15 @@ void NativeFlowExtractor::setFlowTimeout(std::int64_t timeoutUs) {
   flowTimeoutUs_ = timeoutUs;
 }
 
+void NativeFlowExtractor::setMaxFlowDuration(std::int64_t durationUs) {
+  maxFlowDurationUs_ = durationUs;
+}
+
 std::size_t NativeFlowExtractor::sweepExpiredFlows(std::int64_t nowUs) {
   std::size_t swept = 0;
   for (auto it = flows_.begin(); it != flows_.end();) {
     if (nowUs - it->second.lastTimeUs > flowTimeoutUs_) {
+      ++diag_.flowsCompletedTimeout;
       completeFlow(it->first, it->second);
       it = flows_.erase(it);
       ++swept;
@@ -422,8 +435,8 @@ NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
         std::int64_t{ts.tv_sec} * 1'000'000 + std::int64_t{ts.tv_nsec} / 1'000;
     processPacketInternal(rawPacket, tsUs);
 
-    // Periodic sweep: expire idle flows every kSweepIntervalUs.
-    if (tsUs - lastSweepTimeUs_ >= kSweepIntervalUs) {
+    // Periodic sweep: expire idle flows every kBatchSweepIntervalUs.
+    if (tsUs - lastSweepTimeUs_ >= kBatchSweepIntervalUs) {
       sweepExpiredFlows(tsUs);
       lastSweepTimeUs_ = tsUs;
     }
@@ -444,6 +457,7 @@ void NativeFlowExtractor::processPacket(const std::uint8_t *data,
                                         std::size_t length,
                                         std::int64_t timestampUs) {
   liveMode_ = true;
+  ++diag_.packetsReceived;
 
   // Construct a timeval for PcapPlusPlus RawPacket.
   timespec ts{};
@@ -460,18 +474,22 @@ void NativeFlowExtractor::processPacket(const std::uint8_t *data,
 
   processPacketInternal(rawPacket, timestampUs);
 
-  // Periodic sweep: expire idle flows every kSweepIntervalUs.
-  if (timestampUs - lastSweepTimeUs_ >= kSweepIntervalUs) {
+  // Periodic sweep: expire idle flows every kLiveSweepIntervalUs.
+  if (timestampUs - lastSweepTimeUs_ >= kLiveSweepIntervalUs) {
+    ++diag_.sweepCount;
     sweepExpiredFlows(timestampUs);
     lastSweepTimeUs_ = timestampUs;
   }
 }
 
 void NativeFlowExtractor::finalizeAllFlows() {
+  spdlog::info("finalizeAllFlows: {} active flows remaining", flows_.size());
+  diag_.flowsCompletedFinalize += flows_.size();
   for (auto &[key, stats] : flows_) {
     completeFlow(key, stats);
   }
   flows_.clear();
+  logDiagnostics();
 }
 
 void NativeFlowExtractor::reset() {
@@ -480,6 +498,31 @@ void NativeFlowExtractor::reset() {
   flowMetadata_.clear();
   lastSweepTimeUs_ = 0;
   liveMode_ = false;
+  diag_ = DiagCounters{};
+}
+
+void NativeFlowExtractor::logDiagnostics() const {
+  auto totalCompleted = diag_.flowsCompletedFinRst +
+                        diag_.flowsCompletedMaxPkts +
+                        diag_.flowsCompletedTimeout +
+                        diag_.flowsCompletedDuration +
+                        diag_.flowsCompletedFinalize;
+
+  spdlog::info("=== NativeFlowExtractor Diagnostics ===");
+  spdlog::info("  Packets received:       {}", diag_.packetsReceived);
+  spdlog::info("  Packets parsed (IPv4):  {}", diag_.packetsParsed);
+  spdlog::info("  Packets skipped:        {}", diag_.packetsSkipped);
+  spdlog::info("  Active flows remaining: {}", flows_.size());
+  spdlog::info("  Total flows completed:  {}", totalCompleted);
+  spdlog::info("    - TCP FIN/RST:        {}", diag_.flowsCompletedFinRst);
+  spdlog::info("    - Max packets ({}):  {}", kMaxFlowPackets,
+               diag_.flowsCompletedMaxPkts);
+  spdlog::info("    - Idle timeout:       {}", diag_.flowsCompletedTimeout);
+  spdlog::info("    - Duration split:     {}", diag_.flowsCompletedDuration);
+  spdlog::info("    - Finalized at stop:  {}", diag_.flowsCompletedFinalize);
+  spdlog::info("  Sweep passes:           {}", diag_.sweepCount);
+  spdlog::info("  Max flow duration:      {}s", maxFlowDurationUs_ / 1'000'000);
+  spdlog::info("=======================================");
 }
 
 // finalizeBulks() removed — replaced by completeFlow() loop in
@@ -564,8 +607,11 @@ void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
                                                 std::int64_t timestampUs) {
   pcpp::Packet parsedPacket(&rawPacket);
   ParsedPacket pkt;
-  if (!parsePacketHeaders(parsedPacket, pkt))
+  if (!parsePacketHeaders(parsedPacket, pkt)) {
+    ++diag_.packetsSkipped;
     return;
+  }
+  ++diag_.packetsParsed;
 
   FlowKey keyFwd{.srcIp = pkt.srcIp,
                  .dstIp = pkt.dstIp,
@@ -606,6 +652,7 @@ void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
                    idleThresholdUs_);
 
   if (tcpFinOrRst) {
+    ++diag_.flowsCompletedFinRst;
     completeFlow(activeKey, stats);
     flows_.erase(activeKey);
     return;
@@ -615,8 +662,31 @@ void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
   // sample.
   auto totalPkts = stats.totalFwdPackets + stats.totalBwdPackets;
   if (totalPkts >= kMaxFlowPackets) {
+    ++diag_.flowsCompletedMaxPkts;
     completeFlow(activeKey, stats);
-    flows_[activeKey] = FlowStats{}; // Start new flow for same 5-tuple
+    // Restart flow for same 5-tuple.  Seed start/last timestamps so the
+    // new flow isn't immediately expired by the next sweep.
+    auto &fresh = (flows_[activeKey] = FlowStats{});
+    fresh.startTimeUs = timestampUs;
+    fresh.lastTimeUs = timestampUs;
+    return;
+  }
+
+  // Time-window splitting (live mode only): long-lived connections (HTTP/2,
+  // WebSocket, SSH, tunnels) must produce periodic ML verdicts rather than
+  // accumulating indefinitely.  When a flow exceeds maxFlowDurationUs_,
+  // complete it and restart with fresh stats.  This is critical for inline
+  // IPS mode where blocking decisions must be made promptly.
+  //
+  // Disabled in batch mode (extractFeatures) where all flows are finalized
+  // at end-of-file anyway.
+  if (liveMode_ && maxFlowDurationUs_ > 0 &&
+      (timestampUs - stats.startTimeUs) >= maxFlowDurationUs_) {
+    ++diag_.flowsCompletedDuration;
+    completeFlow(activeKey, stats);
+    auto &fresh = (flows_[activeKey] = FlowStats{});
+    fresh.startTimeUs = timestampUs;
+    fresh.lastTimeUs = timestampUs;
   }
 }
 
@@ -628,12 +698,14 @@ NativeFlowExtractor::resolveFlow(const FlowKey &keyFwd, const FlowKey &keyBwd,
   if (auto it = flows_.find(keyFwd);
       it != flows_.end() &&
       timestampUs - it->second.lastTimeUs > flowTimeoutUs_) {
+    ++diag_.flowsCompletedTimeout;
     completeFlow(it->first, it->second);
     flows_.erase(it);
   }
   if (auto it = flows_.find(keyBwd);
       it != flows_.end() &&
       timestampUs - it->second.lastTimeUs > flowTimeoutUs_) {
+    ++diag_.flowsCompletedTimeout;
     completeFlow(it->first, it->second);
     flows_.erase(it);
   }
