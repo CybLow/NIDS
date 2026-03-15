@@ -48,7 +48,7 @@ add_executable(nids_tests
     unit/test_ServiceRegistry.cpp
     unit/test_CaptureSession.cpp
     unit/test_AttackType.cpp
-    unit/test_ReportGenerator.cpp
+
     unit/test_NativeFlowExtractor.cpp
     unit/test_Configuration.cpp
     unit/test_DetectionResult.cpp

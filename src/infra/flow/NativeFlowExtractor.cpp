@@ -443,6 +443,8 @@ NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
 void NativeFlowExtractor::processPacket(const std::uint8_t *data,
                                         std::size_t length,
                                         std::int64_t timestampUs) {
+  liveMode_ = true;
+
   // Construct a timeval for PcapPlusPlus RawPacket.
   timespec ts{};
   ts.tv_sec = static_cast<time_t>(timestampUs / 1'000'000);
@@ -477,6 +479,7 @@ void NativeFlowExtractor::reset() {
   completedFlows_.clear();
   flowMetadata_.clear();
   lastSweepTimeUs_ = 0;
+  liveMode_ = false;
 }
 
 // finalizeBulks() removed — replaced by completeFlow() loop in
@@ -804,6 +807,14 @@ void NativeFlowExtractor::completeFlow(const FlowKey &key, FlowStats &stats) {
   if (flowCompletionCallback_) {
     flowCompletionCallback_(stats.toFeatureVector(key.dstPort),
                             buildFlowInfo(key, stats));
+  }
+
+  if (liveMode_) {
+    // In live mode (processPacket path), results are delivered via callback.
+    // Do NOT accumulate in completedFlows_ — that vector is only used
+    // by batch-mode extractFeatures() / buildFeatureVectors().
+    // Skipping this avoids unbounded memory growth in long-running daemons.
+    return;
   }
 
   completedFlows_.emplace_back(key, std::move(stats));

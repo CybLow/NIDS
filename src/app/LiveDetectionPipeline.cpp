@@ -29,6 +29,12 @@ void LiveDetectionPipeline::setResultCallback(ResultCallback cb) noexcept {
     resultCallback_ = std::move(cb);
 }
 
+void LiveDetectionPipeline::addOutputSink(nids::core::IOutputSink* sink) {
+    if (sink) {
+        sinks_.push_back(sink);
+    }
+}
+
 void LiveDetectionPipeline::start() {
     if (running_.load(std::memory_order_relaxed)) {
         return;
@@ -47,6 +53,34 @@ void LiveDetectionPipeline::start() {
     worker_->setHybridDetection(hybridService_);
 
     if (resultCallback_) {
+        worker_->setResultCallback(resultCallback_);
+    }
+
+    // Start all output sinks.
+    for (auto* sink : sinks_) {
+        if (!sink->start()) {
+            spdlog::warn("Output sink '{}' failed to start", sink->name());
+        }
+    }
+
+    // If output sinks are registered, wrap the result callback to also
+    // dispatch to all sinks.
+    if (!sinks_.empty()) {
+        auto userCallback = resultCallback_;
+        worker_->setResultCallback(
+            [this, userCallback = std::move(userCallback)](
+                std::size_t idx, nids::core::DetectionResult result,
+                nids::core::FlowInfo info) {
+                // Dispatch to all registered output sinks.
+                for (auto* sink : sinks_) {
+                    sink->onFlowResult(idx, result, info);
+                }
+                // Then fire the user callback (if any).
+                if (userCallback) {
+                    userCallback(idx, std::move(result), std::move(info));
+                }
+            });
+    } else if (resultCallback_) {
         worker_->setResultCallback(resultCallback_);
     }
 
@@ -105,6 +139,11 @@ void LiveDetectionPipeline::stop() {
                      "backpressure — consider increasing queue capacity or "
                      "reducing capture throughput",
                      dropped);
+    }
+
+    // Stop all output sinks (flush buffers, print summaries).
+    for (auto* sink : sinks_) {
+        sink->stop();
     }
 
     worker_.reset();

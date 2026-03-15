@@ -1,5 +1,5 @@
 #include "ui/MainWindow.h"
-#include "app/ReportGenerator.h"
+
 #include "core/services/Configuration.h"
 #include "ui/WeightTuningDialog.h"
 
@@ -22,9 +22,7 @@ constexpr int kDefaultWindowWidth = 1500;
 constexpr int kDefaultWindowHeight = 700;
 constexpr int kHexViewMinWidth = 200;
 constexpr int kHexViewMinHeight = 100;
-constexpr int kMsPerSecond = 1000;
-constexpr int kMsPerMinute = 60'000;
-constexpr int kMsPerHour = 3'600'000;
+
 constexpr int kFlowsTabIndex = 1;
 constexpr int kDetailPanelStretchFactor = 1;
 constexpr int kFlowTableStretchFactor = 2;
@@ -232,10 +230,8 @@ void MainWindow::toggleCapture() {
     filterPanel_->setInputsReadOnly(false);
 
     if (hadLiveDetection) {
-      // Live detection already produced results — switch to Flows tab
-      // and offer a report.
+      // Live detection already produced results — switch to Flows tab.
       tabWidget_->setCurrentIndex(kFlowsTabIndex);
-      promptForReport();
     } else {
       int ret = QMessageBox::question(
           this, "Analysis",
@@ -243,8 +239,6 @@ void MainWindow::toggleCapture() {
           QMessageBox::Yes | QMessageBox::No);
       if (ret == QMessageBox::Yes) {
         runAnalysis();
-      } else {
-        promptForReport();
       }
     }
   } else {
@@ -326,21 +320,11 @@ void MainWindow::populateFlowResults() {
 
   flowModel_->setFlowResults(results, metadata);
 
-  // Switch to Flows tab to show results
+  // Switch to Flows tab to show results.
   tabWidget_->setCurrentIndex(kFlowsTabIndex);
-
-  // Now that detection results are available, offer to generate a report.
-  promptForReport();
 }
 
-void MainWindow::promptForReport() {
-  int ret =
-      QMessageBox::question(this, "Report", "Do you want to generate a report?",
-                            QMessageBox::Yes | QMessageBox::No);
-  if (ret == QMessageBox::Yes) {
-    generateReport();
-  }
-}
+
 
 void MainWindow::updateTiStatus() {
   QString status;
@@ -389,34 +373,6 @@ void MainWindow::notificationSettings() {
   menu->popup(QCursor::pos());
 }
 
-void MainWindow::generateReport() {
-  auto result = nids::app::ReportGenerator::generate(
-      controller_->session(), "report.txt", filterPanel_->selectedInterface());
 
-  if (!result.success) {
-    QMessageBox::critical(this, "Error", "Failed to generate report");
-    return;
-  }
-
-  auto hours = static_cast<int>(result.generationTimeMs / kMsPerHour);
-  auto minutes =
-      static_cast<int>((result.generationTimeMs % kMsPerHour) / kMsPerMinute);
-  auto seconds =
-      static_cast<int>((result.generationTimeMs % kMsPerMinute) / kMsPerSecond);
-
-  QString message =
-      QString("Report generated at: %1\nGeneration time: %2h %3min %4s")
-          .arg(QString::fromStdString(result.filePath))
-          .arg(hours)
-          .arg(minutes)
-          .arg(seconds);
-
-  if (notificationEnabled_) {
-    trayIcon_->showMessage("Report Generation", message,
-                           QSystemTrayIcon::Information);
-  } else {
-    QMessageBox::information(this, "Report", message);
-  }
-}
 
 } // namespace nids::ui

@@ -64,6 +64,9 @@ bool loadConfigFromFile(const std::filesystem::path &configPath,
         config.setFlowTimeoutUs(v);
       });
       applyIfPresent<int64_t>(
+          capture, "live_flow_timeout_us",
+          [&config](int64_t v) { config.setLiveFlowTimeoutUs(v); });
+      applyIfPresent<int64_t>(
           capture, "idle_threshold_us",
           [&config](int64_t v) { config.setIdleThresholdUs(v); });
     }

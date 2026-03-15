@@ -56,7 +56,7 @@ private slots:
   void displaySelectedPacketRawData();
   void onFlowSelectionChanged();
   void notificationSettings();
-  void generateReport();
+
   void runAnalysis();
   void populateFlowResults();
   void openWeightTuning();
@@ -64,7 +64,7 @@ private slots:
 private:
   void setupUi();
   void connectSignals();
-  void promptForReport();
+
   void updateTiStatus();
 
   std::unique_ptr<nids::app::CaptureController> controller_;

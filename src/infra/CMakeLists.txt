@@ -10,6 +10,7 @@ add_library(nids_infra STATIC
     flow/NativeFlowExtractor.cpp
     threat/ThreatIntelProvider.cpp
     rules/HeuristicRuleEngine.cpp
+    output/ConsoleAlertSink.cpp
     platform/SocketInit.cpp
 )
 

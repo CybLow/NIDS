@@ -4,28 +4,61 @@ package nids;
 
 option cc_enable_arenas = true;
 
-// Service definition for the NIDS capture daemon
+// Service definition for the NIDS detection daemon.
+//
+// The server captures network traffic, extracts bidirectional flow features,
+// runs ML inference + threat intelligence + heuristic rules, and streams
+// detection results to clients.  Clients can filter the stream to receive
+// only flagged (attack) flows, only clean (benign) flows, or all flows.
 service NidsService {
-    // List available network interfaces
+    // List available network interfaces.
     rpc ListInterfaces(ListInterfacesRequest) returns (ListInterfacesResponse);
 
-    // Start a capture session
+    // Start a live capture + detection session.
     rpc StartCapture(StartCaptureRequest) returns (StartCaptureResponse);
 
-    // Stop the current capture session
+    // Stop the current capture session.  Remaining in-flight flows are
+    // finalized before the response is sent.
     rpc StopCapture(StopCaptureRequest) returns (StopCaptureResponse);
 
-    // Stream captured packets in real-time
+    // Stream raw captured packets in real-time (for UI display).
     rpc StreamPackets(StreamPacketsRequest) returns (stream PacketEvent);
 
-    // Run ML analysis on the captured data
+    // Stream flow-level detection results in real-time.
+    // This is the primary output of the NIDS server.
+    rpc StreamDetections(StreamDetectionsRequest) returns (stream DetectionEvent);
+
+    // Run batch ML analysis on a pcap file.
     rpc AnalyzeCapture(AnalyzeCaptureRequest) returns (AnalyzeCaptureResponse);
 
-    // Get the current capture status
+    // Get the current server/session status.
     rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+}
 
-    // Generate a report
-    rpc GenerateReport(GenerateReportRequest) returns (GenerateReportResponse);
+// --- Common enums ---
+
+enum DetectionVerdict {
+    VERDICT_UNKNOWN = 0;
+    VERDICT_BENIGN = 1;
+    VERDICT_ATTACK = 2;
+}
+
+enum DetectionSourceType {
+    SOURCE_UNKNOWN = 0;
+    SOURCE_ML_ONLY = 1;
+    SOURCE_THREAT_INTEL = 2;
+    SOURCE_HEURISTIC_RULE = 3;
+    SOURCE_ML_PLUS_TI = 4;
+    SOURCE_ML_PLUS_RULE = 5;
+    SOURCE_TI_PLUS_RULE = 6;
+    SOURCE_ENSEMBLE = 7;
+}
+
+// Filter for which detection results the client wants to receive.
+enum DetectionFilter {
+    FILTER_ALL = 0;       // All flows (attack + benign + unknown)
+    FILTER_FLAGGED = 1;   // Only flagged flows (attack/suspicious)
+    FILTER_CLEAN = 2;     // Only benign flows (clean traffic)
 }
 
 // --- Request/Response messages ---
@@ -49,6 +82,7 @@ message StartCaptureRequest {
     string interface = 1;
     CaptureFilter filter = 2;
     string dump_file = 3;
+    bool enable_live_detection = 4;
 }
 
 message StartCaptureResponse {
@@ -64,6 +98,9 @@ message StopCaptureRequest {
 message StopCaptureResponse {
     bool success = 1;
     uint64 total_packets = 2;
+    uint64 total_flows = 3;
+    uint64 flagged_flows = 4;
+    uint64 dropped_flows = 5;
 }
 
 message StreamPacketsRequest {
@@ -81,16 +118,82 @@ message PacketEvent {
     bytes raw_data = 8;
 }
 
+// --- Detection streaming ---
+
+message StreamDetectionsRequest {
+    string session_id = 1;
+    DetectionFilter filter = 2;
+}
+
+// A single flow-level detection result streamed from the server.
+message DetectionEvent {
+    uint64 flow_index = 1;
+
+    // Flow metadata (5-tuple + stats)
+    FlowMetadata flow = 2;
+
+    // ML classification
+    string ml_classification = 3;       // e.g. "Benign", "DDoS", "SQL_Injection"
+    float ml_confidence = 4;
+    repeated float ml_probabilities = 5; // Full softmax output (16 classes)
+
+    // Threat intelligence matches
+    repeated ThreatIntelMatch ti_matches = 6;
+
+    // Heuristic rule matches
+    repeated RuleMatch rule_matches = 7;
+
+    // Final combined result
+    DetectionVerdict verdict = 8;
+    float combined_score = 9;
+    DetectionSourceType source = 10;
+}
+
+message FlowMetadata {
+    string src_ip = 1;
+    string dst_ip = 2;
+    uint32 src_port = 3;
+    uint32 dst_port = 4;
+    string protocol = 5;
+    uint64 total_fwd_packets = 6;
+    uint64 total_bwd_packets = 7;
+    uint64 flow_duration_us = 8;
+    double fwd_packets_per_sec = 9;
+    double bwd_packets_per_sec = 10;
+    uint32 syn_flag_count = 11;
+    uint32 ack_flag_count = 12;
+    uint32 rst_flag_count = 13;
+    uint32 fin_flag_count = 14;
+    double avg_packet_size = 15;
+}
+
+message ThreatIntelMatch {
+    string matched_ip = 1;
+    string feed_name = 2;
+    string direction = 3;   // "source" or "destination"
+}
+
+message RuleMatch {
+    string rule_name = 1;
+    string description = 2;
+    uint32 severity = 3;
+}
+
+// --- Batch analysis ---
+
 message AnalyzeCaptureRequest {
     string session_id = 1;
-    string model_path = 2;
+    string pcap_path = 2;
 }
 
 message AnalyzeCaptureResponse {
     bool success = 1;
     uint32 total_analyzed = 2;
     map<string, uint32> attack_counts = 3;
+    uint32 flagged_count = 4;
 }
+
+// --- Status ---
 
 message GetStatusRequest {}
 
@@ -99,15 +202,7 @@ message GetStatusResponse {
     string current_interface = 2;
     uint64 packets_captured = 3;
     string session_id = 4;
-}
-
-message GenerateReportRequest {
-    string session_id = 1;
-    string output_path = 2;
-}
-
-message GenerateReportResponse {
-    bool success = 1;
-    string file_path = 2;
-    int64 generation_time_ms = 3;
+    uint64 flows_detected = 5;
+    uint64 flows_flagged = 6;
+    uint64 flows_dropped = 7;
 }

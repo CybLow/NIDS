@@ -43,15 +43,22 @@ public:
 
     /** Get the default pcap dump file path. */
     [[nodiscard]] const std::string& defaultDumpFile() const;
-    /** Get the flow timeout in microseconds. Flows idle beyond this are exported. */
+    /** Get the flow timeout in microseconds. Flows idle beyond this are exported.
+     *  Used for batch (post-capture) analysis. Default: 10 minutes. */
     [[nodiscard]] int64_t flowTimeoutUs() const;
+    /** Get the live-mode flow timeout in microseconds.
+     *  Used for real-time capture where flows must be delivered promptly.
+     *  Default: 60 seconds. */
+    [[nodiscard]] int64_t liveFlowTimeoutUs() const;
     /** Get the idle threshold in microseconds for flow expiry. */
     [[nodiscard]] int64_t idleThresholdUs() const;
 
     /** Set the default pcap dump file path. */
     void setDefaultDumpFile(std::string_view file);
-    /** Set the flow timeout in microseconds. */
+    /** Set the flow timeout in microseconds (batch mode). */
     void setFlowTimeoutUs(int64_t timeoutUs);
+    /** Set the live-mode flow timeout in microseconds. */
+    void setLiveFlowTimeoutUs(int64_t timeoutUs);
     /** Set the idle threshold in microseconds. */
     void setIdleThresholdUs(int64_t thresholdUs);
 
@@ -106,7 +113,8 @@ private:
     std::filesystem::path metadataPath_{"models/model_metadata.json"};
     std::filesystem::path threatIntelDir_{"data/threat_intel"};
     std::string defaultDumpFile_{"dump.pcap"};
-    int64_t flowTimeoutUs_ = 600'000'000;       // 10 minutes
+    int64_t flowTimeoutUs_ = 600'000'000;       // 10 minutes (batch)
+    int64_t liveFlowTimeoutUs_ = 60'000'000;    // 60 seconds (live capture)
     int64_t idleThresholdUs_ = 5'000'000;       // 5 seconds
     int onnxIntraOpThreads_ = 1;
     float mlConfidenceThreshold_ = 0.7f;

@@ -1,5 +1,5 @@
 # src/core/CMakeLists.txt
-# Domain layer — pure C++20, zero external dependencies.
+# Domain layer — pure C++23, zero external dependencies.
 
 add_library(nids_core STATIC
     model/CaptureSession.cpp

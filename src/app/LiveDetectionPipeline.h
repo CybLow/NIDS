@@ -22,6 +22,7 @@
 #include "core/services/BoundedQueue.h"
 #include "core/services/IFeatureNormalizer.h"
 #include "core/services/IFlowExtractor.h"
+#include "core/services/IOutputSink.h"
 #include "core/services/IPacketAnalyzer.h"
 
 #include <atomic>
@@ -29,6 +30,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace nids::app {
 
@@ -82,6 +84,12 @@ public:
     /// Must be called before start().
     void setResultCallback(ResultCallback cb) noexcept;
 
+    /// Register an output sink.  Sinks receive every flow result
+    /// (attack + benign) on the worker thread.  Must be called before start().
+    /// The pipeline does NOT take ownership — the caller must keep the sink
+    /// alive until after stop() returns.
+    void addOutputSink(nids::core::IOutputSink* sink);
+
     /// Start the pipeline: resets the flow extractor, creates the queue
     /// and worker thread.  No-op if already running.
     void start();
@@ -118,6 +126,7 @@ private:
     HybridDetectionService* hybridService_ = nullptr;
     ResultCallback resultCallback_;
 
+    std::vector<nids::core::IOutputSink*> sinks_;
     std::unique_ptr<nids::core::BoundedQueue<FlowWorkItem>> queue_;
     std::unique_ptr<FlowAnalysisWorker> worker_;
     std::atomic<bool> running_{false};

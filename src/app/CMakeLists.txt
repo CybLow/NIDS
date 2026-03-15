@@ -7,7 +7,7 @@ add_library(nids_app STATIC
     FlowAnalysisWorker.cpp
     LiveDetectionPipeline.cpp
     HybridDetectionService.cpp
-    ReportGenerator.cpp
+
 )
 
 target_link_libraries(nids_app

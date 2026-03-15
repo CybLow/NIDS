@@ -65,7 +65,7 @@ target_link_libraries(NIDS PRIVATE
 
 nids_set_target_defaults(NIDS)
 
-# ── Server / Client stubs (future gRPC scaffolding) ──────────────
+# ── Server (headless daemon) ──────────────────────────────────────
 if(NIDS_BUILD_SERVER)
     add_library(nids-server-lib STATIC
         src/server/NidsServer.cpp
@@ -77,6 +77,15 @@ if(NIDS_BUILD_SERVER)
     )
     nids_set_target_defaults(nids-server-lib)
 
+    add_executable(nids-server src/server/server_main.cpp)
+    target_link_libraries(nids-server PRIVATE
+        nids_app
+        nids_infra
+        nids_core
+        spdlog::spdlog
+    )
+    nids_set_target_defaults(nids-server)
+
     add_library(nids-client-lib STATIC
         src/client/NidsClient.cpp
     )
@@ -87,7 +96,8 @@ if(NIDS_BUILD_SERVER)
     )
     nids_set_target_defaults(nids-client-lib)
 
-    install(TARGETS nids-server-lib nids-client-lib
+    install(TARGETS nids-server nids-server-lib nids-client-lib
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         ARCHIVE DESTINATION lib
     )
 endif()

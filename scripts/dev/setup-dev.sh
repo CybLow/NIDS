@@ -99,7 +99,7 @@ install_packages() {
         ubuntu|debian|linuxmint|pop)
                     install_ubuntu ;;
         *)          warn "Unsupported distro '$distro'. Install manually:"
-                    echo "  - GCC (C++20), CMake >= 3.20, Ninja, Qt6 (Core/Gui/Widgets)"
+                    echo "  - GCC (C++23), CMake >= 3.20, Ninja, Qt6 (Core/Gui/Widgets)"
                     echo "  - libpcap-dev, Python 3, pip"
                     echo ""
                     echo "Then re-run: $0 --no-install"

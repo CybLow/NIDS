@@ -187,7 +187,9 @@ NIDS/
     app/                      Application layer
       CaptureController       Capture lifecycle management
       AnalysisService         ML pipeline orchestration
-      ReportGenerator         Report output
+      LiveDetectionPipeline   Real-time flow detection
+      FlowAnalysisWorker     ML inference consumer thread
+      HybridDetectionService ML + TI + heuristic fusion
     ui/                       Qt6 presentation
       MainWindow              Main application window
       PacketTableModel        MVC table model
@@ -228,7 +230,7 @@ NIDS/
 - [x] Native C++ flow feature extraction (77 bidirectional flow features)
 - [x] ONNX Runtime for ML inference
 - [x] CNN-BiLSTM model trained on LSNM2024
-- [x] Qt6 + C++20 modernization
+- [x] Qt6 + C++23 modernization
 - [x] GitHub Actions CI/CD
 - [x] CPack packaging (DEB/RPM/TGZ)
 - [x] Hybrid detection (ML + Threat Intelligence + Heuristic Rules)

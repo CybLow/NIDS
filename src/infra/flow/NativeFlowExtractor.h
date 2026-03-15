@@ -100,7 +100,13 @@ struct WelfordAccumulator {
     return n > 1 ? m2_ / static_cast<double>(n - 1) : 0.0;
   }
 
-  /** Sample standard deviation (sqrt of sample variance). */
+  /** Sample standard deviation (sqrt of sample variance, N-1 denominator).
+   *
+   * Uses sample variance (Bessel's correction, divide by N-1) to match the
+   * Python training pipeline (scripts/ml/preprocess.py _stddev() function).
+   * The LSNM2024 model was trained with sample stddev — the C++ inference
+   * extractor MUST use the same convention.
+   */
   [[nodiscard]] double stddev() const noexcept {
     return std::sqrt(sampleVariance());
   }
@@ -293,6 +299,7 @@ private:
   std::int64_t flowTimeoutUs_;      ///< Flow inactivity timeout (from Configuration).
   std::int64_t idleThresholdUs_;    ///< Idle vs active period threshold (from Configuration).
   std::int64_t lastSweepTimeUs_ = 0; ///< Timestamp of the last periodic sweep.
+  bool liveMode_ = false; ///< True when processPacket() has been called (live capture).
 
   /// Parsed packet context passed between processPacket helpers.
   struct ParsedPacket {

@@ -133,4 +133,81 @@ OnnxAnalyzer::predictWithConfidence(const std::vector<float> &features) {
   }
 }
 
+std::vector<nids::core::PredictionResult>
+OnnxAnalyzer::predictBatch(std::span<const float> batch,
+                           std::size_t featureCount) {
+  std::vector<nids::core::PredictionResult> results;
+
+  if (!impl_->loaded || !impl_->session || featureCount == 0 ||
+      batch.empty()) {
+    return results;
+  }
+
+  auto flowCount = static_cast<int64_t>(batch.size() / featureCount);
+  if (flowCount == 0) {
+    return results;
+  }
+
+  // Fall back to single-flow inference for batch size 1 (no overhead benefit).
+  if (flowCount == 1) {
+    results.push_back(predictWithConfidence(
+        std::vector<float>(batch.begin(), batch.end())));
+    return results;
+  }
+
+  try {
+    std::array<int64_t, 2> inputShape = {flowCount,
+                                         static_cast<int64_t>(featureCount)};
+
+    auto inputTensor = Ort::Value::CreateTensor<float>(
+        impl_->memoryInfo, const_cast<float*>(batch.data()), batch.size(),
+        inputShape.data(), inputShape.size());
+
+    auto outputTensors = impl_->session->Run(
+        Ort::RunOptions{nullptr}, impl_->inputNames.data(), &inputTensor, 1,
+        impl_->outputNames.data(), impl_->outputNames.size());
+
+    const auto* output = outputTensors.front().GetTensorData<float>();
+    auto outputInfo = outputTensors.front().GetTensorTypeAndShapeInfo();
+    auto shape = outputInfo.GetShape();
+
+    // Output shape is [N, numClasses].
+    auto numClasses = (shape.size() >= 2)
+                          ? static_cast<std::size_t>(shape[1])
+                          : outputInfo.GetElementCount() /
+                                static_cast<std::size_t>(flowCount);
+
+    results.resize(static_cast<std::size_t>(flowCount));
+
+    for (std::size_t i = 0; i < static_cast<std::size_t>(flowCount); ++i) {
+      std::span<const float> flowOut(output + i * numClasses, numClasses);
+
+      auto& r = results[i];
+      auto copyCount =
+          std::min(numClasses,
+                   static_cast<std::size_t>(nids::core::kAttackTypeCount));
+      for (std::size_t j = 0; j < copyCount; ++j) {
+        r.probabilities[j] = flowOut[j];
+      }
+
+      auto maxIt = std::ranges::max_element(flowOut);
+      auto maxIndex = static_cast<int>(std::distance(flowOut.begin(), maxIt));
+      r.classification = nids::core::attackTypeFromIndex(maxIndex);
+      r.confidence = *maxIt;
+    }
+
+    return results;
+  } catch (const Ort::Exception& e) {
+    spdlog::error("ONNX batch prediction failed: {}", e.what());
+    // Fall back to per-flow inference.
+    results.clear();
+    for (std::size_t i = 0; i < static_cast<std::size_t>(flowCount); ++i) {
+      auto flowData = batch.subspan(i * featureCount, featureCount);
+      results.push_back(predictWithConfidence(
+          std::vector<float>(flowData.begin(), flowData.end())));
+    }
+    return results;
+  }
+}
+
 } // namespace nids::infra

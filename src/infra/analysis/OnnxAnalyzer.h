@@ -12,9 +12,10 @@
 
 #include "core/services/IPacketAnalyzer.h"
 
+#include <memory>
+#include <span>
 #include <string>
 #include <vector>
-#include <memory>
 
 namespace nids::infra {
 
@@ -29,6 +30,10 @@ public:
     [[nodiscard]] nids::core::AttackType predict(const std::vector<float>& features) override;
     [[nodiscard]] nids::core::PredictionResult predictWithConfidence(
         const std::vector<float>& features) override;
+
+    /// Native batched inference — runs N flows in a single session.Run() call.
+    [[nodiscard]] std::vector<nids::core::PredictionResult> predictBatch(
+        std::span<const float> batch, std::size_t featureCount) override;
 
 private:
     struct Impl;

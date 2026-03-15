@@ -123,6 +123,7 @@ int main(int argc, char *argv[]) {
   // Uses a separate flow extractor instance so live detection and
   // post-capture analysis never share mutable state.
   auto liveFlowExtractor = std::make_unique<nids::infra::NativeFlowExtractor>();
+  liveFlowExtractor->setFlowTimeout(config.liveFlowTimeoutUs());
   auto liveNormalizer = std::make_unique<nids::infra::FeatureNormalizer>();
   if (!liveNormalizer->loadMetadata(config.modelMetadataPath().string())) {
     spdlog::warn("Live detection normalizer metadata not loaded — "

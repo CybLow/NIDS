@@ -26,6 +26,7 @@ const std::string &Configuration::defaultDumpFile() const {
   return defaultDumpFile_;
 }
 int64_t Configuration::flowTimeoutUs() const { return flowTimeoutUs_; }
+int64_t Configuration::liveFlowTimeoutUs() const { return liveFlowTimeoutUs_; }
 int64_t Configuration::idleThresholdUs() const { return idleThresholdUs_; }
 
 void Configuration::setDefaultDumpFile(std::string_view file) {
@@ -34,6 +35,10 @@ void Configuration::setDefaultDumpFile(std::string_view file) {
 
 void Configuration::setFlowTimeoutUs(int64_t timeoutUs) {
   flowTimeoutUs_ = timeoutUs;
+}
+
+void Configuration::setLiveFlowTimeoutUs(int64_t timeoutUs) {
+  liveFlowTimeoutUs_ = timeoutUs;
 }
 
 void Configuration::setIdleThresholdUs(int64_t thresholdUs) {
