@@ -28,6 +28,8 @@ public:
     MOCK_METHOD(AttackType, predict, (const std::vector<float>&), (override));
     MOCK_METHOD(PredictionResult, predictWithConfidence,
                 (const std::vector<float>&), (override));
+    MOCK_METHOD(std::vector<PredictionResult>, predictBatch,
+                (std::span<const float>, std::size_t), (override));
 };
 
 class MockNormalizerWorker : public IFeatureNormalizer {
@@ -53,6 +55,14 @@ namespace {
 
 constexpr std::size_t kQueueCapacity = 64;
 constexpr int kFeatureCount = 77;
+
+/// Create a PredictionResult with the given attack type and confidence.
+PredictionResult makePrediction(AttackType type, float confidence = 0.9f) {
+    PredictionResult pr;
+    pr.classification = type;
+    pr.confidence = confidence;
+    return pr;
+}
 
 FlowWorkItem makeItem(float fillValue = 0.5f,
                       const std::string& srcIp = "10.0.0.1",
@@ -100,8 +110,12 @@ TEST(FlowAnalysisWorker, startAndStopLifecycle) {
     auto normalizer = MockNormalizerWorker::createPassThrough();
     CaptureSession session;
 
-    EXPECT_CALL(analyzer, predict(_))
-        .WillRepeatedly(Return(AttackType::Benign));
+    // predictBatch is the entry point for the batched worker.
+    ON_CALL(analyzer, predictBatch(_, _)).WillByDefault(
+        [](std::span<const float> batch, std::size_t featureCount) {
+            auto n = featureCount > 0 ? batch.size() / featureCount : 0;
+            return std::vector<PredictionResult>(n, PredictionResult{});
+        });
 
     FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
 
@@ -126,7 +140,11 @@ TEST(FlowAnalysisWorker, processSingleItem_mlOnly) {
     auto normalizer = MockNormalizerWorker::createPassThrough();
     CaptureSession session;
 
-    EXPECT_CALL(analyzer, predict(_)).WillOnce(Return(AttackType::DdosIcmp));
+    // Batched worker calls predictBatch() which returns PredictionResults.
+    EXPECT_CALL(analyzer, predictBatch(_, _)).WillOnce(
+        [](std::span<const float> /*batch*/, std::size_t /*fc*/) {
+            return std::vector<PredictionResult>{makePrediction(AttackType::DdosIcmp)};
+        });
 
     FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
     worker.start();
@@ -134,7 +152,6 @@ TEST(FlowAnalysisWorker, processSingleItem_mlOnly) {
     queue.push(makeItem());
     queue.close();
 
-    // Wait for worker to finish
     ASSERT_TRUE(waitFor([&] { return !worker.isRunning() || worker.processedCount() == 1; }));
     worker.stop();
 
@@ -149,10 +166,27 @@ TEST(FlowAnalysisWorker, processMultipleItems_mlOnly) {
     auto normalizer = MockNormalizerWorker::createPassThrough();
     CaptureSession session;
 
-    EXPECT_CALL(analyzer, predict(_))
-        .WillOnce(Return(AttackType::Benign))
-        .WillOnce(Return(AttackType::SshBruteForce))
-        .WillOnce(Return(AttackType::PortScanning));
+    // predictBatch may be called once (all 3 in one batch) or multiple times
+    // depending on timing. Use WillRepeatedly to handle both cases, and track
+    // a per-call index to return different types per flow.
+    std::atomic<std::size_t> flowOffset{0};
+    const std::vector<AttackType> expectedTypes = {
+        AttackType::Benign, AttackType::SshBruteForce, AttackType::PortScanning};
+
+    ON_CALL(analyzer, predictBatch(_, _)).WillByDefault(
+        [&](std::span<const float> batch, std::size_t fc) {
+            auto n = fc > 0 ? batch.size() / fc : 0;
+            std::vector<PredictionResult> results;
+            results.reserve(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                auto idx = flowOffset.fetch_add(1, std::memory_order_relaxed);
+                auto type = idx < expectedTypes.size()
+                                ? expectedTypes[idx]
+                                : AttackType::Benign;
+                results.push_back(makePrediction(type));
+            }
+            return results;
+        });
 
     FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
     worker.start();
@@ -179,8 +213,12 @@ TEST(FlowAnalysisWorker, hybridDetection_usesHybridService) {
     PredictionResult mlResult;
     mlResult.classification = AttackType::DdosUdp;
     mlResult.confidence = 0.92f;
-    EXPECT_CALL(analyzer, predictWithConfidence(_)).WillOnce(Return(mlResult));
-    // predict() should NOT be called when hybrid is active
+    // Batched worker always uses predictBatch(), even with hybrid detection.
+    EXPECT_CALL(analyzer, predictBatch(_, _)).WillOnce(
+        [&mlResult](std::span<const float> /*batch*/, std::size_t /*fc*/) {
+            return std::vector<PredictionResult>{mlResult};
+        });
+    // predict() should NOT be called
     EXPECT_CALL(analyzer, predict(_)).Times(0);
 
     HybridDetectionService hybridService(nullptr, nullptr);
@@ -205,9 +243,22 @@ TEST(FlowAnalysisWorker, resultCallback_invokedForEachFlow) {
     auto normalizer = MockNormalizerWorker::createPassThrough();
     CaptureSession session;
 
-    EXPECT_CALL(analyzer, predict(_))
-        .WillOnce(Return(AttackType::Benign))
-        .WillOnce(Return(AttackType::SynFlood));
+    std::atomic<std::size_t> batchFlowOffset{0};
+    const std::vector<AttackType> batchTypes = {
+        AttackType::Benign, AttackType::SynFlood};
+    ON_CALL(analyzer, predictBatch(_, _)).WillByDefault(
+        [&](std::span<const float> batch, std::size_t fc) {
+            auto n = fc > 0 ? batch.size() / fc : 0;
+            std::vector<PredictionResult> results;
+            results.reserve(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                auto idx = batchFlowOffset.fetch_add(1, std::memory_order_relaxed);
+                auto type = idx < batchTypes.size()
+                                ? batchTypes[idx] : AttackType::Benign;
+                results.push_back(makePrediction(type));
+            }
+            return results;
+        });
 
     std::atomic<int> callbackCount{0};
     std::vector<std::pair<std::size_t, AttackType>> callbackResults;
@@ -252,12 +303,13 @@ TEST(FlowAnalysisWorker, normalizationIsApplied) {
             return result;
         });
 
-    // Capture the features passed to predict to verify normalization happened
-    std::vector<float> capturedFeatures;
-    EXPECT_CALL(analyzer, predict(_)).WillOnce(
-        [&capturedFeatures](const std::vector<float>& f) {
-            capturedFeatures = f;
-            return AttackType::Benign;
+    // Capture the flat batch buffer passed to predictBatch to verify
+    // normalization was applied before inference.
+    std::vector<float> capturedBatch;
+    EXPECT_CALL(analyzer, predictBatch(_, _)).WillOnce(
+        [&capturedBatch](std::span<const float> batch, std::size_t /*fc*/) {
+            capturedBatch.assign(batch.begin(), batch.end());
+            return std::vector<PredictionResult>{makePrediction(AttackType::Benign)};
         });
 
     FlowAnalysisWorker worker(queue, analyzer, normalizer, session);
@@ -270,9 +322,9 @@ TEST(FlowAnalysisWorker, normalizationIsApplied) {
     ASSERT_TRUE(waitFor([&] { return worker.processedCount() == 1; }));
     worker.stop();
 
-    // All features should be 2.0 (1.0 * 2)
-    ASSERT_EQ(capturedFeatures.size(), static_cast<std::size_t>(kFeatureCount));
-    for (float v : capturedFeatures) {
+    // All features should be 2.0 (1.0 * 2) after normalization
+    ASSERT_EQ(capturedBatch.size(), static_cast<std::size_t>(kFeatureCount));
+    for (float v : capturedBatch) {
         EXPECT_FLOAT_EQ(v, 2.0f);
     }
 }
@@ -283,8 +335,8 @@ TEST(FlowAnalysisWorker, emptyQueue_closedImmediately) {
     auto normalizer = MockNormalizerWorker::createPassThrough();
     CaptureSession session;
 
-    // No predict calls expected
-    EXPECT_CALL(analyzer, predict(_)).Times(0);
+    // No inference calls expected when queue is empty
+    EXPECT_CALL(analyzer, predictBatch(_, _)).Times(0);
 
     FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
     worker.start();
@@ -304,7 +356,15 @@ TEST(FlowAnalysisWorker, destructorJoinsThread) {
     auto normalizer = MockNormalizerWorker::createPassThrough();
     CaptureSession session;
 
-    EXPECT_CALL(analyzer, predict(_)).WillOnce(Return(AttackType::Benign));
+    ON_CALL(analyzer, predictBatch(_, _)).WillByDefault(
+        [](std::span<const float> batch, std::size_t fc) {
+            auto n = fc > 0 ? batch.size() / fc : 0;
+            std::vector<PredictionResult> results;
+            for (std::size_t i = 0; i < n; ++i) {
+                results.push_back(makePrediction(AttackType::Benign));
+            }
+            return results;
+        });
 
     {
         FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
@@ -325,9 +385,15 @@ TEST(FlowAnalysisWorker, concurrentProducer_manyItems) {
     auto normalizer = MockNormalizerWorker::createPassThrough();
     CaptureSession session;
 
-    EXPECT_CALL(analyzer, predict(_))
-        .Times(static_cast<int>(kItemCount))
-        .WillRepeatedly(Return(AttackType::Benign));
+    ON_CALL(analyzer, predictBatch(_, _)).WillByDefault(
+        [](std::span<const float> batch, std::size_t fc) {
+            auto n = fc > 0 ? batch.size() / fc : 0;
+            std::vector<PredictionResult> results;
+            for (std::size_t i = 0; i < n; ++i) {
+                results.push_back(makePrediction(AttackType::Benign));
+            }
+            return results;
+        });
 
     FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
     worker.start();
@@ -359,9 +425,11 @@ TEST(FlowAnalysisWorker, hybridDetection_protocolMapping) {
     PredictionResult mlResult;
     mlResult.classification = AttackType::IcmpFlood;
     mlResult.confidence = 0.85f;
-    EXPECT_CALL(analyzer, predictWithConfidence(_))
-        .Times(3)
-        .WillRepeatedly(Return(mlResult));
+    ON_CALL(analyzer, predictBatch(_, _)).WillByDefault(
+        [&mlResult](std::span<const float> batch, std::size_t fc) {
+            auto n = fc > 0 ? batch.size() / fc : 0;
+            return std::vector<PredictionResult>(n, mlResult);
+        });
 
     HybridDetectionService hybridService(nullptr, nullptr);
 

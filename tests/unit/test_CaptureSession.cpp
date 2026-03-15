@@ -38,7 +38,7 @@ TEST(CaptureSession, getPacketReturnsCorrectData) {
     pkt.portDestination = "1234";
     session.addPacket(pkt);
 
-    const auto& retrieved = session.getPacket(0);
+    const auto retrieved = session.getPacket(0);  // Returns by value (safe).
     EXPECT_EQ(retrieved.protocol, "UDP");
     EXPECT_EQ(retrieved.ipSource, "10.0.0.1");
     EXPECT_EQ(retrieved.ipDestination, "10.0.0.2");
@@ -48,7 +48,7 @@ TEST(CaptureSession, getPacketReturnsCorrectData) {
 
 TEST(CaptureSession, getPacketOutOfRangeThrows) {
     CaptureSession session;
-    EXPECT_THROW([[maybe_unused]] auto& pkt = session.getPacket(0), std::out_of_range);
+    EXPECT_THROW([[maybe_unused]] auto pkt = session.getPacket(0), std::out_of_range);
 }
 
 TEST(CaptureSession, setAndGetDetectionResult) {

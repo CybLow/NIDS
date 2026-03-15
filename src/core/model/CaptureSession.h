@@ -10,7 +10,13 @@
 
 namespace nids::core {
 
-/** Thread-safe storage for captured packets and their detection results. */
+/**
+ * Thread-safe storage for captured packets and their detection results.
+ *
+ * Uses separate mutexes for packets and detection results to reduce
+ * contention between the capture thread (addPacket), worker thread
+ * (setDetectionResult), and UI thread (reads).
+ */
 class CaptureSession {
 public:
     /** Append a captured packet to the session. */
@@ -20,11 +26,17 @@ public:
     void setDetectionResult(std::size_t index, const DetectionResult& result);
 
     /**
-     * Retrieve the packet at the given index.
+     * Retrieve a copy of the packet at the given index.
+     *
+     * Returns by value to avoid dangling-reference hazards: the internal
+     * vector can be reallocated by addPacket() on the capture thread at
+     * any time, so returning a const reference would be unsafe.
+     *
      * @param index Zero-based packet index.
-     * @return Const reference to the stored PacketInfo.
+     * @return Copy of the stored PacketInfo.
+     * @throws std::out_of_range if index >= packetCount().
      */
-    [[nodiscard]] const PacketInfo& getPacket(std::size_t index) const;
+    [[nodiscard]] PacketInfo getPacket(std::size_t index) const;
 
     /// Retrieve the detection result for a flow.
     /// Returns a result with Unknown verdict if no result has been stored.
@@ -39,7 +51,8 @@ public:
     void clear();
 
 private:
-    mutable std::mutex mutex_;
+    mutable std::mutex packetsMutex_;   ///< Guards packets_ only.
+    mutable std::mutex resultsMutex_;   ///< Guards detectionResults_ only.
     std::vector<PacketInfo> packets_;
     std::vector<DetectionResult> detectionResults_;
 };
