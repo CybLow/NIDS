@@ -107,15 +107,80 @@ bool FlowAnalysisWorker::isRunning() const noexcept {
 }
 
 void FlowAnalysisWorker::run() {
-    spdlog::debug("FlowAnalysisWorker consumer loop started");
+    spdlog::debug("FlowAnalysisWorker consumer loop started (batch size up to {})",
+                  kMaxBatchSize);
 
-    while (auto item = queue_.pop()) {
-        auto index = processedCount_.load(std::memory_order_relaxed);
-        processItem(std::move(*item), index);
-        processedCount_.fetch_add(1, std::memory_order_relaxed);
+    while (true) {
+        auto batch = queue_.popBatch(kMaxBatchSize);
+        if (batch.empty()) {
+            break; // Queue closed and drained.
+        }
+
+        auto startIndex = processedCount_.load(std::memory_order_relaxed);
+        processBatch(batch, startIndex);
+        processedCount_.fetch_add(batch.size(), std::memory_order_relaxed);
     }
 
     spdlog::debug("FlowAnalysisWorker consumer loop exited (queue closed)");
+}
+
+void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem>& items,
+                                      std::size_t startIndex) {
+    const auto batchSize = items.size();
+
+    // 1. Normalize all features and pack into a flat contiguous buffer
+    //    for batched ONNX inference.  Each flow contributes featureCount floats.
+    std::vector<std::vector<float>> normalizedVecs;
+    normalizedVecs.reserve(batchSize);
+    std::size_t featureCount = 0;
+
+    for (auto& item : items) {
+        normalizedVecs.push_back(normalizer_.normalize(item.features));
+        if (featureCount == 0 && !normalizedVecs.back().empty()) {
+            featureCount = normalizedVecs.back().size();
+        }
+    }
+
+    // Build flat buffer: [flow0_f0, flow0_f1, ..., flow1_f0, flow1_f1, ...]
+    std::vector<float> flatBatch;
+    flatBatch.reserve(batchSize * featureCount);
+    for (const auto& nv : normalizedVecs) {
+        flatBatch.insert(flatBatch.end(), nv.begin(), nv.end());
+    }
+
+    // 2. Batched ML inference — single ONNX Runtime session.Run() call.
+    auto mlResults = analyzer_.predictBatch(flatBatch, featureCount);
+
+    // 3. For each flow: run hybrid detection (TI + rules), store result,
+    //    fire callback.
+    for (std::size_t i = 0; i < batchSize; ++i) {
+        auto index = startIndex + i;
+        nids::core::DetectionResult result;
+
+        auto& mlResult = (i < mlResults.size())
+                             ? mlResults[i]
+                             : (mlResults.emplace_back(), mlResults.back());
+
+        if (hybridService_ != nullptr) [[likely]] {
+            auto flowMeta = toFlowMetadata(items[i].metadata);
+            result = hybridService_->evaluate(
+                mlResult, items[i].metadata.srcIp,
+                items[i].metadata.dstIp, flowMeta);
+        } else {
+            result.mlResult = mlResult;
+            result.finalVerdict = mlResult.classification;
+            result.detectionSource = (mlResult.isAttack())
+                                         ? nids::core::DetectionSource::MlOnly
+                                         : nids::core::DetectionSource::None;
+        }
+
+        session_.setDetectionResult(index, result);
+
+        if (resultCallback_) {
+            resultCallback_(index, std::move(result),
+                            std::move(items[i].metadata));
+        }
+    }
 }
 
 void FlowAnalysisWorker::processItem(FlowWorkItem&& item, std::size_t index) {

@@ -18,6 +18,7 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <vector>
 
 namespace nids::core {
 
@@ -90,6 +91,32 @@ public:
     lock.unlock();
     notFull_.notify_one();
     return value;
+  }
+
+  /**
+   * Pop up to maxItems elements in one lock acquisition.
+   *
+   * Blocks until at least one element is available (or the queue is closed
+   * and drained).  Then drains up to maxItems without releasing the lock,
+   * minimizing lock contention for batched consumers.
+   *
+   * @param maxItems  Maximum number of elements to dequeue.
+   * @return Vector of dequeued elements (empty = end-of-stream).
+   */
+  std::vector<T> popBatch(std::size_t maxItems) {
+    std::vector<T> batch;
+    batch.reserve(maxItems);
+    std::unique_lock lock(mutex_);
+    notEmpty_.wait(lock, [this] { return !queue_.empty() || closed_; });
+    while (!queue_.empty() && batch.size() < maxItems) {
+      batch.push_back(std::move(queue_.front()));
+      queue_.pop();
+    }
+    lock.unlock();
+    if (!batch.empty()) {
+      notFull_.notify_all();
+    }
+    return batch;
   }
 
   /**

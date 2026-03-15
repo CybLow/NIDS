@@ -98,10 +98,16 @@ public:
     [[nodiscard]] bool isRunning() const noexcept;
 
 private:
+    /// Maximum number of flows per inference batch.
+    static constexpr std::size_t kMaxBatchSize = 32;
+
     /// Consumer loop executed on the worker thread.
     void run();
 
-    /// Process a single flow work item.
+    /// Process a batch of flow work items via batched inference.
+    void processBatch(std::vector<FlowWorkItem>& items, std::size_t startIndex);
+
+    /// Process a single flow work item (fallback for hybrid detection).
     void processItem(FlowWorkItem&& item, std::size_t index);
 
     nids::core::BoundedQueue<FlowWorkItem>& queue_;
