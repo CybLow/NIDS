@@ -41,6 +41,8 @@ Cross-references: [ADR-004](adr/004-model-benchmark-analysis.md),
   status, interfaces, capture start/stop, stream with filter)
 - [x] Docker sandbox for inline IPS testing (3-container topology: server, attacker,
   victim on isolated `172.28.0.0/24` bridge network)
+- [x] Phase 9.4 — `--headless` flag on GUI binary (standalone capture + console
+  output, no Qt dependency at runtime when headless)
 
 ---
 
@@ -320,13 +322,15 @@ remote monitoring.
 - Attack scripts generate 8 attack types matching NIDS model classes
 - Benign scripts generate HTTP, ping, iperf3, TCP connect patterns
 
-### 9.4 — `--headless` flag
+### 9.4 — ~~`--headless` flag~~ [DONE]
 
 - **Files**: `src/main.cpp`
-- When `--headless` is passed, skip Qt UI initialization, start gRPC server
-- Required for systemd service (`docs/deployment.md:117-141`)
-- Note: `nids-server` binary already provides headless operation; this is for
-  a single-binary mode where the GUI binary can also run headless
+- `--headless --interface <iface>` skips Qt initialization entirely, runs
+  standalone capture with `LiveDetectionPipeline` + `ConsoleAlertSink`
+- Also added `--bpf`, `--help`/`-h` flags to the GUI binary
+- Requires `--interface` in headless mode (validated with error message)
+- Graceful shutdown via SIGINT/SIGTERM
+- Note: for gRPC server mode, use the separate `nids-server` binary instead
 
 ### 9.5 — `--config` flag [DONE]
 

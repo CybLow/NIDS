@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     qt6-base-dev \
     ca-certificates curl tar pkg-config \
     python3-pip \
+    perl \
     && pip3 install --break-system-packages conan \
     && rm -rf /var/lib/apt/lists/*
 
@@ -28,7 +29,8 @@ COPY conan/ conan/
 ENV CC=gcc-14 CXX=g++-14
 
 RUN conan profile detect --force && \
-    conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
+    conan install . -pr:h conan/profiles/linux-ci -s build_type=Release \
+        -o with_grpc=True --build=missing
 
 # Copy full source tree
 COPY . .
