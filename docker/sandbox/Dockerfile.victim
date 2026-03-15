@@ -1,0 +1,36 @@
+# Victim — target services for NIDS sandbox testing.
+#
+# Runs lightweight network services that the attacker targets.
+# The NIDS server sits on the same network and captures all traffic.
+#
+# Services:
+#   - Python HTTP server on port 8080
+#   - SSH (dropbear) on port 22
+#   - iperf3 server on port 5201 (for bandwidth tests)
+#   - netcat listener on port 9999 (for raw TCP tests)
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    dropbear \
+    iperf3 \
+    netcat-openbsd \
+    iproute2 iputils-ping \
+    tcpdump \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Create a simple web root for the HTTP server
+RUN mkdir -p /var/www && echo '<html><body><h1>NIDS Test Target</h1></body></html>' > /var/www/index.html
+
+# Startup script that launches all services
+COPY docker/sandbox/scripts/victim-start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+EXPOSE 22 8080 5201 9999
+
+CMD ["/app/start.sh"]

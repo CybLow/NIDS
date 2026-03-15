@@ -1,6 +1,6 @@
 # NIDS Roadmap
 
-> Last updated: 2026-03-14
+> Last updated: 2026-03-15
 
 This document consolidates **all** planned work — features, cleanup, tests, docs, and
 operational tasks — into a single prioritized roadmap. Items are organized into phases
@@ -35,6 +35,12 @@ Cross-references: [ADR-004](adr/004-model-benchmark-analysis.md),
 - [x] Phase 8 — Real-time flow extraction and analysis (Welford accumulators,
   timeout sweeps, streaming flow callbacks, producer-consumer pipeline,
   live packet API, LiveDetectionPipeline)
+- [x] Phase 9.1 — gRPC server (`NidsServiceImpl` with 7 RPCs, `GrpcStreamSink`,
+  proto codegen, Conan `with_grpc` option, `nids-server` dual-mode executable)
+- [x] Phase 9.2 — CLI client (`NidsClient` gRPC wrapper, `nids-cli` with commands:
+  status, interfaces, capture start/stop, stream with filter)
+- [x] Docker sandbox for inline IPS testing (3-container topology: server, attacker,
+  victim on isolated `172.28.0.0/24` bridge network)
 
 ---
 
@@ -269,32 +275,65 @@ documented in ADR-004.
 **Goal**: Enable headless operation for server deployments, systemd services, and
 remote monitoring.
 
-### 9.1 — Implement gRPC server
+### 9.1 — ~~Implement gRPC server~~ [DONE]
 
-- **Files**: `src/server/NidsServer.h/.cpp` (rewrite or recreate after Phase 6.4)
-- **Proto**: `proto/nids.proto` (already defines 7 RPCs)
-- **CMake**: Add `if(NIDS_BUILD_SERVER)` block, protobuf/gRPC compilation targets
-- RPCs: `StartCapture`, `StopCapture`, `GetStatus`, `GetPackets` (streaming),
-  `GetAnalysisResults`, `RunAnalysis`, `GetReport`
+- **Files**: `src/server/NidsServer.h/.cpp`, `src/server/server_main.cpp`
+- **Proto**: `proto/nids.proto` (7 RPCs: ListInterfaces, StartCapture, StopCapture,
+  GetStatus, StreamDetections, StreamPackets, AnalyzeCapture)
+- **CMake**: `if(NIDS_BUILD_SERVER)` block with protobuf/gRPC code generation,
+  `nids_proto` static library, `nids-server-lib`, `nids-server` executable
+- **Conan**: `with_grpc` option (`conan install . -o with_grpc=True`) pulls
+  `grpc/1.72.0`, `protobuf/5.27.0`, `abseil`, `c-ares`, `openssl`, `re2`, `zlib`
+- `NidsServiceImpl`: full implementations for ListInterfaces, StartCapture,
+  StopCapture, GetStatus, StreamDetections; stubs for StreamPackets, AnalyzeCapture
+- `GrpcStreamSink`: implements `IOutputSink` to bridge flow detections into
+  gRPC server-streaming responses
+- `NidsServer`: wrapper managing `grpc::Server` lifecycle (start/stop/blocking wait)
+- Dual-mode `server_main.cpp`: `--no-grpc` for standalone capture + console output,
+  default for gRPC server mode with full pipeline integration
+- Generated proto headers marked as `SYSTEM` include to avoid `-Werror` with GCC 15
+- ASan `allow_user_poisoning=0` override for known gRPC epoll false positives
 
-### 9.2 — Implement CLI client
+### 9.2 — ~~Implement CLI client~~ [DONE]
 
-- **Files**: `src/client/NidsClient.h/.cpp` (rewrite or recreate)
-- Commands: `nids-cli capture start/stop`, `nids-cli analyze`, `nids-cli report`,
-  `nids-cli status`, `nids-cli feeds update`
+- **Files**: `src/client/NidsClient.h/.cpp`, `src/client/cli_main.cpp`
+- `NidsClient`: typed C++ wrapper around gRPC stub with connect/disconnect,
+  listInterfaces, startCapture, stopCapture, getStatus, streamDetections
+- `ClientConfig`: server address (default `localhost:50051`), 5s connect timeout,
+  30s per-RPC timeout
+- `nids-cli` commands: `status`, `interfaces`, `capture start <iface> [--bpf]`,
+  `capture stop [session-id]`, `stream [--filter flagged|clean|all]`, `help`
+- Clean error handling: graceful 5s timeout on connection failure, proper exit codes
+- Signal handling: Ctrl+C stops stream command gracefully
 
-### 9.3 — `--headless` flag
+### 9.3 — ~~Docker sandbox for inline IPS testing~~ [DONE]
+
+- **Files**: `docker/sandbox/Dockerfile.server`, `docker/sandbox/Dockerfile.attacker`,
+  `docker/sandbox/Dockerfile.victim`, `docker/sandbox/compose.yml`,
+  `docker/sandbox/scripts/victim-start.sh`, `docker/sandbox/scripts/generate-benign.sh`,
+  `docker/sandbox/scripts/generate-attacks.sh`
+- 3-container topology on isolated `172.28.0.0/24` bridge:
+  - `nids-server` (172.28.0.10) — two-stage build, compiles from source with
+    `NIDS_BUILD_SERVER=ON`
+  - `attacker` (172.28.0.20) — Ubuntu 24.04 with hping3, nmap, scapy, curl, ab, iperf3
+  - `victim` (172.28.0.30) — Python HTTP server, dropbear SSH, iperf3, netcat
+- Attack scripts generate 8 attack types matching NIDS model classes
+- Benign scripts generate HTTP, ping, iperf3, TCP connect patterns
+
+### 9.4 — `--headless` flag
 
 - **Files**: `src/main.cpp`
 - When `--headless` is passed, skip Qt UI initialization, start gRPC server
 - Required for systemd service (`docs/deployment.md:117-141`)
+- Note: `nids-server` binary already provides headless operation; this is for
+  a single-binary mode where the GUI binary can also run headless
 
-### 9.4 — `--config` flag
+### 9.5 — `--config` flag [DONE]
 
-- **Files**: `src/main.cpp`
+- **Files**: `src/main.cpp`, `src/server/server_main.cpp`
 - Parse `--config /path/to/config.json` from `argv`, pass to
-  `Configuration::loadFromFile()`
-- Required by `docs/deployment.md:160`
+  `Configuration::loadFromFile()` via `ConfigLoader`
+- Both GUI (`main.cpp`) and server (`server_main.cpp`) support this flag
 
 ---
 

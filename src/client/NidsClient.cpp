@@ -2,46 +2,180 @@
 
 #include <spdlog/spdlog.h>
 
+#include <chrono>
+#include <sstream>
+
 namespace nids::client {
 
-NidsClient::NidsClient(const ClientConfig &config) : config_(config) {}
+NidsClient::NidsClient(const ClientConfig& config) : config_(config) {}
 
 NidsClient::~NidsClient() { disconnect(); }
 
 bool NidsClient::connect() {
-  spdlog::info("Connecting to NIDS server at {}", config_.serverAddress);
-  spdlog::warn("gRPC integration pending — see Phase 9 in docs/roadmap.md");
-  return false;
+    channel_ = grpc::CreateChannel(config_.serverAddress,
+                                   grpc::InsecureChannelCredentials());
+    if (!channel_) {
+        spdlog::error("Failed to create gRPC channel to {}",
+                      config_.serverAddress);
+        return false;
+    }
+
+    // Wait for channel to become ready (with timeout)
+    auto deadline = std::chrono::system_clock::now() +
+                    std::chrono::seconds(config_.connectTimeoutSec);
+    if (!channel_->WaitForConnected(deadline)) {
+        spdlog::error("Timeout connecting to gRPC server at {}",
+                      config_.serverAddress);
+        return false;
+    }
+
+    stub_ = ::nids::NidsService::NewStub(channel_);
+    connected_ = true;
+    spdlog::info("Connected to NIDS server at {}", config_.serverAddress);
+    return true;
 }
 
-void NidsClient::disconnect() { connected_ = false; }
+void NidsClient::disconnect() {
+    stub_.reset();
+    channel_.reset();
+    connected_ = false;
+}
 
 std::vector<std::string> NidsClient::listInterfaces() const {
-  // TODO: implement via gRPC stub (Phase 9)
-  return {};
+    if (!stub_) {
+        return {};
+    }
+
+    grpc::ClientContext context;
+    ::nids::ListInterfacesRequest request;
+    ::nids::ListInterfacesResponse response;
+
+    auto status = stub_->ListInterfaces(&context, request, &response);
+    if (!status.ok()) {
+        spdlog::error("ListInterfaces RPC failed: {}", status.error_message());
+        return {};
+    }
+
+    std::vector<std::string> interfaces;
+    interfaces.reserve(static_cast<std::size_t>(response.interfaces_size()));
+    for (const auto& iface : response.interfaces()) {
+        interfaces.push_back(iface);
+    }
+    return interfaces;
 }
 
-std::string NidsClient::startCapture(const std::string & /*interface*/,
-                                     const CaptureFilter & /*filter*/) const {
-  // TODO: implement via gRPC stub (Phase 9)
-  return "";
+std::string NidsClient::startCapture(const std::string& interface,
+                                     const std::string& bpfFilter,
+                                     const std::string& dumpFile) const {
+    if (!stub_) {
+        return {};
+    }
+
+    grpc::ClientContext context;
+    ::nids::StartCaptureRequest request;
+    request.set_interface(interface);
+    request.set_enable_live_detection(true);
+    if (!bpfFilter.empty()) {
+        request.mutable_filter()->set_custom_bpf(bpfFilter);
+    }
+    if (!dumpFile.empty()) {
+        request.set_dump_file(dumpFile);
+    }
+
+    ::nids::StartCaptureResponse response;
+    auto status = stub_->StartCapture(&context, request, &response);
+    if (!status.ok()) {
+        spdlog::error("StartCapture RPC failed: {}", status.error_message());
+        return {};
+    }
+
+    if (!response.success()) {
+        spdlog::error("StartCapture failed: {}", response.message());
+        return {};
+    }
+
+    spdlog::info("Capture started: {}", response.message());
+    return response.session_id();
 }
 
-bool NidsClient::stopCapture(const std::string & /*sessionId*/) const {
-  // TODO: implement via gRPC stub (Phase 9)
-  return false;
+std::string NidsClient::stopCapture(const std::string& sessionId) const {
+    if (!stub_) {
+        return "Not connected";
+    }
+
+    grpc::ClientContext context;
+    ::nids::StopCaptureRequest request;
+    request.set_session_id(sessionId);
+
+    ::nids::StopCaptureResponse response;
+    auto status = stub_->StopCapture(&context, request, &response);
+    if (!status.ok()) {
+        spdlog::error("StopCapture RPC failed: {}", status.error_message());
+        return "RPC failed: " + status.error_message();
+    }
+
+    std::ostringstream oss;
+    oss << "Capture stopped — "
+        << response.total_packets() << " packets, "
+        << response.total_flows() << " flows, "
+        << response.flagged_flows() << " flagged, "
+        << response.dropped_flows() << " dropped";
+    return oss.str();
 }
 
-bool NidsClient::analyzeCapture(const std::string & /*sessionId*/) const {
-  // TODO: implement via gRPC stub (Phase 9)
-  return false;
+NidsClient::StatusInfo NidsClient::getStatus() const {
+    StatusInfo info;
+    if (!stub_) {
+        return info;
+    }
+
+    grpc::ClientContext context;
+    ::nids::GetStatusRequest request;
+    ::nids::GetStatusResponse response;
+
+    auto status = stub_->GetStatus(&context, request, &response);
+    if (!status.ok()) {
+        spdlog::error("GetStatus RPC failed: {}", status.error_message());
+        return info;
+    }
+
+    info.capturing = response.capturing();
+    info.currentInterface = response.current_interface();
+    info.sessionId = response.session_id();
+    info.packetsCaptured = response.packets_captured();
+    info.flowsDetected = response.flows_detected();
+    info.flowsFlagged = response.flows_flagged();
+    info.flowsDropped = response.flows_dropped();
+    return info;
 }
 
-NidsClient::ReportResult
-NidsClient::generateReport(const std::string & /*sessionId*/,
-                           const std::string & /*outputPath*/) const {
-  // TODO: implement via gRPC stub (Phase 9)
-  return {};
+void NidsClient::streamDetections(
+    const std::string& sessionId,
+    ::nids::DetectionFilter filter,
+    const DetectionCallback& callback,
+    const std::atomic<bool>& stopFlag) const {
+
+    if (!stub_) {
+        return;
+    }
+
+    grpc::ClientContext context;
+    ::nids::StreamDetectionsRequest request;
+    request.set_session_id(sessionId);
+    request.set_filter(filter);
+
+    auto reader = stub_->StreamDetections(&context, request);
+    ::nids::DetectionEvent event;
+
+    while (!stopFlag.load() && reader->Read(&event)) {
+        callback(event);
+    }
+
+    auto status = reader->Finish();
+    if (!status.ok() && status.error_code() != grpc::StatusCode::CANCELLED) {
+        spdlog::error("StreamDetections ended with error: {}",
+                      status.error_message());
+    }
 }
 
 } // namespace nids::client

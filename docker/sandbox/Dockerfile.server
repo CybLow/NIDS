@@ -1,0 +1,75 @@
+# NIDS Server — headless daemon for sandbox testing.
+#
+# Two-stage build: compile nids-server with NIDS_BUILD_SERVER=ON,
+# then copy the binary + model + threat intel into a lean runtime image.
+#
+# Usage (via compose.yml):
+#   docker compose -f docker/sandbox/compose.yml up --build
+
+FROM ubuntu:24.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc-14 g++-14 \
+    cmake ninja-build make mold \
+    qt6-base-dev \
+    ca-certificates curl tar pkg-config \
+    python3-pip \
+    && pip3 install --break-system-packages conan \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy dependency manifests first for layer caching
+COPY conanfile.py CMakePresets.json ./
+COPY conan/ conan/
+
+ENV CC=gcc-14 CXX=g++-14
+
+RUN conan profile detect --force && \
+    conan install . -pr:h conan/profiles/linux-ci -s build_type=Release --build=missing
+
+# Copy full source tree
+COPY . .
+
+# Build only the headless server (no GUI, no tests)
+RUN cmake --preset ci-gcc \
+        -DNIDS_BUILD_TESTS=OFF \
+        -DNIDS_BUILD_SERVER=ON \
+    && cmake --build --preset ci-gcc --target nids-server
+
+# ── Runtime stage ────────────────────────────────────────────────
+FROM ubuntu:24.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Server has no Qt dependency at runtime — only libstdc++, libpcap
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpcap0.8 \
+    tcpdump \
+    iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy binary
+COPY --from=builder /app/build/ci-gcc/nids-server /app/nids-server
+
+# Copy ONNX Runtime shared libraries
+COPY --from=builder /app/build/ci-gcc/_deps/onnxruntime-src/lib/*.so* /usr/local/lib/
+RUN ldconfig
+
+# Copy model and metadata
+COPY --from=builder /app/models/model.onnx /app/models/model.onnx
+COPY --from=builder /app/models/model_metadata.json /app/models/model_metadata.json
+
+# Copy threat intelligence data
+COPY --from=builder /app/data/threat_intel/ /app/data/threat_intel/
+
+# Run as non-root user (NET_RAW/NET_ADMIN granted via compose.yml)
+RUN useradd -m -s /bin/bash nids
+USER nids
+
+ENTRYPOINT ["/app/nids-server"]
+CMD ["--interface", "eth0"]

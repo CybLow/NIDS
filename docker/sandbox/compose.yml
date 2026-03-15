@@ -1,0 +1,102 @@
+# NIDS Sandbox — isolated test environment for ML-based intrusion detection.
+#
+# Topology:
+#   ┌─────────────┐     nids-sandbox-net (172.28.0.0/24)     ┌─────────────┐
+#   │  attacker    │─────────────────┬───────────────────────│   victim    │
+#   │  172.28.0.10 │                 │                       │ 172.28.0.20 │
+#   └─────────────┘          ┌──────┴──────┐                 └─────────────┘
+#                            │ nids-server  │
+#                            │ 172.28.0.100 │
+#                            └─────────────┘
+#
+# The NIDS server captures on eth0 (the bridge interface) and sees ALL
+# traffic between attacker and victim.  The network is completely isolated
+# from the host — no interference with the host PC's network.
+#
+# Usage:
+#   # Build and start all containers:
+#   docker compose -f docker/sandbox/compose.yml up --build -d
+#
+#   # View NIDS server logs (real-time detections):
+#   docker compose -f docker/sandbox/compose.yml logs -f nids-server
+#
+#   # Generate benign traffic:
+#   docker compose -f docker/sandbox/compose.yml exec attacker \
+#       /scripts/generate-benign.sh victim 60
+#
+#   # Run attack simulations:
+#   docker compose -f docker/sandbox/compose.yml exec attacker \
+#       /scripts/generate-attacks.sh victim all
+#
+#   # Run a specific attack:
+#   docker compose -f docker/sandbox/compose.yml exec attacker \
+#       /scripts/generate-attacks.sh victim syn_flood
+#
+#   # Interactive shell on attacker:
+#   docker compose -f docker/sandbox/compose.yml exec attacker bash
+#
+#   # Capture traffic with tcpdump on the NIDS server:
+#   docker compose -f docker/sandbox/compose.yml exec nids-server \
+#       tcpdump -i eth0 -c 100 -n
+#
+#   # Tear down:
+#   docker compose -f docker/sandbox/compose.yml down
+
+services:
+  # ── NIDS Server (headless daemon) ────────────────────────────
+  nids-server:
+    build:
+      context: ../..
+      dockerfile: docker/sandbox/Dockerfile.server
+    container_name: nids-server
+    hostname: nids-server
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    networks:
+      sandbox:
+        ipv4_address: 172.28.0.100
+    command: ["--interface", "eth0"]
+    restart: unless-stopped
+    # Enable promiscuous mode so we see all traffic on the bridge
+    sysctls:
+      - net.core.rmem_max=8388608
+
+  # ── Victim (target services) ────────────────────────────────
+  victim:
+    build:
+      context: ../..
+      dockerfile: docker/sandbox/Dockerfile.victim
+    container_name: nids-victim
+    hostname: victim
+    networks:
+      sandbox:
+        ipv4_address: 172.28.0.20
+    restart: unless-stopped
+
+  # ── Attacker (traffic generator) ────────────────────────────
+  attacker:
+    build:
+      context: ../..
+      dockerfile: docker/sandbox/Dockerfile.attacker
+    container_name: nids-attacker
+    hostname: attacker
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    networks:
+      sandbox:
+        ipv4_address: 172.28.0.10
+    depends_on:
+      - victim
+      - nids-server
+
+# ── Isolated bridge network ──────────────────────────────────
+networks:
+  sandbox:
+    name: nids-sandbox-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+          gateway: 172.28.0.1

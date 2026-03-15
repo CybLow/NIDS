@@ -1,22 +1,21 @@
 #pragma once
 
-/// gRPC Client stub for connecting to the NIDS headless daemon.
+/// gRPC Client for connecting to the NIDS headless daemon.
 ///
-/// This client can be used by:
-///   1. A CLI tool for scripted capture/analysis sessions
-///   2. The Qt GUI application (as an alternative to local PcapCapture)
-///   3. Other services that need NIDS functionality remotely
-///
-/// Implementation steps (Phase 9 — see docs/roadmap.md):
-///   1. Generate C++ stubs from proto/nids.proto
-///   2. Implement the methods below using the generated stub
-///   3. Create a CLI main() that uses this client
+/// Provides a typed C++ API around the NidsService gRPC stub.
+/// Used by the CLI client (cli_main.cpp) and potentially by
+/// a future remote Qt GUI client.
 
 #include "core/model/AttackType.h"
-#include "core/model/PacketInfo.h"
+
+#include <nids.grpc.pb.h>
+#include <nids.pb.h>
+
+#include <grpcpp/grpcpp.h>
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -24,94 +23,70 @@ namespace nids::client {
 
 /** Configuration for connecting to a NIDS gRPC server. */
 struct ClientConfig {
-  /** Server address and port (e.g. "localhost:50051"). */
-  std::string serverAddress = "localhost:50051";
-  /** RPC timeout in milliseconds. */
-  int timeoutMs = 30000;
+    /** Server address and port (e.g. "localhost:50051"). */
+    std::string serverAddress = "localhost:50051";
+    /** Connection timeout in seconds. */
+    int connectTimeoutSec = 5;
+    /** Per-RPC deadline in seconds. */
+    int rpcTimeoutSec = 30;
 };
 
 /** gRPC client for connecting to a NIDS headless daemon. */
 class NidsClient {
 public:
-  /** Construct with the given client configuration. */
-  explicit NidsClient(const ClientConfig &config);
-  /** Disconnect and release resources. */
-  ~NidsClient();
+    explicit NidsClient(const ClientConfig& config);
+    ~NidsClient();
 
-  NidsClient(const NidsClient &) = delete;
-  NidsClient &operator=(const NidsClient &) = delete;
-  NidsClient(NidsClient &&) = default;
-  NidsClient &operator=(NidsClient &&) = default;
+    NidsClient(const NidsClient&) = delete;
+    NidsClient& operator=(const NidsClient&) = delete;
+    NidsClient(NidsClient&&) = default;
+    NidsClient& operator=(NidsClient&&) = default;
 
-  /** Establish a connection to the server. Returns false on failure. */
-  [[nodiscard]] bool connect();
-  /** Disconnect from the server. */
-  void disconnect();
+    /** Establish a connection to the server. Returns false on failure. */
+    [[nodiscard]] bool connect();
 
-  /** Query available network interfaces on the server. */
-  [[nodiscard]] std::vector<std::string> listInterfaces() const;
+    /** Disconnect from the server. */
+    void disconnect();
 
-  /** BPF filter parameters for a capture session. */
-  struct CaptureFilter {
-    /** Protocol filter (e.g. "tcp", "udp"). */
-    std::string protocol;
-    /** Source IP address filter. */
-    std::string sourceIp;
-    /** Destination IP address filter. */
-    std::string destinationIp;
-    /** Source port filter. */
-    std::string sourcePort;
-    /** Destination port filter. */
-    std::string destinationPort;
-    /** Raw BPF filter expression (overrides other fields if set). */
-    std::string customBpf;
-  };
+    /** Query available network interfaces on the server. */
+    [[nodiscard]] std::vector<std::string> listInterfaces() const;
 
-  /**
-   * Start a capture session on the server.
-   * @param interface  Network interface to capture on.
-   * @param filter     Capture filter parameters.
-   * @return Session ID for the new capture, or empty string on failure.
-   */
-  [[nodiscard]] std::string startCapture(const std::string &interface,
-                                         const CaptureFilter &filter) const;
-  /** Stop a running capture session. Returns false on failure. */
-  [[nodiscard]] bool stopCapture(const std::string &sessionId) const;
+    /** Start a capture session on the server.
+     *  @return Session ID, or empty string on failure. */
+    [[nodiscard]] std::string startCapture(const std::string& interface,
+                                           const std::string& bpfFilter = {},
+                                           const std::string& dumpFile = {}) const;
 
-  /** Callback type for receiving streamed packets. */
-  using PacketCallback = std::function<void(const nids::core::PacketInfo &)>;
-  /** Stream captured packets from the server, invoking the callback for each.
-   */
-  template <typename Callback>
-  void streamPackets(const std::string & /*sessionId*/,
-                     Callback && /*callback*/) const {
-    // TODO: implement via gRPC stub (Phase 9)
-  }
+    /** Stop the current capture session. Returns summary message. */
+    [[nodiscard]] std::string stopCapture(const std::string& sessionId) const;
 
-  /** Trigger ML analysis on a completed capture session. */
-  [[nodiscard]] bool analyzeCapture(const std::string &sessionId) const;
+    /** Get current server status. */
+    struct StatusInfo {
+        bool capturing = false;
+        std::string currentInterface;
+        std::string sessionId;
+        std::uint64_t packetsCaptured = 0;
+        std::uint64_t flowsDetected = 0;
+        std::uint64_t flowsFlagged = 0;
+        std::uint64_t flowsDropped = 0;
+    };
+    [[nodiscard]] StatusInfo getStatus() const;
 
-  /** Result of a report generation request. */
-  struct ReportResult {
-    /** Whether the report was generated successfully. */
-    bool success = false;
-    /** Path to the generated report on the server. */
-    std::string filePath;
-    /** Time taken to generate the report, in milliseconds. */
-    std::int64_t generationTimeMs = 0;
-  };
-  /**
-   * Generate an analysis report for a completed session.
-   * @param sessionId   The capture session to report on.
-   * @param outputPath  Desired output file path.
-   */
-  [[nodiscard]] ReportResult
-  generateReport(const std::string &sessionId,
-                 const std::string &outputPath) const;
+    /** Callback type for streamed detection events. */
+    using DetectionCallback = std::function<void(const ::nids::DetectionEvent&)>;
+
+    /** Stream detection events from the server. Blocks until cancelled or
+     *  stream ends. Call from a dedicated thread. */
+    void streamDetections(const std::string& sessionId,
+                          ::nids::DetectionFilter filter,
+                          const DetectionCallback& callback,
+                          const std::atomic<bool>& stopFlag) const;
 
 private:
-  ClientConfig config_;
-  bool connected_ = false;
+    ClientConfig config_;
+    std::shared_ptr<grpc::Channel> channel_;
+    std::unique_ptr<::nids::NidsService::Stub> stub_;
+    bool connected_ = false;
 };
 
 } // namespace nids::client

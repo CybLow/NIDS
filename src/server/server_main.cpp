@@ -1,12 +1,19 @@
 /// Headless NIDS daemon entry point.
 ///
-/// Runs the ML-based intrusion detection pipeline without a GUI.
-/// Uses PcapCapture + LiveDetectionPipeline + HybridDetectionService.
+/// Runs the ML-based intrusion detection pipeline as a gRPC server.
+/// Clients connect via gRPC to start/stop captures and stream detections.
 ///
 /// Usage:
 ///   nids-server --interface eth0 [--config config.json] [--bpf "tcp"]
+///               [--listen 0.0.0.0:50051] [--no-grpc]
+///
+/// Modes:
+///   Default:    Start gRPC server, wait for client to start capture via RPC.
+///   --no-grpc:  Start capture immediately (standalone, no gRPC server).
 ///
 /// Signals: SIGINT / SIGTERM trigger graceful shutdown.
+
+#include "server/NidsServer.h"
 
 #include "app/HybridDetectionService.h"
 #include "app/LiveDetectionPipeline.h"
@@ -34,6 +41,15 @@
 #include <string_view>
 #include <thread>
 
+// gRPC 1.72.0 has use-after-poison false positives in its epoll/thread-pool
+// internals (abseil StatusRep::SetPayload) when compiled with GCC 15 + ASan.
+// Disable user-poisoning detection to avoid false aborts from gRPC's arena.
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
+extern "C" const char* __asan_default_options() {  // NOLINT
+    return "allow_user_poisoning=0";
+}
+#endif
+
 namespace {
 
 std::atomic<bool> gShutdownRequested{false};
@@ -46,16 +62,21 @@ struct CliArgs {
     std::filesystem::path configPath;
     std::string interface;
     std::string bpfFilter;
+    std::string listenAddress = "0.0.0.0:50051";
+    bool noGrpc = false;
 };
 
 void printUsage(std::string_view progName) {
     std::cerr << "Usage: " << progName
-              << " --interface <iface> [--config <path>] [--bpf <filter>]\n"
+              << " [--interface <iface>] [--config <path>] [--bpf <filter>]\n"
+              << "       [--listen <addr:port>] [--no-grpc] [--help]\n"
               << "\n"
               << "Options:\n"
-              << "  --interface <iface>  Network interface to capture on (required)\n"
+              << "  --interface <iface>  Network interface (required with --no-grpc)\n"
               << "  --config <path>      JSON configuration file\n"
               << "  --bpf <filter>       BPF filter expression\n"
+              << "  --listen <addr>      gRPC listen address (default: 0.0.0.0:50051)\n"
+              << "  --no-grpc            Run standalone without gRPC server\n"
               << "  --help               Show this help message\n";
 }
 
@@ -69,6 +90,10 @@ CliArgs parseArgs(int argc, char* argv[]) {
             args.configPath = argv[++i];
         } else if (arg == "--bpf" && i + 1 < argc) {
             args.bpfFilter = argv[++i];
+        } else if (arg == "--listen" && i + 1 < argc) {
+            args.listenAddress = argv[++i];
+        } else if (arg == "--no-grpc") {
+            args.noGrpc = true;
         } else if (arg == "--help") {
             printUsage(argv[0]);
             std::exit(0);
@@ -77,13 +102,57 @@ CliArgs parseArgs(int argc, char* argv[]) {
     return args;
 }
 
+/// Run in standalone mode (no gRPC, direct capture + console output).
+int runStandalone(const CliArgs& args,
+                  nids::infra::PcapCapture& capture,
+                  nids::infra::NativeFlowExtractor& flowExtractor,
+                  nids::core::IPacketAnalyzer& analyzer,
+                  nids::core::IFeatureNormalizer& normalizer,
+                  nids::app::HybridDetectionService& hybridService) {
+
+    nids::core::CaptureSession session;
+    auto pipeline = std::make_unique<nids::app::LiveDetectionPipeline>(
+        flowExtractor, analyzer, normalizer, session);
+    pipeline->setHybridDetection(&hybridService);
+
+    auto consoleSink = std::make_unique<nids::infra::ConsoleAlertSink>(
+        nids::infra::ConsoleFilter::Flagged);
+    pipeline->addOutputSink(consoleSink.get());
+
+    capture.setRawPacketCallback(
+        [&pipeline](const std::uint8_t* data, std::size_t length,
+                    std::int64_t timestampUs) {
+            pipeline->feedPacket(data, length, timestampUs);
+        });
+
+    spdlog::info("Starting capture on '{}' (Ctrl+C to stop)", args.interface);
+    pipeline->start();
+    capture.startCapture("");
+
+    while (!gShutdownRequested.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    spdlog::info("Shutdown requested — stopping capture");
+    const auto flowsDetected = pipeline->flowsDetected();
+    const auto droppedFlows = pipeline->droppedFlows();
+    capture.stopCapture();
+    pipeline->stop();
+
+    spdlog::info("Session complete: {} flows detected, {} dropped",
+                 flowsDetected, droppedFlows);
+    return 0;
+}
+
 } // anonymous namespace
 
 int main(int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::info);
 
     auto args = parseArgs(argc, argv);
-    if (args.interface.empty()) {
+
+    // Standalone mode requires an interface
+    if (args.noGrpc && args.interface.empty()) {
         printUsage(argv[0]);
         return 1;
     }
@@ -111,7 +180,7 @@ int main(int argc, char* argv[]) {
     // -- ML Analyzer --
     auto analyzer = nids::infra::createAnalyzer();
     if (!analyzer->loadModel(config.modelPath().string())) {
-        spdlog::warn("ML model not loaded from '{}' -- analysis unavailable",
+        spdlog::warn("ML model not loaded from '{}' — analysis unavailable",
                      config.modelPath().string());
     }
 
@@ -143,56 +212,58 @@ int main(int argc, char* argv[]) {
     flowExtractor->setMaxFlowDuration(config.maxFlowDurationUs());
     auto normalizer = std::make_unique<nids::infra::FeatureNormalizer>();
     if (!normalizer->loadMetadata(config.modelMetadataPath().string())) {
-        spdlog::warn("Feature normalization metadata not loaded -- "
+        spdlog::warn("Feature normalization metadata not loaded — "
                      "predictions may be inaccurate");
     }
 
-    // -- Capture Session + Pipeline --
-    nids::core::CaptureSession session;
-    auto pipeline = std::make_unique<nids::app::LiveDetectionPipeline>(
-        *flowExtractor, *analyzer, *normalizer, session);
-    pipeline->setHybridDetection(hybridService.get());
-
-    // -- Output Sinks --
-    // Console sink logs flagged (attack) flows to stderr via spdlog.
-    // Additional sinks (JSON file, syslog, gRPC stream) can be added here.
-    auto consoleSink = std::make_unique<nids::infra::ConsoleAlertSink>(
-        nids::infra::ConsoleFilter::Flagged);
-    pipeline->addOutputSink(consoleSink.get());
-
     // -- Packet Capture --
     auto capture = std::make_unique<nids::infra::PcapCapture>();
-    if (!capture->initialize(args.interface, args.bpfFilter)) {
-        spdlog::critical("Failed to initialize capture on '{}'",
-                         args.interface);
-        return 1;
+
+    // -- Mode selection --
+    if (args.noGrpc) {
+        // Standalone mode: initialize capture immediately
+        if (!capture->initialize(args.interface, args.bpfFilter)) {
+            spdlog::critical("Failed to initialize capture on '{}'",
+                             args.interface);
+            return 1;
+        }
+        return runStandalone(args, *capture, *flowExtractor, *analyzer,
+                             *normalizer, *hybridService);
     }
 
-    // Wire raw packets into the live detection pipeline.
-    capture->setRawPacketCallback(
-        [&pipeline](const std::uint8_t* data, std::size_t length,
-                    std::int64_t timestampUs) {
-            pipeline->feedPacket(data, length, timestampUs);
-        });
+    // -- gRPC server mode --
+    // Pre-initialize capture if interface was specified via CLI
+    if (!args.interface.empty()) {
+        if (!capture->initialize(args.interface, args.bpfFilter)) {
+            spdlog::critical("Failed to initialize capture on '{}'",
+                             args.interface);
+            return 1;
+        }
+    }
 
-    // -- Start --
-    spdlog::info("Starting capture on interface '{}' (Ctrl+C to stop)",
-                 args.interface);
-    pipeline->start();
-    capture->startCapture("");
+    // Create gRPC service implementation
+    auto service = std::make_unique<nids::server::NidsServiceImpl>(
+        *capture, *flowExtractor, *analyzer, *normalizer, *hybridService);
 
-    // Block until shutdown signal.
+    // Create and start gRPC server
+    nids::server::ServerConfig serverConfig{
+        .listenAddress = args.listenAddress,
+        .maxConcurrentSessions = 4,
+    };
+    nids::server::NidsServer grpcServer(serverConfig);
+    grpcServer.setService(std::move(service));
+    grpcServer.start();
+
+    // If interface specified on CLI, auto-start capture via gRPC service
+    // (clients can also start capture later via StartCapture RPC)
+
+    // Block until shutdown signal
     while (!gShutdownRequested.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 
-    // -- Graceful shutdown --
-    spdlog::info("Shutdown requested — stopping capture");
-    capture->stopCapture();
-    pipeline->stop();
-
-    spdlog::info("Session complete: {} flows detected, {} dropped",
-                 pipeline->flowsDetected(), pipeline->droppedFlows());
+    spdlog::info("Shutdown requested — stopping gRPC server");
+    grpcServer.stop();
 
     return 0;
 }

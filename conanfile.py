@@ -9,6 +9,7 @@ class NidsConan(ConanFile):
       - spdlog          (logging)
       - nlohmann_json   (JSON parsing)
       - pcapplusplus    (packet capture & parsing -- replaces raw libpcap)
+      - gRPC            (server/client RPC framework -- Phase 9)
       - GoogleTest      (unit / integration tests)
 
     Fetched via CMake FetchContent (pre-built binaries):
@@ -21,16 +22,22 @@ class NidsConan(ConanFile):
     name = "nids"
     version = "0.2.0"
     settings = "os", "compiler", "build_type", "arch"
+    options = {"with_grpc": [True, False]}
+    default_options = {"with_grpc": False}
 
     # ── Runtime dependencies ────────────────────────────────────────
     def requirements(self):
         self.requires("spdlog/1.15.1")
         self.requires("nlohmann_json/3.11.3")
         self.requires("pcapplusplus/25.05")
+        if self.options.with_grpc:
+            self.requires("grpc/1.72.0")
 
     # ── Test-only dependencies ──────────────────────────────────────
     def build_requirements(self):
         self.test_requires("gtest/1.15.0")
+        if self.options.with_grpc:
+            self.tool_requires("grpc/1.72.0")
 
     # ── Build-directory layout (matches CMake presets) ──────────────
     def layout(self):
