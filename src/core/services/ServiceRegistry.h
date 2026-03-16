@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <unordered_map>
@@ -24,15 +25,19 @@ public:
 
     /**
      * Resolve the application-layer service for a packet given filter context.
-     * @param filterSrcPort Source port from the active filter (may be empty).
-     * @param filterDstPort Destination port from the active filter (may be empty).
+     *
+     * Priority: filterDstPort > filterSrcPort > packetDstPort.
+     * A port value of 0 is treated as "unset" and skipped.
+     *
+     * @param filterSrcPort Source port from the active filter (0 = unset).
+     * @param filterDstPort Destination port from the active filter (0 = unset).
      * @param packetDstPort Actual destination port of the packet.
-     * @return Resolved service name.
+     * @return Resolved service name, or "Unknown" if no port maps to a service.
      */
     [[nodiscard]] std::string resolveApplication(
-        const std::string& filterSrcPort,
-        const std::string& filterDstPort,
-        const std::string& packetDstPort
+        std::uint16_t filterSrcPort,
+        std::uint16_t filterDstPort,
+        std::uint16_t packetDstPort
     ) const;
 
 private:

@@ -139,20 +139,18 @@ void PcapCaptureWorker::processPacket(pcpp::RawPacket *rawPacket) {
 
   if (fields.protocol == nids::core::kIpProtoTcp) {
     info.protocol = "TCP";
-    info.portSource = std::to_string(fields.srcPort);
-    info.portDestination = std::to_string(fields.dstPort);
+    info.portSource = fields.srcPort;
+    info.portDestination = fields.dstPort;
   } else if (fields.protocol == nids::core::kIpProtoUdp) {
     info.protocol = "UDP";
-    info.portSource = std::to_string(fields.srcPort);
-    info.portDestination = std::to_string(fields.dstPort);
+    info.portSource = fields.srcPort;
+    info.portDestination = fields.dstPort;
   } else if (fields.protocol == nids::core::kIpProtoIcmp) {
     info.protocol = "ICMP";
-    info.portSource = "-";
-    info.portDestination = "-";
+    // portSource/portDestination default to 0 (no port for ICMP)
   } else {
     info.protocol = "Other";
-    info.portSource = "-";
-    info.portDestination = "-";
+    // portSource/portDestination default to 0 (no port for this protocol)
   }
   // Note: application/service resolution is NOT done here — that's the
   // UI layer's responsibility (ServiceRegistry is a UI/display concern).

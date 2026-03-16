@@ -8,6 +8,7 @@ add_library(nids_infra STATIC
     analysis/AnalyzerFactory.cpp
     analysis/FeatureNormalizer.cpp
     config/ConfigLoader.cpp
+    flow/FlowStats.cpp
     flow/NativeFlowExtractor.cpp
     threat/ThreatIntelProvider.cpp
     rules/HeuristicRuleEngine.cpp

@@ -68,17 +68,19 @@ QVariant PacketTableModel::displayData(const QModelIndex &index,
     }
     if (serviceRegistry_) {
       return QString::fromStdString(
-          serviceRegistry_->resolveApplication({}, {}, pkt.portDestination));
+          serviceRegistry_->resolveApplication(0, 0, pkt.portDestination));
     }
     return QStringLiteral("Unknown");
   case IpSource:
     return QString::fromStdString(pkt.ipSource);
   case PortSource:
-    return QString::fromStdString(pkt.portSource);
+    return pkt.portSource != 0 ? QString::number(pkt.portSource)
+                               : QStringLiteral("-");
   case IpDestination:
     return QString::fromStdString(pkt.ipDestination);
   case PortDestination:
-    return QString::fromStdString(pkt.portDestination);
+    return pkt.portDestination != 0 ? QString::number(pkt.portDestination)
+                                    : QStringLiteral("-");
   case ColumnCount:
     return {};
   }

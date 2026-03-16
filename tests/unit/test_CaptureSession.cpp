@@ -34,16 +34,16 @@ TEST(CaptureSession, getPacketReturnsCorrectData) {
     pkt.protocol = "UDP";
     pkt.ipSource = "10.0.0.1";
     pkt.ipDestination = "10.0.0.2";
-    pkt.portSource = "53";
-    pkt.portDestination = "1234";
+    pkt.portSource = 53;
+    pkt.portDestination = 1234;
     session.addPacket(pkt);
 
     const auto retrieved = session.getPacket(0);  // Returns by value (safe).
     EXPECT_EQ(retrieved.protocol, "UDP");
     EXPECT_EQ(retrieved.ipSource, "10.0.0.1");
     EXPECT_EQ(retrieved.ipDestination, "10.0.0.2");
-    EXPECT_EQ(retrieved.portSource, "53");
-    EXPECT_EQ(retrieved.portDestination, "1234");
+    EXPECT_EQ(retrieved.portSource, 53);
+    EXPECT_EQ(retrieved.portDestination, 1234);
 }
 
 TEST(CaptureSession, getPacketOutOfRangeThrows) {
@@ -79,11 +79,11 @@ TEST(CaptureSession, multiplePackets) {
     for (int i = 0; i < 100; ++i) {
         PacketInfo pkt;
         pkt.protocol = "TCP";
-        pkt.portSource = std::to_string(i);
+        pkt.portSource = static_cast<std::uint16_t>(i);
         session.addPacket(pkt);
     }
     EXPECT_EQ(session.packetCount(), 100u);
-    EXPECT_EQ(session.getPacket(50).portSource, "50");
+    EXPECT_EQ(session.getPacket(50).portSource, 50);
 }
 
 // ── Sparse index auto-resize ─────────────────────────────────────────

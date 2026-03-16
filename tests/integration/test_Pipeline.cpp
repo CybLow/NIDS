@@ -129,8 +129,8 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
     pkt.protocol = "TCP";
     pkt.ipSource = std::format("192.168.1.{}", i + 1);
     pkt.ipDestination = "10.0.0.1";
-    pkt.portSource = std::to_string(10000 + i);
-    pkt.portDestination = "443";
+    pkt.portSource = static_cast<std::uint16_t>(10000 + i);
+    pkt.portDestination = 443;
     packetCb(pkt);
   }
 
