@@ -22,14 +22,20 @@ LiveDetectionPipeline::~LiveDetectionPipeline() {
 
 void LiveDetectionPipeline::setHybridDetection(
     HybridDetectionService* service) noexcept {
+    assert(!running_.load(std::memory_order_relaxed) &&
+           "setHybridDetection() must be called before start()");
     hybridService_ = service;
 }
 
 void LiveDetectionPipeline::setResultCallback(ResultCallback cb) noexcept {
+    assert(!running_.load(std::memory_order_relaxed) &&
+           "setResultCallback() must be called before start()");
     resultCallback_ = std::move(cb);
 }
 
 void LiveDetectionPipeline::addOutputSink(nids::core::IOutputSink* sink) {
+    assert(!running_.load(std::memory_order_relaxed) &&
+           "addOutputSink() must be called before start()");
     if (sink) {
         sinks_.push_back(sink);
     }
@@ -53,10 +59,6 @@ void LiveDetectionPipeline::start() {
     worker_ = std::make_unique<FlowAnalysisWorker>(
         *queue_, analyzer_, normalizer_, session_);
     worker_->setHybridDetection(hybridService_);
-
-    if (resultCallback_) {
-        worker_->setResultCallback(resultCallback_);
-    }
 
     // Start all output sinks.
     for (auto* sink : sinks_) {

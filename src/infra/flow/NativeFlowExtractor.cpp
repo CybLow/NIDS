@@ -47,6 +47,11 @@ constexpr std::int64_t kBatchSweepIntervalUs = 30'000'000; // 30 seconds
 /// O(n) sweeps at this frequency are negligible.
 constexpr std::int64_t kLiveSweepIntervalUs = 5'000'000; // 5 seconds
 
+/// Minimum consecutive same-direction packets to qualify as a "bulk transfer".
+/// Used in bulk tracking: only record a bulk when the previous direction's
+/// consecutive packet count meets this threshold.
+constexpr std::uint32_t kMinBulkPackets = 2;
+
 /// Push max, min, mean, std from an accumulator, or 4 zeros if empty.
 void pushLengthStats(std::vector<float> &features,
                      const WelfordAccumulator &acc) {
@@ -743,7 +748,7 @@ void NativeFlowExtractor::updateBulkTracking(FlowStats &stats,
   if (isForward) {
     stats.curFwdBulkPkts++;
     stats.curFwdBulkBytes += packetLen;
-    if (!stats.lastPacketWasFwd && stats.curBwdBulkPkts >= 2) {
+    if (!stats.lastPacketWasFwd && stats.curBwdBulkPkts >= kMinBulkPackets) {
       stats.bwdBulkPktsAcc.update(stats.curBwdBulkPkts);
       stats.bwdBulkBytesAcc.update(stats.curBwdBulkBytes);
     }
@@ -755,7 +760,7 @@ void NativeFlowExtractor::updateBulkTracking(FlowStats &stats,
   } else {
     stats.curBwdBulkPkts++;
     stats.curBwdBulkBytes += packetLen;
-    if (stats.lastPacketWasFwd && stats.curFwdBulkPkts >= 2) {
+    if (stats.lastPacketWasFwd && stats.curFwdBulkPkts >= kMinBulkPackets) {
       stats.fwdBulkPktsAcc.update(stats.curFwdBulkPkts);
       stats.fwdBulkBytesAcc.update(stats.curFwdBulkBytes);
     }
@@ -789,11 +794,11 @@ void NativeFlowExtractor::updateActiveIdle(FlowStats &stats,
 }
 
 void NativeFlowExtractor::completeFlow(const FlowKey &key, FlowStats &stats) {
-  if (stats.curFwdBulkPkts >= 2) {
+  if (stats.curFwdBulkPkts >= kMinBulkPackets) {
     stats.fwdBulkPktsAcc.update(stats.curFwdBulkPkts);
     stats.fwdBulkBytesAcc.update(stats.curFwdBulkBytes);
   }
-  if (stats.curBwdBulkPkts >= 2) {
+  if (stats.curBwdBulkPkts >= kMinBulkPackets) {
     stats.bwdBulkPktsAcc.update(stats.curBwdBulkPkts);
     stats.bwdBulkBytesAcc.update(stats.curBwdBulkBytes);
   }

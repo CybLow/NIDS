@@ -26,6 +26,7 @@
 #include "core/services/IPacketAnalyzer.h"
 
 #include <atomic>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -78,16 +79,19 @@ public:
     LiveDetectionPipeline& operator=(LiveDetectionPipeline&&) = delete;
 
     /// Set the hybrid detection service.  Must be called before start().
+    /// @pre !isRunning()
     void setHybridDetection(HybridDetectionService* service) noexcept;
 
     /// Set a callback invoked on the worker thread for each detected flow.
     /// Must be called before start().
+    /// @pre !isRunning()
     void setResultCallback(ResultCallback cb) noexcept;
 
     /// Register an output sink.  Sinks receive every flow result
     /// (attack + benign) on the worker thread.  Must be called before start().
     /// The pipeline does NOT take ownership — the caller must keep the sink
     /// alive until after stop() returns.
+    /// @pre !isRunning()
     void addOutputSink(nids::core::IOutputSink* sink);
 
     /// Start the pipeline: resets the flow extractor, creates the queue

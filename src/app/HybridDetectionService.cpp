@@ -20,6 +20,22 @@ void HybridDetectionService::setConfidenceThreshold(float threshold) noexcept {
   confidenceThreshold_ = threshold;
 }
 
+void HybridDetectionService::populateThreatIntel(
+    nids::core::DetectionResult &result, const std::string &srcIp,
+    const std::string &dstIp) const {
+  if (threatIntel_ == nullptr) {
+    return;
+  }
+  if (auto srcLookup = threatIntel_->lookup(srcIp); srcLookup.matched) {
+    result.threatIntelMatches.push_back(
+        {.ip = srcIp, .feedName = srcLookup.feedName, .isSource = true});
+  }
+  if (auto dstLookup = threatIntel_->lookup(dstIp); dstLookup.matched) {
+    result.threatIntelMatches.push_back(
+        {.ip = dstIp, .feedName = dstLookup.feedName, .isSource = false});
+  }
+}
+
 nids::core::DetectionResult HybridDetectionService::evaluate(
     const nids::core::PredictionResult &mlResult, const std::string &srcIp,
     const std::string &dstIp, const nids::core::FlowInfo &flowInfo) const {
@@ -28,17 +44,7 @@ nids::core::DetectionResult HybridDetectionService::evaluate(
   result.mlResult = mlResult;
 
   // -- Layer 2: Threat Intelligence --
-  if (threatIntel_ != nullptr) {
-    if (auto srcLookup = threatIntel_->lookup(srcIp); srcLookup.matched) {
-      result.threatIntelMatches.push_back(
-          {.ip = srcIp, .feedName = srcLookup.feedName, .isSource = true});
-    }
-
-    if (auto dstLookup = threatIntel_->lookup(dstIp); dstLookup.matched) {
-      result.threatIntelMatches.push_back(
-          {.ip = dstIp, .feedName = dstLookup.feedName, .isSource = false});
-    }
-  }
+  populateThreatIntel(result, srcIp, dstIp);
 
   // -- Layer 3: Heuristic Rules --
   if (ruleEngine_ != nullptr) {
@@ -79,16 +85,7 @@ HybridDetectionService::evaluate(const nids::core::PredictionResult &mlResult,
   result.mlResult = mlResult;
 
   // -- Layer 2: Threat Intelligence (no heuristic rules) --
-  if (threatIntel_ != nullptr) {
-    if (auto srcLookup = threatIntel_->lookup(srcIp); srcLookup.matched) {
-      result.threatIntelMatches.push_back(
-          {.ip = srcIp, .feedName = srcLookup.feedName, .isSource = true});
-    }
-    if (auto dstLookup = threatIntel_->lookup(dstIp); dstLookup.matched) {
-      result.threatIntelMatches.push_back(
-          {.ip = dstIp, .feedName = dstLookup.feedName, .isSource = false});
-    }
-  }
+  populateThreatIntel(result, srcIp, dstIp);
 
   bool hasTi = result.hasThreatIntelMatch();
   result.combinedScore = computeCombinedScore(mlResult, hasTi, 0.0f);

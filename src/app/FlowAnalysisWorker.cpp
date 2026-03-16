@@ -23,10 +23,14 @@ FlowAnalysisWorker::~FlowAnalysisWorker() {
 
 void FlowAnalysisWorker::setHybridDetection(
     HybridDetectionService* service) noexcept {
+    assert(!running_.load(std::memory_order_relaxed) &&
+           "setHybridDetection() must be called before start()");
     hybridService_ = service;
 }
 
 void FlowAnalysisWorker::setResultCallback(ResultCallback cb) noexcept {
+    assert(!running_.load(std::memory_order_relaxed) &&
+           "setResultCallback() must be called before start()");
     resultCallback_ = std::move(cb);
 }
 
@@ -47,6 +51,7 @@ void FlowAnalysisWorker::stop() {
         return;
     }
     // Close the queue so the consumer loop exits after draining.
+    // This is idempotent — safe even if the producer already closed it.
     queue_.close();
     // jthread destructor requests stop and joins, but we want explicit control
     // over the running_ flag.

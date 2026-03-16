@@ -63,26 +63,30 @@ void printUsage(std::string_view progName) {
               << "  --help               Show this help message\n";
 }
 
-CliArgs parseArgs(int argc, char* argv[]) {
+struct ParseResult {
     CliArgs args;
+    bool showHelp = false;
+};
+
+ParseResult parseArgs(int argc, char* argv[]) {
+    ParseResult result;
     for (int i = 1; i < argc; ++i) {
         auto arg = std::string_view{argv[i]};
         if (arg == "--interface" && i + 1 < argc) {
-            args.interface = argv[++i];
+            result.args.interface = argv[++i];
         } else if (arg == "--config" && i + 1 < argc) {
-            args.configPath = argv[++i];
+            result.args.configPath = argv[++i];
         } else if (arg == "--bpf" && i + 1 < argc) {
-            args.bpfFilter = argv[++i];
+            result.args.bpfFilter = argv[++i];
         } else if (arg == "--listen" && i + 1 < argc) {
-            args.listenAddress = argv[++i];
+            result.args.listenAddress = argv[++i];
         } else if (arg == "--no-grpc") {
-            args.noGrpc = true;
+            result.args.noGrpc = true;
         } else if (arg == "--help") {
-            printUsage(argv[0]);
-            std::exit(0);
+            result.showHelp = true;
         }
     }
-    return args;
+    return result;
 }
 
 /// Run in standalone mode (no gRPC, direct capture + console output).
@@ -132,7 +136,12 @@ int runStandalone(const CliArgs& args,
 int main(int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::info);
 
-    auto args = parseArgs(argc, argv);
+    auto [args, showHelp] = parseArgs(argc, argv);
+
+    if (showHelp) {
+        printUsage(argv[0]);
+        return 0;
+    }
 
     // Standalone mode requires an interface
     if (args.noGrpc && args.interface.empty()) {

@@ -96,6 +96,13 @@ private:
         bool hasRuleMatch,
         float maxRuleSeverity) const noexcept;
 
+    /// Populate threat intelligence matches for src/dst IPs.
+    /// Shared by both evaluate() overloads to eliminate duplication (DRY).
+    void populateThreatIntel(
+        nids::core::DetectionResult& result,
+        const std::string& srcIp,
+        const std::string& dstIp) const;
+
     nids::core::IThreatIntelligence* threatIntel_ = nullptr;  // non-owning
     nids::core::IRuleEngine* ruleEngine_ = nullptr;           // non-owning
     Weights weights_;

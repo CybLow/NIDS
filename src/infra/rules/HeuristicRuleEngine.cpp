@@ -77,6 +77,19 @@ constexpr std::size_t kPortScanThreshold =
   return "Auth";
 }
 
+/// Compute packet rate (packets/sec) from a flow.
+/// Returns std::nullopt if the flow duration is zero or negative, meaning
+/// no meaningful rate can be calculated.
+[[nodiscard]] std::optional<double>
+packetRate(const nids::core::FlowInfo &flow) {
+  double durationSec = flow.flowDurationUs / 1'000'000.0;
+  if (durationSec <= 0.0) {
+    return std::nullopt;
+  }
+  auto totalPackets = flow.totalFwdPackets + flow.totalBwdPackets;
+  return static_cast<double>(totalPackets) / durationSec;
+}
+
 } // anonymous namespace
 
 std::vector<nids::core::HeuristicRuleResult>
@@ -201,24 +214,18 @@ HeuristicRuleEngine::checkIcmpFlood(const nids::core::FlowInfo &flow) {
     return std::nullopt;
   }
 
-  // Calculate packet rate
-  double durationSec = flow.flowDurationUs / 1'000'000.0;
-  if (durationSec <= 0.0) {
-    return std::nullopt;
-  }
-
-  double pktRate = static_cast<double>(totalPackets) / durationSec;
-  if (pktRate < kIcmpFloodRate) {
+  auto rate = packetRate(flow);
+  if (!rate.has_value() || *rate < kIcmpFloodRate) {
     return std::nullopt;
   }
 
   return nids::core::HeuristicRuleResult{
       .ruleName = "icmp_flood",
       .description = std::format("ICMP traffic at {} packets/sec with {} total "
-                                 "packets -- potential ICMP flood",
-                                 pktRate, totalPackets),
+                                  "packets -- potential ICMP flood",
+                                  *rate, totalPackets),
       .severity =
-          std::min(1.0f, static_cast<float>(pktRate / (kIcmpFloodRate * 10)))};
+          std::min(1.0f, static_cast<float>(*rate / (kIcmpFloodRate * 10)))};
 }
 
 std::optional<nids::core::HeuristicRuleResult>
@@ -236,13 +243,8 @@ HeuristicRuleEngine::checkBruteForce(const nids::core::FlowInfo &flow) {
     return std::nullopt;
   }
 
-  double durationSec = flow.flowDurationUs / 1'000'000.0;
-  if (durationSec <= 0.0) {
-    return std::nullopt;
-  }
-
-  double pktRate = static_cast<double>(totalPackets) / durationSec;
-  if (pktRate < kBruteForceRate) {
+  auto rate = packetRate(flow);
+  if (!rate.has_value() || *rate < kBruteForceRate) {
     return std::nullopt;
   }
 
@@ -253,9 +255,9 @@ HeuristicRuleEngine::checkBruteForce(const nids::core::FlowInfo &flow) {
       .ruleName = "brute_force",
       .description = std::format(
           "High packet rate ({} pkt/s) to {} port {} -- potential brute force",
-          pktRate, serviceName, flow.dstPort),
+          *rate, serviceName, flow.dstPort),
       .severity =
-          std::min(1.0f, static_cast<float>(pktRate / (kBruteForceRate * 10)))};
+          std::min(1.0f, static_cast<float>(*rate / (kBruteForceRate * 10)))};
 }
 
 std::optional<nids::core::HeuristicRuleResult>
@@ -265,23 +267,18 @@ HeuristicRuleEngine::checkHighPacketRate(const nids::core::FlowInfo &flow) {
     return std::nullopt;
   }
 
-  double durationSec = flow.flowDurationUs / 1'000'000.0;
-  if (durationSec <= 0.0) {
-    return std::nullopt;
-  }
-
-  double pktRate = static_cast<double>(totalPackets) / durationSec;
-  if (pktRate < kHighPacketRate) {
+  auto rate = packetRate(flow);
+  if (!rate.has_value() || *rate < kHighPacketRate) {
     return std::nullopt;
   }
 
   return nids::core::HeuristicRuleResult{
       .ruleName = "high_packet_rate",
       .description = std::format("Extremely high packet rate: {} packets/sec "
-                                 "over {} packets -- potential DoS/DDoS",
-                                 pktRate, totalPackets),
+                                  "over {} packets -- potential DoS/DDoS",
+                                  *rate, totalPackets),
       .severity =
-          std::min(1.0f, static_cast<float>(pktRate / (kHighPacketRate * 5)))};
+          std::min(1.0f, static_cast<float>(*rate / (kHighPacketRate * 5)))};
 }
 
 std::optional<nids::core::HeuristicRuleResult>

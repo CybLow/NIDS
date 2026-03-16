@@ -16,6 +16,7 @@
 #include <QColor>
 
 #include <array>
+#include <utility>
 #include <vector>
 
 namespace nids::ui {
@@ -42,7 +43,7 @@ public:
 
   /// Total number of columns (integral constant for use in array sizes).
   static constexpr int kColumnCount =
-      static_cast<int>(Column::ColumnCount); // NOLINT NOSONAR
+      static_cast<int>(std::to_underlying(Column::ColumnCount));
 
   /// Per-flow data: detection result + connection metadata.
   struct FlowRow {

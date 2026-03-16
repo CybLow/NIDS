@@ -39,10 +39,10 @@ void ConsoleAlertSink::onFlowResult(
 
     if (flagged) {
         spdlog::warn(
-            "ALERT flow #{}: {} ({}:{}) -> {} ({}:{}) verdict={} "
+            "ALERT flow #{}: {}:{} -> {}:{} verdict={} "
             "confidence={:.3f} source={}",
-            flowIndex, flow.srcIp, flow.srcIp, flow.srcPort,
-            flow.dstIp, flow.dstIp, flow.dstPort,
+            flowIndex, flow.srcIp, flow.srcPort,
+            flow.dstIp, flow.dstPort,
             attackTypeToString(result.finalVerdict),
             result.mlResult.confidence,
             detectionSourceToString(result.detectionSource));

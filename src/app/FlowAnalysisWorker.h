@@ -17,6 +17,7 @@
 #include "core/services/IPacketAnalyzer.h"
 
 #include <atomic>
+#include <cassert>
 #include <cstddef>
 #include <functional>
 #include <thread>
@@ -77,10 +78,12 @@ public:
 
     /// Set the hybrid detection service for multi-layer analysis.
     /// Pass nullptr to use ML-only mode. Must be called before start().
+    /// @pre !isRunning()
     void setHybridDetection(HybridDetectionService* service) noexcept;
 
     /// Set a callback invoked on the worker thread for each processed flow.
     /// Must be called before start().
+    /// @pre !isRunning()
     void setResultCallback(ResultCallback cb) noexcept;
 
     /// Launch the consumer thread.  No-op if already running.
