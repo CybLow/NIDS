@@ -59,6 +59,10 @@ add_executable(nids_tests
     unit/test_FeatureNormalizer.cpp
     unit/test_BoundedQueue.cpp
     unit/test_FlowAnalysisWorker.cpp
+    unit/test_LiveDetectionPipeline.cpp
+    unit/test_PipelineFactory.cpp
+    unit/test_CaptureCommands.cpp
+    unit/test_ProtocolConstants.cpp
 )
 
 target_link_libraries(nids_tests PRIVATE

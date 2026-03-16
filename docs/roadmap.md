@@ -1,6 +1,6 @@
 # NIDS Roadmap
 
-> Last updated: 2026-03-15
+> Last updated: 2026-03-16
 
 This document consolidates **all** planned work — features, cleanup, tests, docs, and
 operational tasks — into a single prioritized roadmap. Items are organized into phases
@@ -43,6 +43,17 @@ Cross-references: [ADR-004](adr/004-model-benchmark-analysis.md),
   victim on isolated `172.28.0.0/24` bridge network)
 - [x] Phase 9.4 — `--headless` flag on GUI binary (standalone capture + console
   output, no Qt dependency at runtime when headless)
+- [x] 15-step improvement plan (C++23 modernization: `[[nodiscard]]`, `std::span`,
+  `std::expected`, `std::ranges`, `FilterBuilder`, `IAnalysisRepository`,
+  `ICommand` pattern, `PacketParser` extraction, `ProtocolConstants.h`,
+  Rule of Five, DIP fixes, CMake per-layer split)
+- [x] Self-audit fixes (removed dead `InMemoryAnalysisRepository`, stale test
+  name renames, deleted unnecessary move ops on `CaptureSession`)
+- [x] Deep structural audit (12 of 14 fixes: `PipelineFactory`, merged
+  `FlowInfo`/`FlowMetadata`, `SignalHandler.h`, `AsanOptions.h`,
+  `WelfordAccumulator` extraction, `evaluate()` 2-arg rewrite,
+  protocol-to-string deduplication, magic number cleanup,
+  `BoundedQueue` → `core/concurrent/`, `PacketFilter` → `core/model/`)
 
 ---
 
@@ -419,10 +430,10 @@ These items are documented for completeness but are not planned for near-term wo
 | Concept-drift detection / auto-retraining | ADR-004, ADR-005 | Requires monitoring infrastructure |
 | NSIS Windows installer | AGENTS.md | CPack configuration for Windows |
 | `IProtocolParser` strategy interface | AGENTS.md §5.1 | For pluggable protocol parsers |
-| `FilterBuilder` builder pattern | AGENTS.md §5.5 | For complex filter construction |
-| `IAnalysisRepository` repository pattern | AGENTS.md §5.6 | Abstract analysis result storage |
-| Command pattern for capture operations | AGENTS.md §5.7 | Undo/queue/log capture operations |
-| `std::expected<T, E>` error handling | AGENTS.md §6.1 | Replace bool returns with rich errors |
+| ~~`FilterBuilder` builder pattern~~ | ~~AGENTS.md §5.5~~ | **Done** — `FilterBuilder` in `core/model/PacketFilter.h` |
+| ~~`IAnalysisRepository` repository pattern~~ | ~~AGENTS.md §5.6~~ | **Done** — interface in `core/services/IAnalysisRepository.h` |
+| ~~Command pattern for capture operations~~ | ~~AGENTS.md §5.7~~ | **Done** — `ICommand` + `CaptureCommands` in `app/commands/` |
+| ~~`std::expected<T, E>` error handling~~ | ~~AGENTS.md §6.1~~ | **Done** — `loadModel()`, `loadMetadata()`, `initialize()` return `std::expected` |
 | ~~`ServiceRegistry` optimize to `unordered_map`~~ | ~~`ServiceRegistry.h:23`~~ | **Done** — already uses `std::unordered_map` |
 
 ---
@@ -431,9 +442,9 @@ These items are documented for completeness but are not planned for near-term wo
 
 For implementation, the recommended order is:
 
-1. **Phase 6** — Cleanup + tests + config (foundation for everything else)
-2. **Phase 7** — UI for hybrid results (makes the existing work visible to users)
-3. **Phase 8** — Real-time flow extraction (biggest architectural improvement)
-4. **Phase 9** — gRPC server/client (enables headless deployment)
+1. ~~**Phase 6** — Cleanup + tests + config~~ [DONE]
+2. ~~**Phase 7** — UI for hybrid results~~ [DONE]
+3. ~~**Phase 8** — Real-time flow extraction~~ [DONE]
+4. ~~**Phase 9** — gRPC server/client~~ [DONE]
 5. **Phase 10** — Model improvements (iterative, can be done in parallel with others)
 6. **Phase 11** — Documentation polish (ongoing)
