@@ -18,49 +18,49 @@ FilterPanel::FilterPanel(const nids::core::ServiceRegistry &registry,
 }
 
 void FilterPanel::setupLayout() {
-  auto *layout = new QGridLayout(this);
+  auto *layout = new QGridLayout(this); // NOSONAR
 
   auto makeLabel = [this](const QString &text) {
-    return new QLabel(text, this);
+    return new QLabel(text, this); // NOSONAR
   };
 
   layout->addWidget(makeLabel("Network Card"), 0, 0);
-  networkCardCombo_ = new QComboBox(this);
+  networkCardCombo_ = new QComboBox(this); // NOSONAR
   layout->addWidget(networkCardCombo_, 1, 0);
 
   layout->addWidget(makeLabel("Protocol"), 0, 1);
-  protocolCombo_ = new QComboBox(this);
+  protocolCombo_ = new QComboBox(this); // NOSONAR
   layout->addWidget(protocolCombo_, 1, 1);
 
   layout->addWidget(makeLabel("Application"), 0, 2);
-  applicationCombo_ = new QComboBox(this);
+  applicationCombo_ = new QComboBox(this); // NOSONAR
   layout->addWidget(applicationCombo_, 1, 2);
 
   layout->addWidget(makeLabel("IP Source"), 0, 3);
-  sourceIpEdit_ = new QLineEdit(this);
+  sourceIpEdit_ = new QLineEdit(this); // NOSONAR
   sourceIpEdit_->setMinimumSize(100, 20);
   layout->addWidget(sourceIpEdit_, 1, 3);
 
   layout->addWidget(makeLabel("Port Source"), 0, 4);
-  sourcePortEdit_ = new QLineEdit(this);
+  sourcePortEdit_ = new QLineEdit(this); // NOSONAR
   sourcePortEdit_->setMinimumSize(100, 20);
   layout->addWidget(sourcePortEdit_, 1, 4);
 
   layout->addWidget(makeLabel("IP Destination"), 0, 5);
-  destIpEdit_ = new QLineEdit(this);
+  destIpEdit_ = new QLineEdit(this); // NOSONAR
   destIpEdit_->setMinimumSize(100, 20);
   layout->addWidget(destIpEdit_, 1, 5);
 
   layout->addWidget(makeLabel("Port Destination"), 0, 6);
-  destPortEdit_ = new QLineEdit(this);
+  destPortEdit_ = new QLineEdit(this); // NOSONAR
   destPortEdit_->setMinimumSize(100, 20);
   layout->addWidget(destPortEdit_, 1, 6);
 
   layout->addWidget(makeLabel("Custom Filter"), 2, 0);
-  customFilterEdit_ = new QLineEdit(this);
+  customFilterEdit_ = new QLineEdit(this); // NOSONAR
   layout->addWidget(customFilterEdit_, 2, 1, 1, 6);
 
-  startStopButton_ = new QPushButton("Start", this);
+  startStopButton_ = new QPushButton("Start", this); // NOSONAR
   startStopButton_->setEnabled(false);
   layout->addWidget(startStopButton_, 2, 7);
 
@@ -68,8 +68,8 @@ void FilterPanel::setupLayout() {
       R"(^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$)");
   portRegex_ = QRegularExpression(
       R"(^([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$)");
-  ipValidator_ = new QRegularExpressionValidator(ipRegex_, this);
-  portValidator_ = new QRegularExpressionValidator(portRegex_, this);
+  ipValidator_ = new QRegularExpressionValidator(ipRegex_, this); // NOSONAR
+  portValidator_ = new QRegularExpressionValidator(portRegex_, this); // NOSONAR
 
   connect(startStopButton_, &QPushButton::clicked, this,
           &FilterPanel::startStopClicked);

@@ -66,8 +66,8 @@ std::string ServiceRegistry::getServiceByPort(int port) const {
   return "Unknown";
 }
 
-std::set<std::string, std::less<>> ServiceRegistry::getUniqueServices() const {
-  std::set<std::string, std::less<>> services;
+std::unordered_set<std::string> ServiceRegistry::getUniqueServices() const {
+  std::unordered_set<std::string> services;
   for (const auto &[port, name] : portToService_) {
     services.insert(name);
   }

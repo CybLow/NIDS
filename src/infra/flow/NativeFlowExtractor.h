@@ -76,7 +76,7 @@ public:
    * processing.  In future live mode (Phase 8.6), an external timer can call
    * this to proactively expire idle flows.
    */
-  std::size_t sweepExpiredFlows(std::int64_t nowUs);
+  [[nodiscard]] std::size_t sweepExpiredFlows(std::int64_t nowUs);
 
   [[nodiscard]] std::vector<std::vector<float>>
   extractFeatures(const std::string &pcapPath) override;

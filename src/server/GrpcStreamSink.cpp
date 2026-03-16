@@ -71,7 +71,7 @@ void GrpcStreamSink::populateDetectionEvent(
         auto* match = event.add_rule_matches();
         match->set_rule_name(rule.ruleName);
         match->set_description(rule.description);
-        match->set_severity(static_cast<std::uint32_t>(rule.severity));
+        match->set_severity(rule.severity);
     }
 
     // Combined result

@@ -4,9 +4,8 @@
 #include <QListWidget>
 #include <QPushButton>
 
-#include <functional>
-#include <set>
 #include <string>
+#include <unordered_set>
 
 namespace nids::ui {
 
@@ -16,7 +15,7 @@ class ServiceDialog : public QDialog {
 
 public:
     /** Construct with the set of available service names. */
-    explicit ServiceDialog(const std::set<std::string, std::less<>>& services,
+    explicit ServiceDialog(const std::unordered_set<std::string>& services,
                            QWidget* parent = nullptr);
 
     /** Return the service name selected by the user, or empty if cancelled. */

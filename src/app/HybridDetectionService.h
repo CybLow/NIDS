@@ -20,7 +20,6 @@
 #include "core/services/IRuleEngine.h"
 
 #include <string>
-#include <memory>
 
 namespace nids::app {
 

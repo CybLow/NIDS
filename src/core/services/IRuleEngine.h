@@ -9,21 +9,18 @@
 /// Defined in core/ so that app/ layer code can depend on this interface
 /// without pulling in infrastructure details (Clean Architecture).
 
+#include "core/model/RuleMatch.h"
 #include "core/services/IFlowExtractor.h"
 
-#include <string>
 #include <string_view>
 #include <vector>
 #include <cstdint>
 
 namespace nids::core {
 
-/// Result of evaluating a single heuristic rule.
-struct HeuristicRuleResult {
-    std::string ruleName;         ///< Machine-readable ID (e.g., "suspicious_port")
-    std::string description;      ///< Human-readable explanation
-    float severity = 0.0f;       ///< Severity [0.0, 1.0]
-};
+/// Backward-compatible alias.  IRuleEngine returns RuleMatch directly;
+/// the old "HeuristicRuleResult" name is kept for existing consumers.
+using HeuristicRuleResult = RuleMatch;
 
 /** Abstract interface for heuristic rule-based detection. */
 class IRuleEngine {

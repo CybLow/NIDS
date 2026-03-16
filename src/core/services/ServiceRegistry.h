@@ -1,10 +1,9 @@
 #pragma once
 
 #include <cstdint>
-#include <functional>
 #include <string>
 #include <unordered_map>
-#include <set>
+#include <unordered_set>
 
 namespace nids::core {
 
@@ -21,7 +20,7 @@ public:
      */
     [[nodiscard]] std::string getServiceByPort(int port) const;
     /** Return the set of all distinct service names in the registry. */
-    [[nodiscard]] std::set<std::string, std::less<>> getUniqueServices() const;
+    [[nodiscard]] std::unordered_set<std::string> getUniqueServices() const;
 
     /**
      * Resolve the application-layer service for a packet given filter context.

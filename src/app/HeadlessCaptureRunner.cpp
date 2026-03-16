@@ -10,6 +10,11 @@
 
 namespace nids::app {
 
+namespace {
+/// Poll interval for the shutdown-requested flag.
+constexpr auto kShutdownPollInterval = std::chrono::milliseconds(200);
+} // namespace
+
 int runHeadlessCapture(const HeadlessRunnerConfig& config) {
     // -- Session + pipeline --
     nids::core::CaptureSession session;
@@ -37,7 +42,7 @@ int runHeadlessCapture(const HeadlessRunnerConfig& config) {
 
     // -- Wait for shutdown --
     while (!config.shutdownRequested()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(kShutdownPollInterval);
     }
 
     // -- Stop --

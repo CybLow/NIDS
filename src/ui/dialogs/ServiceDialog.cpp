@@ -5,7 +5,7 @@
 
 namespace nids::ui {
 
-ServiceDialog::ServiceDialog(const std::set<std::string, std::less<>> &services,
+ServiceDialog::ServiceDialog(const std::unordered_set<std::string> &services,
                              QWidget *parent)
     : QDialog(parent), listWidget_(new QListWidget(this)) // NOSONAR
       ,
@@ -16,6 +16,7 @@ ServiceDialog::ServiceDialog(const std::set<std::string, std::less<>> &services,
   for (const auto &service : services) {
     listWidget_->addItem(QString::fromStdString(service));
   }
+  listWidget_->sortItems();
 
   auto *layout = new QVBoxLayout(this);   // NOSONAR
   auto *buttonLayout = new QHBoxLayout(); // NOSONAR

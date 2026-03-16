@@ -3,9 +3,14 @@
 #include <spdlog/spdlog.h>
 
 #include <chrono>
-#include <sstream>
+#include <format>
 
 namespace nids::server {
+
+namespace {
+/// Capacity of the per-client event queue for gRPC detection streaming.
+constexpr std::size_t kStreamEventQueueCapacity = 1024;
+} // namespace
 
 NidsServiceImpl::NidsServiceImpl(
     nids::core::IPacketCapture& capture,
@@ -85,9 +90,7 @@ grpc::Status NidsServiceImpl::StartCapture(
     auto now = std::chrono::system_clock::now();
     auto epoch = now.time_since_epoch();
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(epoch).count();
-    std::ostringstream oss;
-    oss << "session-" << ms;
-    sessionId_ = oss.str();
+    sessionId_ = std::format("session-{}", ms);
     currentInterface_ = iface;
 
     // Wire raw packets into pipeline
@@ -155,7 +158,7 @@ grpc::Status NidsServiceImpl::StreamDetections(
 
     // Create a per-client event queue and sink
     auto eventQueue =
-        std::make_shared<GrpcStreamSink::EventQueue>(1024);
+        std::make_shared<GrpcStreamSink::EventQueue>(kStreamEventQueueCapacity);
     auto sink = std::make_unique<GrpcStreamSink>(eventQueue, request->filter());
 
     // Register sink with service (will be added to pipeline)

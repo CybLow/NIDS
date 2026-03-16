@@ -48,12 +48,7 @@ nids::core::DetectionResult HybridDetectionService::evaluate(
 
   // -- Layer 3: Heuristic Rules --
   if (ruleEngine_ != nullptr) {
-    auto ruleResults = ruleEngine_->evaluate(flowInfo);
-    for (auto &r : ruleResults) {
-      result.ruleMatches.push_back({.ruleName = std::move(r.ruleName),
-                                    .description = std::move(r.description),
-                                    .severity = r.severity});
-    }
+    result.ruleMatches = ruleEngine_->evaluate(flowInfo);
   }
 
   // -- Combine signals --

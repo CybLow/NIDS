@@ -176,7 +176,7 @@ message ThreatIntelMatch {
 message RuleMatch {
     string rule_name = 1;
     string description = 2;
-    uint32 severity = 3;
+    float severity = 3;
 }
 
 // --- Batch analysis ---

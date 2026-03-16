@@ -101,7 +101,7 @@ NativeFlowExtractor::extractFeatures(const std::string &pcapPath) {
 
     // Periodic sweep: expire idle flows every kBatchSweepIntervalUs.
     if (tsUs - lastSweepTimeUs_ >= kBatchSweepIntervalUs) {
-      sweepExpiredFlows(tsUs);
+      std::ignore = sweepExpiredFlows(tsUs);
       lastSweepTimeUs_ = tsUs;
     }
   }
@@ -141,7 +141,7 @@ void NativeFlowExtractor::processPacket(const std::uint8_t *data,
   // Periodic sweep: expire idle flows every kLiveSweepIntervalUs.
   if (timestampUs - lastSweepTimeUs_ >= kLiveSweepIntervalUs) {
     ++diag_.sweepCount;
-    sweepExpiredFlows(timestampUs);
+    std::ignore = sweepExpiredFlows(timestampUs);
     lastSweepTimeUs_ = timestampUs;
   }
 }

@@ -13,6 +13,10 @@ namespace nids::infra {
 
 namespace {
 
+/// Minimum absolute std-dev value; below this, std is replaced with 1.0
+/// to prevent division-by-zero during z-score normalization.
+constexpr float kMinStdDevEpsilon = 1e-8f;
+
 /// Validate the JSON structure and extract the normalization section.
 /// Returns std::nullopt on any validation failure (logs the error).
 [[nodiscard]] std::optional<nlohmann::json> extractNormalizationSection(
@@ -81,7 +85,7 @@ std::expected<void, std::string> FeatureNormalizer::loadMetadata(
             // The Python preprocessing already replaces these with 1.0,
             // but we add an extra safety net here.
             auto stdVal = static_cast<float>(stdsJson[i]);
-            stds_[i] = (std::abs(stdVal) < 1e-8f) ? 1.0f : stdVal;
+            stds_[i] = (std::abs(stdVal) < kMinStdDevEpsilon) ? 1.0f : stdVal;
         }
 
         clipValue_ = norm["clip_value"].get<float>();

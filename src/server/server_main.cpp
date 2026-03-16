@@ -37,6 +37,9 @@
 
 namespace {
 
+/// Poll interval for the shutdown-requested flag.
+constexpr auto kShutdownPollInterval = std::chrono::milliseconds(200);
+
 struct CliArgs {
     std::filesystem::path configPath;
     std::string interface;
@@ -191,7 +194,6 @@ int main(int argc, char* argv[]) {
     // Create and start gRPC server
     nids::server::ServerConfig serverConfig{
         .listenAddress = args.listenAddress,
-        .maxConcurrentSessions = 4,
     };
     nids::server::NidsServer grpcServer(serverConfig);
     grpcServer.setService(std::move(service));
@@ -202,7 +204,7 @@ int main(int argc, char* argv[]) {
 
     // Block until shutdown signal
     while (!nids::infra::platform::gShutdownRequested.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(kShutdownPollInterval);
     }
 
     spdlog::info("Shutdown requested — stopping gRPC server");
