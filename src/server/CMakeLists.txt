@@ -1,5 +1,7 @@
 # ── Server library ──────────────────────────────────────────────
 add_library(nids-server-lib STATIC
+    GrpcStreamSink.cpp
+    NidsServiceImpl.cpp
     NidsServer.cpp
 )
 target_link_libraries(nids-server-lib PUBLIC

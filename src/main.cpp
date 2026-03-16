@@ -1,11 +1,10 @@
 #include "app/AnalysisService.h"
 #include "app/CaptureController.h"
+#include "app/HeadlessCaptureRunner.h"
 #include "app/LiveDetectionPipeline.h"
 #include "app/PipelineFactory.h"
-#include "core/model/CaptureSession.h"
 #include "core/model/DetectionResult.h"
 #include "core/services/Configuration.h"
-#include "core/services/IFlowExtractor.h"
 #include "infra/capture/PcapCapture.h"
 #include "infra/config/ConfigLoader.h"
 #include "infra/output/ConsoleAlertSink.h"
@@ -22,7 +21,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <thread>
 
 namespace {
 
@@ -92,40 +90,24 @@ int runHeadless(const CliArgs& args,
         return 1;
     }
 
-    // -- Pipeline --
-    nids::core::CaptureSession session;
-    auto pipeline = std::make_unique<nids::app::LiveDetectionPipeline>(
-        *ml.flowExtractor, *ml.analyzer, *ml.normalizer, session);
-    pipeline->setHybridDetection(detection.hybridService.get());
-
+    // -- Console output sink --
     auto consoleSink = std::make_unique<nids::infra::ConsoleAlertSink>(
         nids::infra::ConsoleFilter::Flagged);
-    pipeline->addOutputSink(consoleSink.get());
 
-    capture->setRawPacketCallback(
-        [&pipeline](const std::uint8_t* data, std::size_t length,
-                    std::int64_t timestampUs) {
-            pipeline->feedPacket(data, length, timestampUs);
-        });
-
-    spdlog::info("Starting headless capture on '{}' (Ctrl+C to stop)",
-                 args.interface);
-    pipeline->start();
-    capture->startCapture("");
-
-    while (!nids::infra::platform::gShutdownRequested.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    }
-
-    spdlog::info("Shutdown requested -- stopping capture");
-    const auto flowsDetected = pipeline->flowsDetected();
-    const auto droppedFlows = pipeline->droppedFlows();
-    capture->stopCapture();
-    pipeline->stop();
-
-    spdlog::info("Session complete: {} flows detected, {} dropped",
-                 flowsDetected, droppedFlows);
-    return 0;
+    // -- Run the headless capture loop --
+    nids::app::HeadlessRunnerConfig runnerConfig{
+        .interfaceName = args.interface,
+        .capture = capture.get(),
+        .flowExtractor = ml.flowExtractor.get(),
+        .analyzer = ml.analyzer.get(),
+        .normalizer = ml.normalizer.get(),
+        .hybridService = detection.hybridService.get(),
+        .sinks = {consoleSink.get()},
+        .shutdownRequested = [] {
+            return nids::infra::platform::gShutdownRequested.load();
+        },
+    };
+    return nids::app::runHeadlessCapture(runnerConfig);
 }
 
 /// Run in GUI mode: Qt application with MainWindow.

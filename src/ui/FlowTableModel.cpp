@@ -1,6 +1,5 @@
 #include "ui/FlowTableModel.h"
-#include "core/model/AttackType.h"
-#include "core/model/ProtocolConstants.h"
+#include "ui/QtStringConversions.h"
 
 #include <algorithm>
 #include <cmath>
@@ -38,17 +37,9 @@ constexpr std::array<int, 5> kRightAlignedColumns = {{
     std::to_underlying(FlowTableModel::Column::CombinedScore),
 }};
 
-/// Helper to format an attackTypeToString view as QString.
-inline QString attackTypeQString(nids::core::AttackType type) {
-  auto sv = nids::core::attackTypeToString(type);
-  return QString::fromUtf8(sv.data(), static_cast<int>(sv.size()));
-}
-
-/// Helper to format a detectionSourceToString view as QString.
-inline QString detectionSourceQString(nids::core::DetectionSource src) {
-  auto sv = nids::core::detectionSourceToString(src);
-  return QString::fromUtf8(sv.data(), static_cast<int>(sv.size()));
-}
+// Use shared helpers from QtStringConversions.h
+using nids::ui::attackTypeQString;
+using nids::ui::detectionSourceQString;
 
 /// Per-column display formatter.  Signature: (row index, FlowRow) -> QVariant.
 using FlowRow = FlowTableModel::FlowRow;
@@ -69,7 +60,7 @@ QVariant fmtDstPort(int /*row*/, const FlowRow &r) {
 }
 
 QVariant fmtProtocol(int /*row*/, const FlowRow &r) {
-  return FlowTableModel::protocolToString(r.metadata.protocol);
+  return nids::ui::protocolQString(r.metadata.protocol);
 }
 QVariant fmtVerdict(int /*row*/, const FlowRow &r) {
   return attackTypeQString(r.result.finalVerdict);
@@ -225,11 +216,7 @@ QColor FlowTableModel::severityColor(float combinedScore,
 }
 
 QString FlowTableModel::protocolToString(std::uint8_t protocol) noexcept {
-  auto name = nids::core::protocolToName(protocol);
-  if (name != "Other") {
-    return QString::fromUtf8(name.data(), static_cast<int>(name.size()));
-  }
-  return QString("Other (%1)").arg(protocol);
+  return nids::ui::protocolQString(protocol);
 }
 
 } // namespace nids::ui

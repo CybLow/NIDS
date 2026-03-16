@@ -15,13 +15,9 @@
 
 #include "server/NidsServer.h"
 
-#include "app/LiveDetectionPipeline.h"
+#include "app/HeadlessCaptureRunner.h"
 #include "app/PipelineFactory.h"
-#include "core/model/CaptureSession.h"
-#include "core/model/DetectionResult.h"
 #include "core/services/Configuration.h"
-#include "core/services/IFlowExtractor.h"
-#include "core/services/IPacketCapture.h"
 #include "infra/capture/PcapCapture.h"
 #include "infra/config/ConfigLoader.h"
 #include "infra/output/ConsoleAlertSink.h"
@@ -97,38 +93,22 @@ int runStandalone(const CliArgs& args,
                   nids::core::IFeatureNormalizer& normalizer,
                   nids::app::HybridDetectionService& hybridService) {
 
-    nids::core::CaptureSession session;
-    auto pipeline = std::make_unique<nids::app::LiveDetectionPipeline>(
-        flowExtractor, analyzer, normalizer, session);
-    pipeline->setHybridDetection(&hybridService);
-
     auto consoleSink = std::make_unique<nids::infra::ConsoleAlertSink>(
         nids::infra::ConsoleFilter::Flagged);
-    pipeline->addOutputSink(consoleSink.get());
 
-    capture.setRawPacketCallback(
-        [&pipeline](const std::uint8_t* data, std::size_t length,
-                    std::int64_t timestampUs) {
-            pipeline->feedPacket(data, length, timestampUs);
-        });
-
-    spdlog::info("Starting capture on '{}' (Ctrl+C to stop)", args.interface);
-    pipeline->start();
-    capture.startCapture("");
-
-    while (!nids::infra::platform::gShutdownRequested.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    }
-
-    spdlog::info("Shutdown requested — stopping capture");
-    const auto flowsDetected = pipeline->flowsDetected();
-    const auto droppedFlows = pipeline->droppedFlows();
-    capture.stopCapture();
-    pipeline->stop();
-
-    spdlog::info("Session complete: {} flows detected, {} dropped",
-                 flowsDetected, droppedFlows);
-    return 0;
+    nids::app::HeadlessRunnerConfig config{
+        .interfaceName = args.interface,
+        .capture = &capture,
+        .flowExtractor = &flowExtractor,
+        .analyzer = &analyzer,
+        .normalizer = &normalizer,
+        .hybridService = &hybridService,
+        .sinks = {consoleSink.get()},
+        .shutdownRequested = [] {
+            return nids::infra::platform::gShutdownRequested.load();
+        },
+    };
+    return nids::app::runHeadlessCapture(config);
 }
 
 } // anonymous namespace

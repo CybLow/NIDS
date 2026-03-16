@@ -1,6 +1,5 @@
 #include "ui/DetectionDetailWidget.h"
-#include "core/model/AttackType.h"
-#include "core/model/ProtocolConstants.h"
+#include "ui/QtStringConversions.h"
 
 #include <QFont>
 #include <QHeaderView>
@@ -115,11 +114,8 @@ void DetectionDetailWidget::setResult(const nids::core::DetectionResult &result,
                                .arg(QString::fromStdString(metadata->dstIp))
                                .arg(metadata->dstPort));
 
-    auto protoName = nids::core::protocolToName(metadata->protocol);
-    QString protoStr = (protoName != "Other")
-        ? QString::fromUtf8(protoName.data(), static_cast<int>(protoName.size()))
-        : QString("Other (%1)").arg(metadata->protocol);
-    flowProtocolLabel_->setText(QString("Protocol: %1").arg(protoStr));
+    flowProtocolLabel_->setText(
+        QString("Protocol: %1").arg(protocolQString(metadata->protocol)));
 
     double durationSec = metadata->flowDurationUs / 1'000'000.0;
     flowDurationLabel_->setText(
@@ -132,27 +128,20 @@ void DetectionDetailWidget::setResult(const nids::core::DetectionResult &result,
   }
 
   // -- Combined verdict --
-  auto verdictStr = nids::core::attackTypeToString(result.finalVerdict);
   verdictLabel_->setText(
-      QString("Verdict: %1")
-          .arg(QString::fromUtf8(verdictStr.data(),
-                                 static_cast<int>(verdictStr.size()))));
+      QString("Verdict: %1").arg(attackTypeQString(result.finalVerdict)));
   combinedScoreLabel_->setText(
       QString("Combined Score: %1")
           .arg(static_cast<double>(result.combinedScore), 0, 'f',
                kScorePrecision));
-  auto sourceStr = nids::core::detectionSourceToString(result.detectionSource);
   detectionSourceLabel_->setText(
       QString("Detection Source: %1")
-          .arg(QString::fromUtf8(sourceStr.data(),
-                                 static_cast<int>(sourceStr.size()))));
+          .arg(detectionSourceQString(result.detectionSource)));
 
   // -- ML classifier --
-  auto mlStr = nids::core::attackTypeToString(result.mlResult.classification);
   mlClassLabel_->setText(
       QString("Classification: %1")
-          .arg(
-              QString::fromUtf8(mlStr.data(), static_cast<int>(mlStr.size()))));
+          .arg(attackTypeQString(result.mlResult.classification)));
   mlConfidenceLabel_->setText(
       QString("Confidence: %1%")
           .arg(static_cast<double>(result.mlResult.confidence) *
@@ -161,10 +150,8 @@ void DetectionDetailWidget::setResult(const nids::core::DetectionResult &result,
 
   // Populate probability distribution table
   for (int i = 0; i < nids::core::kAttackTypeCount; ++i) {
-    auto typeName =
-        nids::core::attackTypeToString(nids::core::attackTypeFromIndex(i));
     auto *nameItem = new QTableWidgetItem( // NOSONAR
-        QString::fromUtf8(typeName.data(), static_cast<int>(typeName.size())));
+        attackTypeQString(nids::core::attackTypeFromIndex(i)));
     probabilityTable_->setItem(i, 0, nameItem);
 
     auto prob = static_cast<double>(
@@ -221,12 +208,10 @@ void DetectionDetailWidget::clearResult() {
   mlConfidenceLabel_->setText("Confidence: —");
 
   for (int i = 0; i < nids::core::kAttackTypeCount; ++i) {
-    auto typeName =
-        nids::core::attackTypeToString(nids::core::attackTypeFromIndex(i));
     probabilityTable_->setItem(
         i, 0,
-        new QTableWidgetItem(QString::fromUtf8( // NOSONAR
-            typeName.data(), static_cast<int>(typeName.size()))));
+        new QTableWidgetItem( // NOSONAR
+            attackTypeQString(nids::core::attackTypeFromIndex(i))));
     auto *probItem = new QTableWidgetItem("—"); // NOSONAR
     probItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     probabilityTable_->setItem(i, 1, probItem);
