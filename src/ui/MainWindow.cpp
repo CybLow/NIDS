@@ -44,6 +44,12 @@ MainWindow::MainWindow(
 }
 
 MainWindow::~MainWindow() {
+  // Join any in-flight analysis thread before destroying the window.
+  // std::jthread destructor requests stop + joins, but we need to ensure
+  // the analysis service and session are still alive during the join.
+  if (analysisThread_.joinable()) {
+    analysisThread_.join();
+  }
   if (controller_ && controller_->isCapturing()) {
     controller_->stopCapture();
   }
@@ -56,7 +62,7 @@ void MainWindow::setupUi() {
   filterPanel_->setInterfaces(controller_->listInterfaces());
 
   // -- Packets tab --
-  tableModel_ = new PacketTableModel(this); // NOSONAR
+  tableModel_ = new PacketTableModel(&serviceRegistry_, this); // NOSONAR
   packetTable_ = new QTableView();          // NOSONAR
   packetTable_->setModel(tableModel_);
   packetTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -254,15 +260,19 @@ void MainWindow::toggleCapture() {
 }
 
 void MainWindow::runAnalysis() {
+  // Join any previous analysis thread before launching a new one.
+  if (analysisThread_.joinable()) {
+    analysisThread_.join();
+  }
   auto dumpFile = nids::core::Configuration::instance().defaultDumpFile();
-  // Run analysis on a detached std::jthread.  AnalysisService callbacks
+  // Run analysis on a stored std::jthread.  AnalysisService callbacks
   // are already wired to marshal results back to the main thread via
   // QMetaObject::invokeMethod (see wireAnalysisCallbacks()).
   // CaptureSession is mutex-protected, so the reference is safe to use
   // from the worker thread while the UI thread reads packet data.
-  std::jthread([this, dumpFile]() {
+  analysisThread_ = std::jthread([this, dumpFile]() {
     analysisService_->analyzeCapture(dumpFile, controller_->session());
-  }).detach();
+  });
 }
 
 void MainWindow::onPacketReceived(const nids::core::PacketInfo &info) {

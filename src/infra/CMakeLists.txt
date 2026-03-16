@@ -3,6 +3,7 @@
 
 add_library(nids_infra STATIC
     capture/PcapCapture.cpp
+    capture/PcapCaptureWorker.cpp
     analysis/OnnxAnalyzer.cpp
     analysis/AnalyzerFactory.cpp
     analysis/FeatureNormalizer.cpp

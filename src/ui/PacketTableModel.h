@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/model/PacketInfo.h"
+#include "core/services/ServiceRegistry.h"
 
 #include <QAbstractTableModel>
 
@@ -10,7 +11,11 @@
 
 namespace nids::ui {
 
-/** Table model for displaying captured packets in a QTableView. */
+/** Table model for displaying captured packets in a QTableView.
+ *
+ *  Optionally resolves the "Application" column from destination port
+ *  using a ServiceRegistry reference (display-time resolution).
+ */
 class PacketTableModel : public QAbstractTableModel {
   Q_OBJECT
 
@@ -31,8 +36,15 @@ public:
   /// Total number of columns (integral constant for use in array sizes).
   static constexpr int kColumnCount = std::to_underlying(Column::ColumnCount);
 
-  /** Construct an empty packet table model. */
-  explicit PacketTableModel(QObject *parent = nullptr);
+  /**
+   * Construct a packet table model with an optional ServiceRegistry for
+   * application-layer resolution.
+   * @param registry  Pointer to a ServiceRegistry (may be nullptr to skip).
+   *                  Lifetime must exceed the model.
+   * @param parent    Qt parent object.
+   */
+  explicit PacketTableModel(const nids::core::ServiceRegistry *registry = nullptr,
+                            QObject *parent = nullptr);
 
   [[nodiscard]] int
   rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -59,10 +71,11 @@ private:
   };
 
   /// Return display data for a single cell.
-  [[nodiscard]] static QVariant displayData(const QModelIndex &index,
-                                            const Row &row);
+  [[nodiscard]] QVariant displayData(const QModelIndex &index,
+                                     const Row &row) const;
 
   std::vector<Row> rows_;
+  const nids::core::ServiceRegistry *serviceRegistry_ = nullptr;
 };
 
 } // namespace nids::ui

@@ -58,6 +58,8 @@ public:
                 (const std::uint8_t*, std::size_t, std::int64_t), (override));
     MOCK_METHOD(void, finalizeAllFlows, (), (override));
     MOCK_METHOD(void, reset, (), (override));
+    void setFlowTimeout(std::int64_t /*timeoutUs*/) override {}
+    void setMaxFlowDuration(std::int64_t /*durationUs*/) override {}
 
     // Capture the callback so we can fire it in tests.
     void captureCallback() {

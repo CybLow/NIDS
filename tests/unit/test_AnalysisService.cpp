@@ -44,6 +44,8 @@ public:
                      std::int64_t /*timestampUs*/) override {}
   void finalizeAllFlows() override {}
   void reset() override {}
+  void setFlowTimeout(std::int64_t /*timeoutUs*/) override {}
+  void setMaxFlowDuration(std::int64_t /*durationUs*/) override {}
 
   MOCK_METHOD(std::vector<std::vector<float>>, extractFeatures,
               (const std::string &), (override));

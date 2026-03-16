@@ -100,6 +100,9 @@ private:
   QSystemTrayIcon *trayIcon_ = nullptr;
   QAction *notificationAction_ = nullptr;
   bool notificationEnabled_ = true;
+
+  /// Analysis worker thread (stored to avoid detached jthread capturing `this`).
+  std::jthread analysisThread_;
 };
 
 } // namespace nids::ui

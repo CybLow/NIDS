@@ -21,8 +21,9 @@ constexpr std::array<const char *, PacketTableModel::kColumnCount>
 
 } // namespace
 
-PacketTableModel::PacketTableModel(QObject *parent)
-    : QAbstractTableModel(parent) {}
+PacketTableModel::PacketTableModel(const nids::core::ServiceRegistry *registry,
+                                   QObject *parent)
+    : QAbstractTableModel(parent), serviceRegistry_(registry) {}
 
 int PacketTableModel::rowCount(const QModelIndex &parent) const {
   if (parent.isValid())
@@ -47,7 +48,7 @@ QVariant PacketTableModel::data(const QModelIndex &index, int role) const {
 }
 
 QVariant PacketTableModel::displayData(const QModelIndex &index,
-                                       const Row &row) {
+                                       const Row &row) const {
   const auto &pkt = row.packet;
 
   using enum Column;
@@ -59,7 +60,17 @@ QVariant PacketTableModel::displayData(const QModelIndex &index,
   case Protocol:
     return QString::fromStdString(pkt.protocol);
   case Application:
-    return QString::fromStdString(pkt.application);
+    // Resolve application from ServiceRegistry at display time.
+    // The capture layer no longer populates this field — it's a
+    // UI/display concern (service name from well-known port).
+    if (!pkt.application.empty()) {
+      return QString::fromStdString(pkt.application);
+    }
+    if (serviceRegistry_) {
+      return QString::fromStdString(
+          serviceRegistry_->resolveApplication({}, {}, pkt.portDestination));
+    }
+    return QStringLiteral("Unknown");
   case IpSource:
     return QString::fromStdString(pkt.ipSource);
   case PortSource:

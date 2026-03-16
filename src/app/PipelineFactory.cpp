@@ -78,11 +78,8 @@ MlServices PipelineFactory::createLiveMlServices(
     auto services = createMlServices(config);
 
     // Override flow extractor timeouts for live capture.
-    // Safe downcast: createMlServices always creates NativeFlowExtractor.
-    auto* extractor = static_cast<nids::infra::NativeFlowExtractor*>(
-        services.flowExtractor.get());
-    extractor->setFlowTimeout(config.liveFlowTimeoutUs());
-    extractor->setMaxFlowDuration(config.maxFlowDurationUs());
+    services.flowExtractor->setFlowTimeout(config.liveFlowTimeoutUs());
+    services.flowExtractor->setMaxFlowDuration(config.maxFlowDurationUs());
 
     return services;
 }
