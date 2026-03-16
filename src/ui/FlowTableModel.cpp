@@ -1,5 +1,6 @@
 #include "ui/FlowTableModel.h"
 #include "core/model/AttackType.h"
+#include "core/model/ProtocolConstants.h"
 
 #include <algorithm>
 #include <cmath>
@@ -224,16 +225,11 @@ QColor FlowTableModel::severityColor(float combinedScore,
 }
 
 QString FlowTableModel::protocolToString(std::uint8_t protocol) noexcept {
-  switch (protocol) {
-  case 6:
-    return "TCP";
-  case 17:
-    return "UDP";
-  case 1:
-    return "ICMP";
-  default:
-    return QString("Other (%1)").arg(protocol);
+  auto name = nids::core::protocolToName(protocol);
+  if (name != "Other") {
+    return QString::fromUtf8(name.data(), static_cast<int>(name.size()));
   }
+  return QString("Other (%1)").arg(protocol);
 }
 
 } // namespace nids::ui

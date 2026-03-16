@@ -46,10 +46,13 @@ void CaptureController::startCapture(const nids::core::PacketFilter& filter,
 
     session_.clear();
 
-    if (std::string bpf = filter.generateBpfString(); !capture_->initialize(filter.networkCard, bpf)) {
-        spdlog::error("Failed to initialize capture on interface '{}'", filter.networkCard);
+    auto bpf = filter.generateBpfString();
+    if (auto result = capture_->initialize(filter.networkCard, bpf); !result) {
+        spdlog::error("Failed to initialize capture on interface '{}': {}",
+                      filter.networkCard, result.error());
         if (onCaptureError_)
-            onCaptureError_("Failed to initialize capture on interface: " + filter.networkCard);
+            onCaptureError_("Failed to initialize capture on interface: " +
+                            filter.networkCard + " — " + result.error());
         return;
     }
 

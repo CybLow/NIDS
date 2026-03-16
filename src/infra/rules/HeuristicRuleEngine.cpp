@@ -1,4 +1,5 @@
 #include "infra/rules/HeuristicRuleEngine.h"
+#include "core/model/ProtocolConstants.h"
 
 #include <spdlog/spdlog.h>
 
@@ -79,7 +80,7 @@ constexpr std::size_t kPortScanThreshold =
 } // anonymous namespace
 
 std::vector<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::evaluate(const nids::core::FlowMetadata &flow) const {
+HeuristicRuleEngine::evaluate(const nids::core::FlowInfo &flow) const {
 
   std::vector<nids::core::HeuristicRuleResult> results;
   results.reserve(4); // Typically 0-2 rules fire, pre-allocate small
@@ -130,7 +131,7 @@ std::size_t HeuristicRuleEngine::ruleCount() const noexcept {
 // ── Individual rule implementations ─────────────────────────────────
 
 std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkSuspiciousPort(const nids::core::FlowMetadata &flow) {
+HeuristicRuleEngine::checkSuspiciousPort(const nids::core::FlowInfo &flow) {
   bool srcSuspicious = isSuspiciousPort(flow.srcPort);
   bool dstSuspicious = isSuspiciousPort(flow.dstPort);
 
@@ -161,8 +162,8 @@ HeuristicRuleEngine::checkSuspiciousPort(const nids::core::FlowMetadata &flow) {
 }
 
 std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkSynFlood(const nids::core::FlowMetadata &flow) {
-  if (flow.protocol != "TCP") {
+HeuristicRuleEngine::checkSynFlood(const nids::core::FlowInfo &flow) {
+  if (flow.protocol != nids::core::kIpProtoTcp) {
     return std::nullopt;
   }
 
@@ -190,8 +191,8 @@ HeuristicRuleEngine::checkSynFlood(const nids::core::FlowMetadata &flow) {
 }
 
 std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkIcmpFlood(const nids::core::FlowMetadata &flow) {
-  if (flow.protocol != "ICMP") {
+HeuristicRuleEngine::checkIcmpFlood(const nids::core::FlowInfo &flow) {
+  if (flow.protocol != nids::core::kIpProtoIcmp) {
     return std::nullopt;
   }
 
@@ -221,8 +222,8 @@ HeuristicRuleEngine::checkIcmpFlood(const nids::core::FlowMetadata &flow) {
 }
 
 std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkBruteForce(const nids::core::FlowMetadata &flow) {
-  if (flow.protocol != "TCP") {
+HeuristicRuleEngine::checkBruteForce(const nids::core::FlowInfo &flow) {
+  if (flow.protocol != nids::core::kIpProtoTcp) {
     return std::nullopt;
   }
 
@@ -258,7 +259,7 @@ HeuristicRuleEngine::checkBruteForce(const nids::core::FlowMetadata &flow) {
 }
 
 std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkHighPacketRate(const nids::core::FlowMetadata &flow) {
+HeuristicRuleEngine::checkHighPacketRate(const nids::core::FlowInfo &flow) {
   auto totalPackets = flow.totalFwdPackets + flow.totalBwdPackets;
   if (totalPackets < kHighPktMinPkts) {
     return std::nullopt;
@@ -284,8 +285,8 @@ HeuristicRuleEngine::checkHighPacketRate(const nids::core::FlowMetadata &flow) {
 }
 
 std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkResetFlood(const nids::core::FlowMetadata &flow) {
-  if (flow.protocol != "TCP") {
+HeuristicRuleEngine::checkResetFlood(const nids::core::FlowInfo &flow) {
+  if (flow.protocol != nids::core::kIpProtoTcp) {
     return std::nullopt;
   }
 

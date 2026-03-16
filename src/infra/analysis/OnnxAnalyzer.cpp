@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <expected>
 #include <span>
 
 namespace nids::infra {
@@ -25,7 +26,8 @@ OnnxAnalyzer::OnnxAnalyzer() : impl_(std::make_unique<Impl>()) {}
 
 OnnxAnalyzer::~OnnxAnalyzer() = default;
 
-bool OnnxAnalyzer::loadModel(const std::string &modelPath) {
+std::expected<void, std::string> OnnxAnalyzer::loadModel(
+    const std::string &modelPath) {
   try {
     Ort::SessionOptions sessionOptions;
     const auto threads =
@@ -72,25 +74,26 @@ bool OnnxAnalyzer::loadModel(const std::string &modelPath) {
     impl_->loaded = true;
 
     spdlog::info("ONNX model loaded: {}", modelPath);
-    return true;
+    return {};
   } catch (const Ort::Exception &e) {
-    spdlog::error("Failed to load ONNX model: {}", e.what());
+    std::string msg = fmt::format("Failed to load ONNX model: {}", e.what());
+    spdlog::error(msg);
     impl_->loaded = false;
-    return false;
+    return std::unexpected<std::string>(std::move(msg));
   }
 }
 
 nids::core::AttackType
-OnnxAnalyzer::predict(const std::vector<float> &features) {
+OnnxAnalyzer::predict(std::span<const float> features) {
   auto result = predictWithConfidence(features);
   return result.classification;
 }
 
 nids::core::PredictionResult
-OnnxAnalyzer::predictWithConfidence(const std::vector<float> &features) {
+OnnxAnalyzer::predictWithConfidence(std::span<const float> features) {
   nids::core::PredictionResult result;
 
-  if (!impl_->loaded || !impl_->session) {
+  if (!impl_->loaded || !impl_->session) [[unlikely]] {
     return result; // Unknown, 0 confidence
   }
 
@@ -139,7 +142,7 @@ OnnxAnalyzer::predictBatch(std::span<const float> batch,
   std::vector<nids::core::PredictionResult> results;
 
   if (!impl_->loaded || !impl_->session || featureCount == 0 ||
-      batch.empty()) {
+      batch.empty()) [[unlikely]] {
     return results;
   }
 
@@ -150,8 +153,7 @@ OnnxAnalyzer::predictBatch(std::span<const float> batch,
 
   // Fall back to single-flow inference for batch size 1 (no overhead benefit).
   if (flowCount == 1) {
-    results.push_back(predictWithConfidence(
-        std::vector<float>(batch.begin(), batch.end())));
+    results.push_back(predictWithConfidence(batch));
     return results;
   }
 
@@ -203,8 +205,7 @@ OnnxAnalyzer::predictBatch(std::span<const float> batch,
     results.clear();
     for (std::size_t i = 0; i < static_cast<std::size_t>(flowCount); ++i) {
       auto flowData = batch.subspan(i * featureCount, featureCount);
-      results.push_back(predictWithConfidence(
-          std::vector<float>(flowData.begin(), flowData.end())));
+      results.push_back(predictWithConfidence(flowData));
     }
     return results;
   }

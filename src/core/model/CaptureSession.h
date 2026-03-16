@@ -2,7 +2,9 @@
 
 #include "core/model/PacketInfo.h"
 #include "core/model/DetectionResult.h"
+#include "core/services/IAnalysisRepository.h"
 
+#include <memory>
 #include <vector>
 #include <string>
 #include <mutex>
@@ -13,12 +15,30 @@ namespace nids::core {
 /**
  * Thread-safe storage for captured packets and their detection results.
  *
- * Uses separate mutexes for packets and detection results to reduce
- * contention between the capture thread (addPacket), worker thread
- * (setDetectionResult), and UI thread (reads).
+ * Packet storage is managed directly (mutex-protected vector).
+ * Detection result storage is delegated to an IAnalysisRepository
+ * (Repository pattern, AGENTS.md 5.6).  By default an internal
+ * in-memory repository is used; inject a custom one via the constructor
+ * overload for persistence or testing.
  */
 class CaptureSession {
 public:
+    /** Construct with a default in-memory analysis repository. */
+    CaptureSession();
+
+    /** Construct with an injected analysis repository (non-owning). */
+    explicit CaptureSession(IAnalysisRepository& repository);
+
+    ~CaptureSession() = default;
+
+    // Non-copyable, non-movable.
+    // Move is deleted because repository_ is a raw pointer into ownedRepository_;
+    // a moved-from object would leave repository_ dangling.
+    CaptureSession(const CaptureSession&) = delete;
+    CaptureSession& operator=(const CaptureSession&) = delete;
+    CaptureSession(CaptureSession&&) = delete;
+    CaptureSession& operator=(CaptureSession&&) = delete;
+
     /** Append a captured packet to the session. */
     void addPacket(const PacketInfo& packet);
 
@@ -52,9 +72,12 @@ public:
 
 private:
     mutable std::mutex packetsMutex_;   ///< Guards packets_ only.
-    mutable std::mutex resultsMutex_;   ///< Guards detectionResults_ only.
     std::vector<PacketInfo> packets_;
-    std::vector<DetectionResult> detectionResults_;
+
+    /// Owned default repository (null when using injected reference).
+    std::unique_ptr<IAnalysisRepository> ownedRepository_;
+    /// Active repository (always valid — points to owned or injected).
+    IAnalysisRepository* repository_;
 };
 
 } // namespace nids::core

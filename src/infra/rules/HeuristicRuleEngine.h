@@ -21,7 +21,7 @@ public:
     HeuristicRuleEngine() = default;
 
     [[nodiscard]] std::vector<nids::core::HeuristicRuleResult> evaluate(
-        const nids::core::FlowMetadata& flow) const override;
+        const nids::core::FlowInfo& flow) const override;
 
     [[nodiscard]] std::vector<nids::core::HeuristicRuleResult> evaluatePortScan(
         std::string_view srcIp,
@@ -34,22 +34,22 @@ private:
     // or std::nullopt if it doesn't.
 
     [[nodiscard]] static std::optional<nids::core::HeuristicRuleResult>
-    checkSuspiciousPort(const nids::core::FlowMetadata& flow);
+    checkSuspiciousPort(const nids::core::FlowInfo& flow);
 
     [[nodiscard]] static std::optional<nids::core::HeuristicRuleResult>
-    checkSynFlood(const nids::core::FlowMetadata& flow);
+    checkSynFlood(const nids::core::FlowInfo& flow);
 
     [[nodiscard]] static std::optional<nids::core::HeuristicRuleResult>
-    checkIcmpFlood(const nids::core::FlowMetadata& flow);
+    checkIcmpFlood(const nids::core::FlowInfo& flow);
 
     [[nodiscard]] static std::optional<nids::core::HeuristicRuleResult>
-    checkBruteForce(const nids::core::FlowMetadata& flow);
+    checkBruteForce(const nids::core::FlowInfo& flow);
 
     [[nodiscard]] static std::optional<nids::core::HeuristicRuleResult>
-    checkHighPacketRate(const nids::core::FlowMetadata& flow);
+    checkHighPacketRate(const nids::core::FlowInfo& flow);
 
     [[nodiscard]] static std::optional<nids::core::HeuristicRuleResult>
-    checkResetFlood(const nids::core::FlowMetadata& flow);
+    checkResetFlood(const nids::core::FlowInfo& flow);
 
     /// Total number of single-flow rules.
     static constexpr std::size_t kSingleFlowRuleCount = 6;

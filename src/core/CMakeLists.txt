@@ -3,7 +3,7 @@
 
 add_library(nids_core STATIC
     model/CaptureSession.cpp
-    services/PacketFilter.cpp
+    model/PacketFilter.cpp
     services/ServiceRegistry.cpp
     services/Configuration.cpp
 )

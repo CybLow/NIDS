@@ -1,6 +1,7 @@
 #include "server/NidsServer.h"
 
 #include "core/model/AttackType.h"
+#include "core/model/ProtocolConstants.h"
 
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
@@ -35,7 +36,7 @@ void GrpcStreamSink::onFlowResult(
 
     ::nids::DetectionEvent event;
     populateDetectionEvent(event, flowIndex, result, flow);
-    queue_->tryPush(std::move(event));
+    std::ignore = queue_->tryPush(std::move(event));
 }
 
 void GrpcStreamSink::populateDetectionEvent(
@@ -53,12 +54,7 @@ void GrpcStreamSink::populateDetectionEvent(
     meta->set_src_port(flow.srcPort);
     meta->set_dst_port(flow.dstPort);
     // Convert protocol number to human-readable name
-    switch (flow.protocol) {
-        case 6:  meta->set_protocol("TCP");  break;
-        case 17: meta->set_protocol("UDP");  break;
-        case 1:  meta->set_protocol("ICMP"); break;
-        default: meta->set_protocol(std::to_string(flow.protocol)); break;
-    }
+    meta->set_protocol(std::string(nids::core::protocolToName(flow.protocol)));
     meta->set_total_fwd_packets(flow.totalFwdPackets);
     meta->set_total_bwd_packets(flow.totalBwdPackets);
     meta->set_flow_duration_us(static_cast<std::uint64_t>(flow.flowDurationUs));
@@ -155,9 +151,10 @@ grpc::Status NidsServiceImpl::StartCapture(
     }
 
     // Initialize capture
-    if (!capture_.initialize(iface, bpfFilter)) {
+    if (auto result = capture_.initialize(iface, bpfFilter); !result) {
         response->set_success(false);
-        response->set_message("Failed to initialize capture on " + iface);
+        response->set_message("Failed to initialize capture on " + iface +
+                              ": " + result.error());
         return grpc::Status::OK;
     }
 

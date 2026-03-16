@@ -22,7 +22,7 @@ void HybridDetectionService::setConfidenceThreshold(float threshold) noexcept {
 
 nids::core::DetectionResult HybridDetectionService::evaluate(
     const nids::core::PredictionResult &mlResult, const std::string &srcIp,
-    const std::string &dstIp, const nids::core::FlowMetadata &flowMeta) const {
+    const std::string &dstIp, const nids::core::FlowInfo &flowInfo) const {
 
   nids::core::DetectionResult result;
   result.mlResult = mlResult;
@@ -42,7 +42,7 @@ nids::core::DetectionResult HybridDetectionService::evaluate(
 
   // -- Layer 3: Heuristic Rules --
   if (ruleEngine_ != nullptr) {
-    auto ruleResults = ruleEngine_->evaluate(flowMeta);
+    auto ruleResults = ruleEngine_->evaluate(flowInfo);
     for (auto &r : ruleResults) {
       result.ruleMatches.push_back({.ruleName = std::move(r.ruleName),
                                     .description = std::move(r.description),
@@ -75,18 +75,25 @@ HybridDetectionService::evaluate(const nids::core::PredictionResult &mlResult,
                                  const std::string &srcIp,
                                  const std::string &dstIp) const {
 
-  // Simplified: only ML + TI, no heuristic rules
-  nids::core::FlowMetadata emptyMeta;
-  auto result = evaluate(mlResult, srcIp, dstIp, emptyMeta);
-  // Clear any spurious rule matches from empty metadata
-  result.ruleMatches.clear();
-  // Recompute without rules
-  result.combinedScore =
-      computeCombinedScore(mlResult, result.hasThreatIntelMatch(), 0.0f);
-  result.detectionSource =
-      determineSource(mlResult.isAttack(), result.hasThreatIntelMatch(), false);
-  result.finalVerdict =
-      determineVerdict(mlResult, result.hasThreatIntelMatch(), false, 0.0f);
+  nids::core::DetectionResult result;
+  result.mlResult = mlResult;
+
+  // -- Layer 2: Threat Intelligence (no heuristic rules) --
+  if (threatIntel_ != nullptr) {
+    if (auto srcLookup = threatIntel_->lookup(srcIp); srcLookup.matched) {
+      result.threatIntelMatches.push_back(
+          {.ip = srcIp, .feedName = srcLookup.feedName, .isSource = true});
+    }
+    if (auto dstLookup = threatIntel_->lookup(dstIp); dstLookup.matched) {
+      result.threatIntelMatches.push_back(
+          {.ip = dstIp, .feedName = dstLookup.feedName, .isSource = false});
+    }
+  }
+
+  bool hasTi = result.hasThreatIntelMatch();
+  result.combinedScore = computeCombinedScore(mlResult, hasTi, 0.0f);
+  result.finalVerdict = determineVerdict(mlResult, hasTi, false, 0.0f);
+  result.detectionSource = determineSource(mlResult.isAttack(), hasTi, false);
 
   return result;
 }

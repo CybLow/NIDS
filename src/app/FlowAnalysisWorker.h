@@ -11,7 +11,7 @@
 
 #include "core/model/CaptureSession.h"
 #include "core/model/DetectionResult.h"
-#include "core/services/BoundedQueue.h"
+#include "core/concurrent/BoundedQueue.h"
 #include "core/services/IFeatureNormalizer.h"
 #include "core/services/IFlowExtractor.h"
 #include "core/services/IPacketAnalyzer.h"
@@ -106,9 +106,6 @@ private:
 
     /// Process a batch of flow work items via batched inference.
     void processBatch(std::vector<FlowWorkItem>& items, std::size_t startIndex);
-
-    /// Process a single flow work item (fallback for hybrid detection).
-    void processItem(FlowWorkItem&& item, std::size_t index);
 
     nids::core::BoundedQueue<FlowWorkItem>& queue_;
     nids::core::IPacketAnalyzer& analyzer_;

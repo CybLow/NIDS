@@ -9,47 +9,14 @@
 /// Defined in core/ so that app/ layer code can depend on this interface
 /// without pulling in infrastructure details (Clean Architecture).
 
+#include "core/services/IFlowExtractor.h"
+
 #include <string>
 #include <string_view>
 #include <vector>
 #include <cstdint>
 
 namespace nids::core {
-
-/// Metadata for a single flow, used as input to heuristic rule evaluation.
-/// This is a lightweight struct extracted from NativeFlowExtractor output.
-struct FlowMetadata {
-    /** Source IP address (dotted-decimal). */
-    std::string srcIp;
-    /** Destination IP address (dotted-decimal). */
-    std::string dstIp;
-    /** Source port number. */
-    std::uint16_t srcPort = 0;
-    /** Destination port number. */
-    std::uint16_t dstPort = 0;
-    std::string protocol;           ///< "TCP", "UDP", "ICMP"
-
-    /** Total number of forward (src→dst) packets. */
-    std::uint64_t totalFwdPackets = 0;
-    /** Total number of backward (dst→src) packets. */
-    std::uint64_t totalBwdPackets = 0;
-    /** Flow duration in microseconds. */
-    double flowDurationUs = 0.0;
-    /** Forward packet rate (packets per second). */
-    double fwdPacketsPerSecond = 0.0;
-    /** Backward packet rate (packets per second). */
-    double bwdPacketsPerSecond = 0.0;
-    /** Number of TCP SYN flags observed. */
-    std::uint64_t synFlagCount = 0;
-    /** Number of TCP ACK flags observed. */
-    std::uint64_t ackFlagCount = 0;
-    /** Number of TCP RST flags observed. */
-    std::uint64_t rstFlagCount = 0;
-    /** Number of TCP FIN flags observed. */
-    std::uint64_t finFlagCount = 0;
-    /** Average packet size in bytes. */
-    double avgPacketSize = 0.0;
-};
 
 /// Result of evaluating a single heuristic rule.
 struct HeuristicRuleResult {
@@ -66,7 +33,7 @@ public:
     /// Evaluate all rules against a single flow's metadata.
     /// Returns a (possibly empty) vector of rule matches.
     [[nodiscard]] virtual std::vector<HeuristicRuleResult> evaluate(
-        const FlowMetadata& flow) const = 0;
+        const FlowInfo& flow) const = 0;
 
     /// Evaluate port-scan heuristic across multiple flows from the same source.
     /// Takes a source IP and the set of distinct destination ports observed.

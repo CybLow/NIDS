@@ -15,6 +15,7 @@
 
 #include "core/model/DetectionResult.h"
 #include "core/model/PredictionResult.h"
+#include "core/services/IFlowExtractor.h"
 #include "core/services/IThreatIntelligence.h"
 #include "core/services/IRuleEngine.h"
 
@@ -54,12 +55,12 @@ public:
     /// @param mlResult   The ML classifier's prediction (from OnnxAnalyzer)
     /// @param srcIp      Source IP of the flow (for TI lookup)
     /// @param dstIp      Destination IP of the flow (for TI lookup)
-    /// @param flowMeta   Flow metadata (for heuristic rule evaluation)
+    /// @param flowInfo   Flow metadata (for heuristic rule evaluation)
     [[nodiscard]] nids::core::DetectionResult evaluate(
         const nids::core::PredictionResult& mlResult,
         const std::string& srcIp,
         const std::string& dstIp,
-        const nids::core::FlowMetadata& flowMeta) const;
+        const nids::core::FlowInfo& flowInfo) const;
 
     /// Simplified evaluation when flow metadata is not available.
     /// Only runs ML + TI layers (skips heuristic rules).

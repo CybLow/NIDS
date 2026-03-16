@@ -157,12 +157,12 @@ TEST_F(MemoryStressTest, sustainedEvaluation_memoryStable) {
                                        : nids::core::AttackType::Benign;
     pred.confidence = 0.85f;
 
-    nids::core::FlowMetadata meta;
+    nids::core::FlowInfo meta;
     meta.srcIp = std::format("10.0.0.{}", i % 256);
     meta.dstIp = "10.1.0.1";
     meta.srcPort = static_cast<std::uint16_t>(40000 + (i % 1000));
     meta.dstPort = 80;
-    meta.protocol = "TCP";
+    meta.protocol = 6;
     meta.totalFwdPackets = 100;
     meta.totalBwdPackets = 80;
     meta.fwdPacketsPerSecond = 500.0;

@@ -28,14 +28,7 @@
 #include <string_view>
 #include <vector>
 
-// gRPC 1.72.0 has use-after-poison false positives in its epoll/thread-pool
-// internals (abseil StatusRep::SetPayload) when compiled with GCC 15 + ASan.
-// Disable user-poisoning detection to avoid false aborts from gRPC's arena.
-#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
-extern "C" const char* __asan_default_options() {  // NOLINT
-    return "allow_user_poisoning=0";
-}
-#endif
+#include "infra/platform/AsanOptions.h" // shared gRPC ASan workaround
 
 namespace {
 

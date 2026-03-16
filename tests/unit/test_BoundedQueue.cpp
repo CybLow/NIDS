@@ -1,4 +1,4 @@
-#include "core/services/BoundedQueue.h"
+#include "core/concurrent/BoundedQueue.h"
 
 #include <gtest/gtest.h>
 
@@ -63,8 +63,8 @@ TEST(BoundedQueue, TryPush_failsWhenFull) {
 
 TEST(BoundedQueue, Close_popDrainsRemaining) {
   BoundedQueue<int> q(4);
-  q.push(10);
-  q.push(20);
+  std::ignore = q.push(10);
+  std::ignore = q.push(20);
   q.close();
 
   // Can still drain remaining elements after close
@@ -99,7 +99,7 @@ TEST(BoundedQueue, Close_idempotent) {
 
 TEST(BoundedQueue, MoveOnlyType) {
   BoundedQueue<std::unique_ptr<int>> q(4);
-  q.push(std::make_unique<int>(99));
+  std::ignore = q.push(std::make_unique<int>(99));
 
   auto val = q.pop();
   ASSERT_TRUE(val.has_value());
@@ -114,7 +114,7 @@ TEST(BoundedQueue, ConcurrentSingleProducerSingleConsumer) {
 
   std::jthread producer([&](std::stop_token) {
     for (int i = 0; i < kCount; ++i) {
-      q.push(i);
+      std::ignore = q.push(i);
     }
     q.close();
   });
@@ -144,7 +144,7 @@ TEST(BoundedQueue, ConcurrentMultiProducerSingleConsumer) {
   for (int p = 0; p < kProducers; ++p) {
     producers.emplace_back([&, p](std::stop_token) {
       for (int i = 0; i < kPerProducer; ++i) {
-        q.push(p * kPerProducer + i);
+        std::ignore = q.push(p * kPerProducer + i);
       }
       if (++producersDone == kProducers) {
         q.close();
@@ -169,7 +169,7 @@ TEST(BoundedQueue, ConcurrentProducerConsumer_smallCapacity) {
 
   std::jthread producer([&](std::stop_token) {
     for (int i = 0; i < kCount; ++i) {
-      q.push(i);
+      std::ignore = q.push(i);
     }
     q.close();
   });
@@ -207,13 +207,13 @@ TEST(BoundedQueue, Close_wakesBlockedConsumer) {
 
 TEST(BoundedQueue, Backpressure_pushBlocksWhenFull) {
   BoundedQueue<int> q(2);
-  q.push(1);
-  q.push(2);
+  std::ignore = q.push(1);
+  std::ignore = q.push(2);
   // Queue is now full
 
   std::atomic<bool> pushCompleted{false};
   std::jthread producer([&](std::stop_token) {
-    q.push(3); // should block until consumer pops
+    std::ignore = q.push(3); // should block until consumer pops
     pushCompleted = true;
   });
 

@@ -1,9 +1,8 @@
 #include "app/AnalysisService.h"
 #include "app/FlowAnalysisWorker.h"
 #include "app/HybridDetectionService.h"
-#include "core/services/BoundedQueue.h"
+#include "core/concurrent/BoundedQueue.h"
 #include "core/services/Configuration.h"
-#include "core/services/IRuleEngine.h"
 
 #include <spdlog/spdlog.h>
 
@@ -16,44 +15,6 @@ namespace {
 /// 256 items * ~400 bytes/item ≈ 100 KB.
 constexpr std::size_t kFlowQueueCapacity = 256;
 
-/// Convert a FlowInfo (from the extractor) to a FlowMetadata (for heuristic rules).
-/// Note: also duplicated in FlowAnalysisWorker.cpp for the streaming path.
-nids::core::FlowMetadata toFlowMetadata(const nids::core::FlowInfo& info) {
-    nids::core::FlowMetadata meta;
-    meta.srcIp = info.srcIp;
-    meta.dstIp = info.dstIp;
-    meta.srcPort = info.srcPort;
-    meta.dstPort = info.dstPort;
-
-    switch (info.protocol) {
-        case 6:
-            meta.protocol = "TCP";
-            break;
-        case 17:
-            meta.protocol = "UDP";
-            break;
-        case 1:
-            meta.protocol = "ICMP";
-            break;
-        default:
-            meta.protocol = "OTHER";
-            break;
-    }
-
-    meta.totalFwdPackets = info.totalFwdPackets;
-    meta.totalBwdPackets = info.totalBwdPackets;
-    meta.flowDurationUs = info.flowDurationUs;
-    meta.fwdPacketsPerSecond = info.fwdPacketsPerSecond;
-    meta.bwdPacketsPerSecond = info.bwdPacketsPerSecond;
-    meta.synFlagCount = info.synFlagCount;
-    meta.ackFlagCount = info.ackFlagCount;
-    meta.rstFlagCount = info.rstFlagCount;
-    meta.finFlagCount = info.finFlagCount;
-    meta.avgPacketSize = info.avgPacketSize;
-
-    return meta;
-}
-
 } // anonymous namespace
 
 AnalysisService::AnalysisService(
@@ -64,11 +25,13 @@ AnalysisService::AnalysisService(
     , extractor_(std::move(extractor))
     , normalizer_(std::move(normalizer)) {}
 
-bool AnalysisService::loadModel(const std::string& modelPath) {
+std::expected<void, std::string> AnalysisService::loadModel(
+    const std::string& modelPath) {
     return analyzer_->loadModel(modelPath);
 }
 
-bool AnalysisService::loadNormalization(const std::string& metadataPath) {
+std::expected<void, std::string> AnalysisService::loadNormalization(
+    const std::string& metadataPath) {
     return normalizer_->loadMetadata(metadataPath);
 }
 
@@ -105,7 +68,7 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
     // Producer callback: each completed flow is pushed into the queue.
     extractor_->setFlowCompletionCallback(
         [&queue](std::vector<float>&& features, core::FlowInfo&& info) {
-            queue.push(FlowWorkItem{std::move(features), std::move(info)});
+            std::ignore = queue.push(FlowWorkItem{std::move(features), std::move(info)});
         });
 
     // extractFeatures() runs synchronously on this thread, firing the
@@ -143,9 +106,8 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
             if (hybridService_ != nullptr) {
                 auto mlResult = analyzer_->predictWithConfidence(normalized);
                 if (idx < metadata.size()) {
-                    auto flowMeta = toFlowMetadata(metadata[idx]);
                     auto detection = hybridService_->evaluate(
-                        mlResult, metadata[idx].srcIp, metadata[idx].dstIp, flowMeta);
+                        mlResult, metadata[idx].srcIp, metadata[idx].dstIp, metadata[idx]);
                     session.setDetectionResult(idx, detection);
                 } else {
                     auto detection = hybridService_->evaluate(mlResult, "", "");

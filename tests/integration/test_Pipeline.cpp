@@ -11,7 +11,9 @@
 #include "core/services/IPacketCapture.h"
 #include "infra/flow/NativeFlowExtractor.h" // kFlowFeatureCount
 
+#include <expected>
 #include <format>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -26,8 +28,8 @@ using ::testing::Return;
 
 class MockCapture : public IPacketCapture {
 public:
-  MOCK_METHOD(bool, initialize, (const std::string &, const std::string &),
-              (override));
+  MOCK_METHOD((std::expected<void, std::string>), initialize,
+              (const std::string &, const std::string &), (override));
   MOCK_METHOD(void, startCapture, (const std::string &), (override));
   MOCK_METHOD(void, stopCapture, (), (override));
   MOCK_METHOD(bool, isCapturing, (), (const, override));
@@ -39,8 +41,9 @@ public:
 
 class MockAnalyzer : public IPacketAnalyzer {
 public:
-  MOCK_METHOD(bool, loadModel, (const std::string &), (override));
-  MOCK_METHOD(AttackType, predict, (const std::vector<float> &), (override));
+  MOCK_METHOD((std::expected<void, std::string>), loadModel,
+              (const std::string &), (override));
+  MOCK_METHOD(AttackType, predict, (std::span<const float>), (override));
 };
 
 class MockExtractor : public IFlowExtractor {
@@ -67,16 +70,17 @@ public:
 /// Pass-through normalizer mock: returns features unchanged.
 class MockNormalizer : public IFeatureNormalizer {
 public:
-  MOCK_METHOD(bool, loadMetadata, (const std::string &), (override));
-  MOCK_METHOD(std::vector<float>, normalize, (const std::vector<float> &),
+  MOCK_METHOD((std::expected<void, std::string>), loadMetadata,
+              (const std::string &), (override));
+  MOCK_METHOD(std::vector<float>, normalize, (std::span<const float>),
               (const, override));
   MOCK_METHOD(bool, isLoaded, (), (const, noexcept, override));
   MOCK_METHOD(std::size_t, featureCount, (), (const, noexcept, override));
 
   static std::unique_ptr<MockNormalizer> createPassThrough() {
     auto mock = std::make_unique<MockNormalizer>();
-    ON_CALL(*mock, normalize(_)).WillByDefault([](const std::vector<float> &f) {
-      return f;
+    ON_CALL(*mock, normalize(_)).WillByDefault([](std::span<const float> f) {
+      return std::vector<float>(f.begin(), f.end());
     });
     return mock;
   }
@@ -105,7 +109,8 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
       .WillOnce(Return(false)) // startCapture guard
       .WillOnce(Return(true))  // stopCapture guard
       .WillRepeatedly(Return(false));
-  EXPECT_CALL(*capturePtr, initialize(_, _)).WillOnce(Return(true));
+  EXPECT_CALL(*capturePtr, initialize(_, _))
+      .WillOnce(Return(std::expected<void, std::string>{}));
   EXPECT_CALL(*capturePtr, startCapture(_));
   EXPECT_CALL(*capturePtr, stopCapture());
 
@@ -174,7 +179,8 @@ TEST_F(PipelineTest, captureFailure_doesNotProceedToAnalysis) {
   EXPECT_CALL(*capturePtr, setPacketCallback(_));
   EXPECT_CALL(*capturePtr, setErrorCallback(_));
   EXPECT_CALL(*capturePtr, isCapturing()).WillRepeatedly(Return(false));
-  EXPECT_CALL(*capturePtr, initialize(_, _)).WillOnce(Return(false));
+  EXPECT_CALL(*capturePtr, initialize(_, _))
+      .WillOnce(Return(std::unexpected<std::string>("mock init failure")));
 
   CaptureController controller(std::move(capture));
 
@@ -206,7 +212,7 @@ TEST_F(PipelineTest, analysisWithAllAttackTypes) {
   EXPECT_CALL(*extractor, extractFeatures(_)).WillOnce(Return(flows));
   EXPECT_CALL(*analyzer, predict(_))
       .Times(kAttackTypeCount)
-      .WillRepeatedly(Invoke([&callIndex](const std::vector<float> &) {
+      .WillRepeatedly(Invoke([&callIndex](std::span<const float>) {
         int idx = callIndex;
         ++callIndex;
         return attackTypeFromIndex(idx);

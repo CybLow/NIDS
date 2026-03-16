@@ -3,7 +3,7 @@
 #include "core/model/DetectionResult.h"
 #include "core/model/PacketInfo.h"
 #include "core/model/CaptureSession.h"
-#include "core/services/PacketFilter.h"
+#include "core/model/PacketFilter.h"
 #include "core/services/IPacketCapture.h"
 #include "core/services/IFlowExtractor.h"
 
@@ -41,6 +41,8 @@ public:
 
     CaptureController(const CaptureController&) = delete;
     CaptureController& operator=(const CaptureController&) = delete;
+    CaptureController(CaptureController&&) = delete;
+    CaptureController& operator=(CaptureController&&) = delete;
 
     /**
      * Enable real-time flow detection during live capture.

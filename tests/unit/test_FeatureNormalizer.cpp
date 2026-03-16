@@ -68,7 +68,7 @@ TEST_F(FeatureNormalizerTest, defaultConstruction_notLoaded) {
 
 // ── loadMetadata: success cases ──────────────────────────────────────
 
-TEST_F(FeatureNormalizerTest, loadMetadata_validFile_returnsTrue) {
+TEST_F(FeatureNormalizerTest, loadMetadata_validFile_succeeds) {
   auto path = writeValidMetadata("valid.json", 3);
   FeatureNormalizer normalizer;
   EXPECT_TRUE(normalizer.loadMetadata(path));
@@ -76,7 +76,7 @@ TEST_F(FeatureNormalizerTest, loadMetadata_validFile_returnsTrue) {
   EXPECT_EQ(normalizer.featureCount(), 3u);
 }
 
-TEST_F(FeatureNormalizerTest, loadMetadata_77Features_returnsTrue) {
+TEST_F(FeatureNormalizerTest, loadMetadata_77Features_succeeds) {
   auto path = writeValidMetadata("full.json", kFlowFeatureCount);
   FeatureNormalizer normalizer;
   EXPECT_TRUE(normalizer.loadMetadata(path));
@@ -85,13 +85,13 @@ TEST_F(FeatureNormalizerTest, loadMetadata_77Features_returnsTrue) {
 
 // ── loadMetadata: failure cases ──────────────────────────────────────
 
-TEST_F(FeatureNormalizerTest, loadMetadata_nonexistentFile_returnsFalse) {
+TEST_F(FeatureNormalizerTest, loadMetadata_nonexistentFile_returnsError) {
   FeatureNormalizer normalizer;
   EXPECT_FALSE(normalizer.loadMetadata("nonexistent.json"));
   EXPECT_FALSE(normalizer.isLoaded());
 }
 
-TEST_F(FeatureNormalizerTest, loadMetadata_invalidJson_returnsFalse) {
+TEST_F(FeatureNormalizerTest, loadMetadata_invalidJson_returnsError) {
   auto path = writeMetadata("bad.json", "{ not valid json }}}");
   FeatureNormalizer normalizer;
   EXPECT_FALSE(normalizer.loadMetadata(path));
@@ -99,14 +99,14 @@ TEST_F(FeatureNormalizerTest, loadMetadata_invalidJson_returnsFalse) {
 }
 
 TEST_F(FeatureNormalizerTest,
-       loadMetadata_missingNormalizationKey_returnsFalse) {
+       loadMetadata_missingNormalizationKey_returnsError) {
   auto path = writeMetadata("no_norm.json", R"({"n_classes":16})");
   FeatureNormalizer normalizer;
   EXPECT_FALSE(normalizer.loadMetadata(path));
   EXPECT_FALSE(normalizer.isLoaded());
 }
 
-TEST_F(FeatureNormalizerTest, loadMetadata_missingMeans_returnsFalse) {
+TEST_F(FeatureNormalizerTest, loadMetadata_missingMeans_returnsError) {
   auto path = writeMetadata(
       "no_means.json",
       R"({"normalization":{"stds":[1.0,2.0],"clip_value":10.0}})");
@@ -114,7 +114,7 @@ TEST_F(FeatureNormalizerTest, loadMetadata_missingMeans_returnsFalse) {
   EXPECT_FALSE(normalizer.loadMetadata(path));
 }
 
-TEST_F(FeatureNormalizerTest, loadMetadata_missingStds_returnsFalse) {
+TEST_F(FeatureNormalizerTest, loadMetadata_missingStds_returnsError) {
   auto path = writeMetadata(
       "no_stds.json",
       R"({"normalization":{"means":[1.0,2.0],"clip_value":10.0}})");
@@ -122,7 +122,7 @@ TEST_F(FeatureNormalizerTest, loadMetadata_missingStds_returnsFalse) {
   EXPECT_FALSE(normalizer.loadMetadata(path));
 }
 
-TEST_F(FeatureNormalizerTest, loadMetadata_missingClipValue_returnsFalse) {
+TEST_F(FeatureNormalizerTest, loadMetadata_missingClipValue_returnsError) {
   auto path = writeMetadata(
       "no_clip.json",
       R"({"normalization":{"means":[1.0,2.0],"stds":[1.0,2.0]}})");
@@ -131,7 +131,7 @@ TEST_F(FeatureNormalizerTest, loadMetadata_missingClipValue_returnsFalse) {
   EXPECT_FALSE(normalizer.isLoaded());
 }
 
-TEST_F(FeatureNormalizerTest, loadMetadata_meansStdsSizeMismatch_returnsFalse) {
+TEST_F(FeatureNormalizerTest, loadMetadata_meansStdsSizeMismatch_returnsError) {
   auto path = writeMetadata(
       "mismatch.json",
       R"({"normalization":{"means":[1.0,2.0],"stds":[1.0],"clip_value":10.0}})");
@@ -148,7 +148,8 @@ TEST_F(FeatureNormalizerTest, normalize_appliesStandardScaler) {
   FeatureNormalizer normalizer;
   ASSERT_TRUE(normalizer.loadMetadata(path));
 
-  auto result = normalizer.normalize({5.0f, 14.0f});
+  const std::vector<float> input = {5.0f, 14.0f};
+  auto result = normalizer.normalize(input);
   ASSERT_EQ(result.size(), 2u);
 
   // (5 - 0) / 1 = 5.0
@@ -165,12 +166,14 @@ TEST_F(FeatureNormalizerTest, normalize_clipsToRange) {
   ASSERT_TRUE(normalizer.loadMetadata(path));
 
   // (100 - 0) / 1 = 100 -> clipped to 3
-  auto pos = normalizer.normalize({100.0f});
+  const std::vector<float> posInput = {100.0f};
+  auto pos = normalizer.normalize(posInput);
   ASSERT_EQ(pos.size(), 1u);
   EXPECT_FLOAT_EQ(pos[0], 3.0f);
 
   // (-100 - 0) / 1 = -100 -> clipped to -3
-  auto neg = normalizer.normalize({-100.0f});
+  const std::vector<float> negInput = {-100.0f};
+  auto neg = normalizer.normalize(negInput);
   ASSERT_EQ(neg.size(), 1u);
   EXPECT_FLOAT_EQ(neg[0], -3.0f);
 }
@@ -184,7 +187,8 @@ TEST_F(FeatureNormalizerTest, normalize_nearZeroStdReplacedWithOne) {
   ASSERT_TRUE(normalizer.loadMetadata(path));
 
   // std replaced with 1.0, so (7 - 5) / 1.0 = 2.0
-  auto result = normalizer.normalize({7.0f});
+  const std::vector<float> zeroStdInput = {7.0f};
+  auto result = normalizer.normalize(zeroStdInput);
   ASSERT_EQ(result.size(), 1u);
   EXPECT_FLOAT_EQ(result[0], 2.0f);
 }
@@ -219,7 +223,8 @@ TEST_F(FeatureNormalizerTest, normalize_emptyInput_returnsEmpty) {
   ASSERT_TRUE(normalizer.loadMetadata(path));
   EXPECT_EQ(normalizer.featureCount(), 0u);
 
-  auto result = normalizer.normalize({});
+  const std::vector<float> emptyInput;
+  auto result = normalizer.normalize(emptyInput);
   EXPECT_TRUE(result.empty());
 }
 
@@ -280,7 +285,8 @@ TEST_F(FeatureNormalizerTest, normalize_negativeInputs_handledCorrectly) {
   FeatureNormalizer normalizer;
   ASSERT_TRUE(normalizer.loadMetadata(path));
 
-  auto result = normalizer.normalize({-3.0f, -100.0f});
+  const std::vector<float> negInputs = {-3.0f, -100.0f};
+  auto result = normalizer.normalize(negInputs);
   ASSERT_EQ(result.size(), 2u);
   EXPECT_FLOAT_EQ(result[0], -3.0f);
   EXPECT_FLOAT_EQ(result[1], -5.0f); // Clipped to -5.0
@@ -288,7 +294,7 @@ TEST_F(FeatureNormalizerTest, normalize_negativeInputs_handledCorrectly) {
 
 // ── Non-array JSON types for means/stds ──────────────────────────────
 
-TEST_F(FeatureNormalizerTest, loadMetadata_meansNotArray_returnsFalse) {
+TEST_F(FeatureNormalizerTest, loadMetadata_meansNotArray_returnsError) {
   auto path = writeMetadata(
       "bad_type.json",
       R"({"normalization":{"means":"not_an_array","stds":[1.0],"clip_value":10.0}})");
@@ -296,7 +302,7 @@ TEST_F(FeatureNormalizerTest, loadMetadata_meansNotArray_returnsFalse) {
   EXPECT_FALSE(normalizer.loadMetadata(path));
 }
 
-TEST_F(FeatureNormalizerTest, loadMetadata_stdsNotArray_returnsFalse) {
+TEST_F(FeatureNormalizerTest, loadMetadata_stdsNotArray_returnsError) {
   auto path = writeMetadata(
       "bad_type2.json",
       R"({"normalization":{"means":[1.0],"stds":42,"clip_value":10.0}})");
@@ -304,7 +310,7 @@ TEST_F(FeatureNormalizerTest, loadMetadata_stdsNotArray_returnsFalse) {
   EXPECT_FALSE(normalizer.loadMetadata(path));
 }
 
-TEST_F(FeatureNormalizerTest, loadMetadata_clipValueNotNumber_returnsFalse) {
+TEST_F(FeatureNormalizerTest, loadMetadata_clipValueNotNumber_returnsError) {
   auto path = writeMetadata(
       "bad_clip.json",
       R"({"normalization":{"means":[1.0],"stds":[1.0],"clip_value":"ten"}})");
@@ -321,7 +327,8 @@ TEST_F(FeatureNormalizerTest, normalize_allZeroInputs_normalizedCorrectly) {
   FeatureNormalizer normalizer;
   ASSERT_TRUE(normalizer.loadMetadata(path));
 
-  auto result = normalizer.normalize({0.0f, 0.0f});
+  const std::vector<float> zeroInputs = {0.0f, 0.0f};
+  auto result = normalizer.normalize(zeroInputs);
   ASSERT_EQ(result.size(), 2u);
   EXPECT_FLOAT_EQ(result[0], -2.5f); // (0 - 5) / 2
   EXPECT_FLOAT_EQ(result[1], -2.5f); // (0 - 10) / 4

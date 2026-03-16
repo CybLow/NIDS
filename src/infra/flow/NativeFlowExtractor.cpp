@@ -1,18 +1,11 @@
 #include "infra/flow/NativeFlowExtractor.h"
 
+#include "core/model/ProtocolConstants.h"
 #include "core/services/Configuration.h"
 
-#include <pcapplusplus/EthLayer.h>
-#include <pcapplusplus/IPv4Layer.h>
-#include <pcapplusplus/IcmpLayer.h>
 #include <pcapplusplus/Packet.h>
 #include <pcapplusplus/PcapFileDevice.h>
 #include <pcapplusplus/RawPacket.h>
-#include <pcapplusplus/TcpLayer.h>
-#include <pcapplusplus/UdpLayer.h>
-#include <pcapplusplus/VlanLayer.h>
-
-#include <pcapplusplus/SystemUtils.h>
 
 #include <spdlog/spdlog.h>
 
@@ -26,19 +19,20 @@ namespace nids::infra {
 namespace {
 
 // Standard IP protocol numbers
-constexpr std::uint8_t kIpProtoIcmp = 1;
-constexpr std::uint8_t kIpProtoTcp = 6;
-constexpr std::uint8_t kIpProtoUdp = 17;
+// Use shared protocol constants from core/model/ProtocolConstants.h
+using nids::core::kIpProtoIcmp;
+using nids::core::kIpProtoTcp;
+using nids::core::kIpProtoUdp;
 
-// TCP flag bitmasks (RFC 793)
-constexpr std::uint8_t kTcpFin = 0x01;
-constexpr std::uint8_t kTcpSyn = 0x02;
-constexpr std::uint8_t kTcpRst = 0x04;
-constexpr std::uint8_t kTcpPsh = 0x08;
-constexpr std::uint8_t kTcpAck = 0x10;
-constexpr std::uint8_t kTcpUrg = 0x20;
-constexpr std::uint8_t kTcpCwr = 0x80;
-constexpr std::uint8_t kTcpEce = 0x40;
+// TCP flag bitmasks — use shared constants from infra/parsing/PacketParser.h
+using nids::infra::tcp_flags::kFin;
+using nids::infra::tcp_flags::kSyn;
+using nids::infra::tcp_flags::kRst;
+using nids::infra::tcp_flags::kPsh;
+using nids::infra::tcp_flags::kAck;
+using nids::infra::tcp_flags::kUrg;
+using nids::infra::tcp_flags::kCwr;
+using nids::infra::tcp_flags::kEce;
 
 /// Interval between periodic sweeps during batch pcap processing.
 /// Triggered when the packet timestamp has advanced by at least this amount
@@ -528,86 +522,14 @@ void NativeFlowExtractor::logDiagnostics() const {
 // finalizeBulks() removed — replaced by completeFlow() loop in
 // extractFeatures() and finalizeAllFlows().
 
-/// Extract TCP flags from a TCP header into a bitmask.
-[[nodiscard]] static std::uint8_t
-extractTcpFlags(const pcpp::tcphdr *hdr) noexcept {
-  std::uint8_t flags = 0;
-  if (hdr->finFlag)
-    flags |= kTcpFin;
-  if (hdr->synFlag)
-    flags |= kTcpSyn;
-  if (hdr->rstFlag)
-    flags |= kTcpRst;
-  if (hdr->pshFlag)
-    flags |= kTcpPsh;
-  if (hdr->ackFlag)
-    flags |= kTcpAck;
-  if (hdr->urgFlag)
-    flags |= kTcpUrg;
-  if (hdr->cwrFlag)
-    flags |= kTcpCwr;
-  if (hdr->eceFlag)
-    flags |= kTcpEce;
-  return flags;
-}
-
-bool NativeFlowExtractor::parsePacketHeaders(const pcpp::Packet &packet,
-                                             ParsedPacket &pkt) {
-  // PcapPlusPlus automatically handles VLAN (802.1Q) tag parsing
-  const auto *ipLayer = packet.getLayerOfType<pcpp::IPv4Layer>();
-  if (!ipLayer)
-    return false;
-
-  pkt.srcIp = ipLayer->getSrcIPv4Address().toString();
-  pkt.dstIp = ipLayer->getDstIPv4Address().toString();
-  pkt.ipIhl = static_cast<std::uint32_t>(ipLayer->getHeaderLen());
-  pkt.protocol = ipLayer->getIPv4Header()->protocol;
-  pkt.totalPacketLen = pcpp::netToHost16(ipLayer->getIPv4Header()->totalLength);
-
-  if (pkt.protocol == kIpProtoTcp) {
-    const auto *tcpLayer = packet.getLayerOfType<pcpp::TcpLayer>();
-    if (!tcpLayer)
-      return false;
-    pkt.srcPort = tcpLayer->getSrcPort();
-    pkt.dstPort = tcpLayer->getDstPort();
-    pkt.transportHeaderLen =
-        static_cast<std::uint32_t>(tcpLayer->getHeaderLen());
-    if (pkt.transportHeaderLen < 20)
-      pkt.transportHeaderLen = 20;
-
-    const auto *tcpHdr = tcpLayer->getTcpHeader();
-    pkt.tcpFlags = extractTcpFlags(tcpHdr);
-    pkt.tcpWindow = pcpp::netToHost16(tcpHdr->windowSize);
-  } else if (pkt.protocol == kIpProtoUdp) {
-    const auto *udpLayer = packet.getLayerOfType<pcpp::UdpLayer>();
-    if (!udpLayer)
-      return false;
-    pkt.srcPort = udpLayer->getSrcPort();
-    pkt.dstPort = udpLayer->getDstPort();
-    pkt.transportHeaderLen = 8;
-  } else if (pkt.protocol == kIpProtoIcmp) {
-    const auto *icmpLayer = packet.getLayerOfType<pcpp::IcmpLayer>();
-    if (!icmpLayer)
-      return false;
-    pkt.srcPort = icmpLayer->getIcmpHeader()->type;
-    pkt.dstPort = 0;
-    pkt.transportHeaderLen = 8;
-  } else {
-    return false; // Unsupported protocol
-  }
-
-  pkt.headerBytes = pkt.ipIhl + pkt.transportHeaderLen;
-  pkt.payloadSize = pkt.totalPacketLen > pkt.headerBytes
-                        ? pkt.totalPacketLen - pkt.headerBytes
-                        : 0;
-  return true;
-}
+// Old extractTcpFlags() and parsePacketHeaders() removed — now delegated to
+// the shared nids::infra::parsePacketHeaders() in infra/parsing/PacketParser.cpp.
 
 void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
                                                 std::int64_t timestampUs) {
   pcpp::Packet parsedPacket(&rawPacket);
   ParsedPacket pkt;
-  if (!parsePacketHeaders(parsedPacket, pkt)) {
+  if (!nids::infra::parsePacketHeaders(parsedPacket, pkt)) [[unlikely]] {
     ++diag_.packetsSkipped;
     return;
   }
@@ -642,8 +564,8 @@ void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
   stats.allLengthAcc.update(pkt.totalPacketLen);
 
   bool tcpFinOrRst = false;
-  if (pkt.protocol == kIpProtoTcp) {
-    tcpFinOrRst = (pkt.tcpFlags & (kTcpFin | kTcpRst)) != 0;
+  if (pkt.protocol == kIpProtoTcp) [[likely]] {
+    tcpFinOrRst = (pkt.tcpFlags & (kFin | kRst)) != 0;
     updateTcpFlags(stats, pkt, isForward);
   }
 
@@ -758,14 +680,14 @@ void NativeFlowExtractor::countGlobalTcpFlags(FlowStats &stats,
     std::uint32_t FlowStats::*counter;
   };
   static constexpr std::array<FlagMapping, 8> kFlagMap = {{
-      {kTcpFin, &FlowStats::finCount},
-      {kTcpSyn, &FlowStats::synCount},
-      {kTcpRst, &FlowStats::rstCount},
-      {kTcpPsh, &FlowStats::pshCount},
-      {kTcpAck, &FlowStats::ackCount},
-      {kTcpUrg, &FlowStats::urgCount},
-      {kTcpCwr, &FlowStats::cwrCount},
-      {kTcpEce, &FlowStats::eceCount},
+      {kFin, &FlowStats::finCount},
+      {kSyn, &FlowStats::synCount},
+      {kRst, &FlowStats::rstCount},
+      {kPsh, &FlowStats::pshCount},
+      {kAck, &FlowStats::ackCount},
+      {kUrg, &FlowStats::urgCount},
+      {kCwr, &FlowStats::cwrCount},
+      {kEce, &FlowStats::eceCount},
   }};
 
   for (const auto &[mask, counter] : kFlagMap) {
@@ -778,9 +700,9 @@ void NativeFlowExtractor::updateFwdTcpState(FlowStats &stats,
                                             std::uint8_t flags,
                                             std::uint16_t win,
                                             std::uint32_t payloadSize) {
-  if (flags & kTcpPsh)
+  if (flags & kPsh)
     stats.fwdPshFlags++;
-  if (flags & kTcpUrg)
+  if (flags & kUrg)
     stats.fwdUrgFlags++;
   if (stats.fwdInitWinBytes == 0)
     stats.fwdInitWinBytes = win;
@@ -795,9 +717,9 @@ void NativeFlowExtractor::updateFwdTcpState(FlowStats &stats,
 void NativeFlowExtractor::updateBwdTcpState(FlowStats &stats,
                                             std::uint8_t flags,
                                             std::uint16_t win) {
-  if (flags & kTcpPsh)
+  if (flags & kPsh)
     stats.bwdPshFlags++;
-  if (flags & kTcpUrg)
+  if (flags & kUrg)
     stats.bwdUrgFlags++;
   if (stats.bwdInitWinBytes == 0)
     stats.bwdInitWinBytes = win;

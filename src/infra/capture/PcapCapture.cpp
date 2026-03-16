@@ -9,6 +9,7 @@
 #include <pcapplusplus/TcpLayer.h>
 #include <pcapplusplus/UdpLayer.h>
 
+#include <expected>
 #include <iterator>
 #include <ranges>
 #include <string>
@@ -182,11 +183,11 @@ PcapCapture::~PcapCapture() {
   PcapCapture::stopCapture();
 }
 
-bool PcapCapture::initialize(const std::string &iface,
-                             const std::string &bpfFilter) {
+std::expected<void, std::string> PcapCapture::initialize(
+    const std::string &iface, const std::string &bpfFilter) {
   interface_ = iface;
   bpfFilter_ = bpfFilter;
-  return true;
+  return {};
 }
 
 void PcapCapture::startCapture(const std::string &dumpFile) {

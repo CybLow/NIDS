@@ -30,6 +30,7 @@
 ///   }
 /// }
 
+#include <expected>
 #include <filesystem>
 #include <string>
 
@@ -45,8 +46,8 @@ namespace nids::infra {
 ///                    exist, this is a no-op and returns true (defaults are
 ///                    kept). Returns false only on parse errors.
 /// @param config      The Configuration instance to apply overrides to.
-/// @return true on success (or file not found), false on parse error.
-[[nodiscard]] bool loadConfigFromFile(
+/// @return void on success (or file not found), or an error message on parse error.
+[[nodiscard]] std::expected<void, std::string> loadConfigFromFile(
     const std::filesystem::path& configPath,
     nids::core::Configuration& config);
 

@@ -26,10 +26,16 @@ public:
     OnnxAnalyzer();
     ~OnnxAnalyzer() override;
 
-    [[nodiscard]] bool loadModel(const std::string& modelPath) override;
-    [[nodiscard]] nids::core::AttackType predict(const std::vector<float>& features) override;
+    OnnxAnalyzer(const OnnxAnalyzer&) = delete;
+    OnnxAnalyzer& operator=(const OnnxAnalyzer&) = delete;
+    OnnxAnalyzer(OnnxAnalyzer&&) = delete;
+    OnnxAnalyzer& operator=(OnnxAnalyzer&&) = delete;
+
+    [[nodiscard]] std::expected<void, std::string> loadModel(
+        const std::string& modelPath) override;
+    [[nodiscard]] nids::core::AttackType predict(std::span<const float> features) override;
     [[nodiscard]] nids::core::PredictionResult predictWithConfidence(
-        const std::vector<float>& features) override;
+        std::span<const float> features) override;
 
     /// Native batched inference — runs N flows in a single session.Run() call.
     [[nodiscard]] std::vector<nids::core::PredictionResult> predictBatch(

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <expected>
 #include <fstream>
 #include <optional>
 
@@ -47,12 +48,14 @@ namespace {
 
 } // anonymous namespace
 
-bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
+std::expected<void, std::string> FeatureNormalizer::loadMetadata(
+    const std::string& metadataPath) {
     try {
         auto normOpt = extractNormalizationSection(metadataPath);
         if (!normOpt) {
             loaded_ = false;
-            return false;
+            return std::unexpected<std::string>(
+                "Failed to extract normalization section from '" + metadataPath + "'");
         }
 
         const auto& norm = *normOpt;
@@ -60,11 +63,12 @@ bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
         auto stdsJson = norm["stds"].get<std::vector<double>>();
 
         if (meansJson.size() != stdsJson.size()) {
-            spdlog::error(
+            std::string msg = fmt::format(
                 "FeatureNormalizer: means ({}) and stds ({}) have different sizes",
                 meansJson.size(), stdsJson.size());
+            spdlog::error(msg);
             loaded_ = false;
-            return false;
+            return std::unexpected<std::string>(std::move(msg));
         }
 
         means_.resize(meansJson.size());
@@ -86,23 +90,27 @@ bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
         spdlog::info(
             "FeatureNormalizer: loaded {} feature normalization params (clip={:.1f})",
             means_.size(), clipValue_);
-        return true;
+        return {};
 
     } catch (const nlohmann::json::exception& e) {
-        spdlog::error("FeatureNormalizer: JSON error in '{}': {}", metadataPath, e.what());
+        std::string msg = fmt::format(
+            "FeatureNormalizer: JSON error in '{}': {}", metadataPath, e.what());
+        spdlog::error(msg);
         loaded_ = false;
-        return false;
+        return std::unexpected<std::string>(std::move(msg));
     } catch (const std::ios_base::failure& e) {
-        spdlog::error("FeatureNormalizer: I/O error loading '{}': {}", metadataPath, e.what());
+        std::string msg = fmt::format(
+            "FeatureNormalizer: I/O error loading '{}': {}", metadataPath, e.what());
+        spdlog::error(msg);
         loaded_ = false;
-        return false;
+        return std::unexpected<std::string>(std::move(msg));
     }
 }
 
-std::vector<float> FeatureNormalizer::normalize(const std::vector<float>& features) const {
+std::vector<float> FeatureNormalizer::normalize(std::span<const float> features) const {
     if (!loaded_) {
         spdlog::warn("FeatureNormalizer: metadata not loaded, returning raw features");
-        return features;
+        return {features.begin(), features.end()};
     }
 
     if (features.size() != means_.size()) {
@@ -110,7 +118,7 @@ std::vector<float> FeatureNormalizer::normalize(const std::vector<float>& featur
             "FeatureNormalizer: feature count mismatch (got {}, expected {}), "
             "returning raw features",
             features.size(), means_.size());
-        return features;
+        return {features.begin(), features.end()};
     }
 
     std::vector<float> normalized(features.size());

@@ -6,6 +6,7 @@
 #include "core/services/IFlowExtractor.h"
 #include "core/services/IFeatureNormalizer.h"
 
+#include <expected>
 #include <functional>
 #include <memory>
 #include <string>
@@ -32,12 +33,13 @@ public:
                              std::unique_ptr<nids::core::IFlowExtractor> extractor,
                              std::unique_ptr<nids::core::IFeatureNormalizer> normalizer);
 
-    /** Load the ONNX model from the given path. Returns false on failure. */
-    [[nodiscard]] bool loadModel(const std::string& modelPath);
+    /** Load the ONNX model from the given path. Returns error string on failure. */
+    [[nodiscard]] std::expected<void, std::string> loadModel(const std::string& modelPath);
 
     /// Load normalization parameters from model metadata JSON.
     /// Must be called before analyzeCapture() for correct predictions.
-    [[nodiscard]] bool loadNormalization(const std::string& metadataPath);
+    [[nodiscard]] std::expected<void, std::string> loadNormalization(
+        const std::string& metadataPath);
 
     /// Set the hybrid detection service for multi-layer analysis.
     /// The caller retains ownership (non-owning pointer).

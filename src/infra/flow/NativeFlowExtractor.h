@@ -16,13 +16,12 @@
 // - Subflow metrics, active/idle time statistics
 // - Initial TCP window sizes
 
+#include "core/math/WelfordAccumulator.h"
 #include "core/services/IFlowExtractor.h"
+#include "infra/parsing/PacketParser.h"
 
-#include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -35,6 +34,10 @@ class Packet;
 
 namespace nids::infra {
 
+/// Import WelfordAccumulator from core/ so existing code in this file and
+/// NativeFlowExtractor.cpp compiles without qualification changes.
+using nids::core::WelfordAccumulator;
+
 /// Number of flow features produced by toFeatureVector().
 inline constexpr int kFlowFeatureCount = 77;
 
@@ -46,71 +49,6 @@ inline constexpr std::uint64_t kMaxFlowPackets = 200;
 /// Returns the ordered list of feature column names matching toFeatureVector()
 /// output.
 [[nodiscard]] const std::vector<std::string> &flowFeatureNames();
-
-/**
- * Online statistics accumulator using Welford's algorithm.
- *
- * Computes running mean, variance, standard deviation, min, max, and sum
- * in O(1) space per update.  Replaces per-packet vectors that previously
- * stored all values for offline statistics computation (~7 KB per flow).
- *
- * Reference: Welford, B.P. (1962), "Note on a method for calculating
- * corrected sums of squares and products", Technometrics 4(3):419-420.
- */
-struct WelfordAccumulator {
-  std::uint64_t n = 0;
-  double mean_ = 0.0;
-  double m2_ = 0.0;   ///< Sum of squared deviations from the running mean.
-  double sum_ = 0.0;
-  double min_ = std::numeric_limits<double>::max();
-  double max_ = std::numeric_limits<double>::lowest();
-
-  /** Feed a new observation. */
-  void update(double x) noexcept {
-    ++n;
-    sum_ += x;
-    if (n == 1) {
-      min_ = max_ = x;
-    } else {
-      min_ = std::min(min_, x);
-      max_ = std::max(max_, x);
-    }
-    double delta = x - mean_;
-    mean_ += delta / static_cast<double>(n);
-    double delta2 = x - mean_;
-    m2_ += delta * delta2;
-  }
-
-  [[nodiscard]] double mean() const noexcept { return n > 0 ? mean_ : 0.0; }
-  [[nodiscard]] double sum() const noexcept { return sum_; }
-  [[nodiscard]] double min() const noexcept {
-    return n > 0 ? min_ : 0.0;
-  }
-  [[nodiscard]] double max() const noexcept {
-    return n > 0 ? max_ : 0.0;
-  }
-
-  /** Population variance (divide by N). */
-  [[nodiscard]] double populationVariance() const noexcept {
-    return n > 0 ? m2_ / static_cast<double>(n) : 0.0;
-  }
-
-  /** Sample variance (divide by N-1, Bessel's correction). */
-  [[nodiscard]] double sampleVariance() const noexcept {
-    return n > 1 ? m2_ / static_cast<double>(n - 1) : 0.0;
-  }
-
-  /** Sample standard deviation (sqrt of sample variance, N-1 denominator).
-   *
-   * Uses sample variance (Bessel's correction, divide by N-1) to match the
-   * Python training pipeline (scripts/ml/preprocess.py _stddev() function).
-   * The LSNM2024 model was trained with sample stddev — the C++ inference
-   * extractor MUST use the same convention.
-   */
-  [[nodiscard]] double stddev() const noexcept {
-    return std::sqrt(sampleVariance());
-  }
-};
 
 /** Five-tuple flow key identifying a unique bidirectional network flow. */
 struct FlowKey {
@@ -340,21 +278,8 @@ private:
   bool liveMode_ = false; ///< True when processPacket() has been called (live capture).
   DiagCounters diag_; ///< Diagnostic counters for pipeline analysis.
 
-  /// Parsed packet context passed between processPacket helpers.
-  struct ParsedPacket {
-    std::string srcIp;
-    std::string dstIp;
-    std::uint16_t srcPort = 0;
-    std::uint16_t dstPort = 0;
-    std::uint8_t protocol = 0;
-    std::uint32_t headerBytes = 0;
-    std::uint32_t totalPacketLen = 0;
-    std::uint32_t payloadSize = 0;
-    std::uint32_t transportHeaderLen = 0;
-    std::uint32_t ipIhl = 0;
-    std::uint8_t tcpFlags = 0;
-    std::uint16_t tcpWindow = 0;
-  };
+  /// Alias for the shared parsed packet struct from infra/parsing/.
+  using ParsedPacket = ParsedFields;
 
   void processPacketInternal(pcpp::RawPacket &rawPacket, std::int64_t timestampUs);
   void
@@ -363,10 +288,6 @@ private:
   /// Build feature vectors from completed + active flows (same order as
   /// flowMetadata_).
   [[nodiscard]] std::vector<std::vector<float>> buildFeatureVectors() const;
-
-  /// Parse all layers from a PcapPlusPlus parsed packet into ParsedPacket.
-  [[nodiscard]] static bool parsePacketHeaders(const pcpp::Packet &packet,
-                                               ParsedPacket &pkt);
 
   /// Evict timed-out flows and resolve the active flow key and direction.
   struct FlowLookupResult {

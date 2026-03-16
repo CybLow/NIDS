@@ -74,17 +74,17 @@ TEST(OnnxAnalyzer, predictWithConfidenceWithoutLoad_returnsUnknown) {
   EXPECT_FLOAT_EQ(result.confidence, 0.0f);
 }
 
-TEST(OnnxAnalyzer, loadModel_invalidPath_returnsFalse) {
+TEST(OnnxAnalyzer, loadModel_invalidPath_returnsError) {
   OnnxAnalyzer analyzer;
   EXPECT_FALSE(analyzer.loadModel("/nonexistent/path/model.onnx"));
 }
 
-TEST(OnnxAnalyzer, loadModel_emptyPath_returnsFalse) {
+TEST(OnnxAnalyzer, loadModel_emptyPath_returnsError) {
   OnnxAnalyzer analyzer;
   EXPECT_FALSE(analyzer.loadModel(""));
 }
 
-TEST(OnnxAnalyzer, loadModel_directoryPath_returnsFalse) {
+TEST(OnnxAnalyzer, loadModel_directoryPath_returnsError) {
   OnnxAnalyzer analyzer;
   EXPECT_FALSE(analyzer.loadModel("/tmp"));
 }

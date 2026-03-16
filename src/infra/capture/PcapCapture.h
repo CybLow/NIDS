@@ -96,8 +96,8 @@ public:
   PcapCapture(PcapCapture &&) = delete;
   PcapCapture &operator=(PcapCapture &&) = delete;
 
-  [[nodiscard]] bool initialize(const std::string &iface,
-                                const std::string &bpfFilter) override;
+  [[nodiscard]] std::expected<void, std::string> initialize(
+      const std::string &iface, const std::string &bpfFilter) override;
   void startCapture(const std::string &dumpFile) override;
   void stopCapture() override;
   [[nodiscard]] bool isCapturing() const override;

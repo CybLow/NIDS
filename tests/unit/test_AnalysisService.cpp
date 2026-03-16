@@ -11,6 +11,8 @@
 #include "core/services/IPacketAnalyzer.h"
 #include "infra/flow/NativeFlowExtractor.h" // kFlowFeatureCount
 
+#include <expected>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,8 +27,9 @@ using ::testing::Return;
 
 class MockAnalyzer : public IPacketAnalyzer {
 public:
-  MOCK_METHOD(bool, loadModel, (const std::string &), (override));
-  MOCK_METHOD(AttackType, predict, (const std::vector<float> &), (override));
+  MOCK_METHOD((std::expected<void, std::string>), loadModel,
+              (const std::string &), (override));
+  MOCK_METHOD(AttackType, predict, (std::span<const float>), (override));
 };
 
 class MockFlowExtractor : public IFlowExtractor {
@@ -53,8 +56,9 @@ public:
 /// Pass-through normalizer mock: returns features unchanged.
 class MockFeatureNormalizer : public IFeatureNormalizer {
 public:
-  MOCK_METHOD(bool, loadMetadata, (const std::string &), (override));
-  MOCK_METHOD(std::vector<float>, normalize, (const std::vector<float> &),
+  MOCK_METHOD((std::expected<void, std::string>), loadMetadata,
+              (const std::string &), (override));
+  MOCK_METHOD(std::vector<float>, normalize, (std::span<const float>),
               (const, override));
   MOCK_METHOD(bool, isLoaded, (), (const, noexcept, override));
   MOCK_METHOD(std::size_t, featureCount, (), (const, noexcept, override));
@@ -62,8 +66,8 @@ public:
   /// Set up default pass-through behavior for normalize().
   static std::unique_ptr<MockFeatureNormalizer> createPassThrough() {
     auto mock = std::make_unique<MockFeatureNormalizer>();
-    ON_CALL(*mock, normalize(_)).WillByDefault([](const std::vector<float> &f) {
-      return f;
+    ON_CALL(*mock, normalize(_)).WillByDefault([](std::span<const float> f) {
+      return std::vector<float>(f.begin(), f.end());
     });
     return mock;
   }
@@ -81,10 +85,11 @@ protected: // NOSONAR
 
 class MockAnalyzerWithConfidence : public IPacketAnalyzer {
 public:
-  MOCK_METHOD(bool, loadModel, (const std::string &), (override));
-  MOCK_METHOD(AttackType, predict, (const std::vector<float> &), (override));
+  MOCK_METHOD((std::expected<void, std::string>), loadModel,
+              (const std::string &), (override));
+  MOCK_METHOD(AttackType, predict, (std::span<const float>), (override));
   MOCK_METHOD(PredictionResult, predictWithConfidence,
-              (const std::vector<float> &), (override));
+              (std::span<const float>), (override));
 };
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -93,22 +98,24 @@ TEST_F(AnalysisServiceTest, loadModel_delegatesToAnalyzer) {
   auto analyzer = std::make_unique<MockAnalyzer>();
   auto extractor = std::make_unique<MockFlowExtractor>();
 
-  EXPECT_CALL(*analyzer, loadModel("model.onnx")).WillOnce(Return(true));
+  EXPECT_CALL(*analyzer, loadModel("model.onnx"))
+      .WillOnce(Return(std::expected<void, std::string>{}));
 
   AnalysisService service(std::move(analyzer), std::move(extractor),
                           MockFeatureNormalizer::createPassThrough());
-  EXPECT_TRUE(service.loadModel("model.onnx"));
+  EXPECT_TRUE(service.loadModel("model.onnx").has_value());
 }
 
-TEST_F(AnalysisServiceTest, loadModel_returnsFalseOnFailure) {
+TEST_F(AnalysisServiceTest, loadModel_returnsErrorOnFailure) {
   auto analyzer = std::make_unique<MockAnalyzer>();
   auto extractor = std::make_unique<MockFlowExtractor>();
 
-  EXPECT_CALL(*analyzer, loadModel(_)).WillOnce(Return(false));
+  EXPECT_CALL(*analyzer, loadModel(_))
+      .WillOnce(Return(std::unexpected<std::string>("load failed")));
 
   AnalysisService service(std::move(analyzer), std::move(extractor),
                           MockFeatureNormalizer::createPassThrough());
-  EXPECT_FALSE(service.loadModel("/bad/path.onnx"));
+  EXPECT_FALSE(service.loadModel("/bad/path.onnx").has_value());
 }
 
 TEST_F(AnalysisServiceTest, loadNormalization_delegatesToNormalizer) {
@@ -117,23 +124,24 @@ TEST_F(AnalysisServiceTest, loadNormalization_delegatesToNormalizer) {
   auto normalizer = std::make_unique<MockFeatureNormalizer>();
 
   EXPECT_CALL(*normalizer, loadMetadata("metadata.json"))
-      .WillOnce(Return(true));
+      .WillOnce(Return(std::expected<void, std::string>{}));
 
   AnalysisService service(std::move(analyzer), std::move(extractor),
                           std::move(normalizer));
-  EXPECT_TRUE(service.loadNormalization("metadata.json"));
+  EXPECT_TRUE(service.loadNormalization("metadata.json").has_value());
 }
 
-TEST_F(AnalysisServiceTest, loadNormalization_returnsFalseOnFailure) {
+TEST_F(AnalysisServiceTest, loadNormalization_returnsErrorOnFailure) {
   auto analyzer = std::make_unique<MockAnalyzer>();
   auto extractor = std::make_unique<MockFlowExtractor>();
   auto normalizer = std::make_unique<MockFeatureNormalizer>();
 
-  EXPECT_CALL(*normalizer, loadMetadata(_)).WillOnce(Return(false));
+  EXPECT_CALL(*normalizer, loadMetadata(_))
+      .WillOnce(Return(std::unexpected<std::string>("metadata load failed")));
 
   AnalysisService service(std::move(analyzer), std::move(extractor),
                           std::move(normalizer));
-  EXPECT_FALSE(service.loadNormalization("/bad/path.json"));
+  EXPECT_FALSE(service.loadNormalization("/bad/path.json").has_value());
 }
 
 TEST_F(AnalysisServiceTest, lastFlowMetadata_emptyBeforeAnalysis) {
@@ -185,7 +193,7 @@ TEST_F(AnalysisServiceTest, analyzeCapture_hybridEnabled_usesHybridService) {
       std::vector<float>(kFlowFeatureCount, 0.5f),
   };
 
-  // Set up metadata so we exercise the toFlowMetadata() path (idx <
+  // Set up metadata so we exercise the hybrid detection path (idx <
   // metadata.size())
   std::vector<FlowInfo> metadata;
   FlowInfo info;
@@ -286,7 +294,7 @@ TEST_F(AnalysisServiceTest, analyzeCapture_hybridWithTI_protocolMappingTcp) {
   FlowInfo info;
   info.srcIp = "192.168.1.10";
   info.dstIp = "10.0.0.1";
-  info.protocol = 6; // TCP → should map to "TCP" in FlowMetadata
+  info.protocol = 6; // TCP
   metadata.push_back(info);
 
   EXPECT_CALL(*extractorPtr, extractFeatures(_)).WillOnce(Return(mockFeatures));

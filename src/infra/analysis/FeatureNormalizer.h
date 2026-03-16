@@ -17,6 +17,7 @@
 
 #include "core/services/IFeatureNormalizer.h"
 
+#include <span>
 #include <string>
 #include <vector>
 
@@ -29,14 +30,15 @@ public:
 
     /// Load normalization parameters from a model metadata JSON file.
     /// Reads: normalization.means, normalization.stds, normalization.clip_value
-    /// Returns false if the file cannot be opened or parsed.
-    [[nodiscard]] bool loadMetadata(const std::string& metadataPath) override;
+    /// Returns void on success, or an error message string on failure.
+    [[nodiscard]] std::expected<void, std::string> loadMetadata(
+        const std::string& metadataPath) override;
 
     /// Apply StandardScaler normalization: (x - mean) / std, then clip to
     /// [-clip_value, clip_value]. Returns a new vector of normalized features.
     /// If metadata was not loaded or feature count mismatches, returns the
     /// input unchanged with a warning.
-    [[nodiscard]] std::vector<float> normalize(const std::vector<float>& features) const override;
+    [[nodiscard]] std::vector<float> normalize(std::span<const float> features) const override;
 
     /// Check whether normalization parameters have been loaded.
     [[nodiscard]] bool isLoaded() const noexcept override { return loaded_; }

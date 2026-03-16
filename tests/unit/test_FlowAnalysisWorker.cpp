@@ -6,12 +6,14 @@
 #include "core/model/CaptureSession.h"
 #include "core/model/DetectionResult.h"
 #include "core/model/PredictionResult.h"
-#include "core/services/BoundedQueue.h"
+#include "core/concurrent/BoundedQueue.h"
 #include "core/services/IFeatureNormalizer.h"
 #include "core/services/IPacketAnalyzer.h"
 
 #include <atomic>
 #include <chrono>
+#include <expected>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -24,18 +26,20 @@ using ::testing::Return;
 
 class MockAnalyzerWorker : public IPacketAnalyzer {
 public:
-    MOCK_METHOD(bool, loadModel, (const std::string&), (override));
-    MOCK_METHOD(AttackType, predict, (const std::vector<float>&), (override));
+    MOCK_METHOD((std::expected<void, std::string>), loadModel,
+                (const std::string&), (override));
+    MOCK_METHOD(AttackType, predict, (std::span<const float>), (override));
     MOCK_METHOD(PredictionResult, predictWithConfidence,
-                (const std::vector<float>&), (override));
+                (std::span<const float>), (override));
     MOCK_METHOD(std::vector<PredictionResult>, predictBatch,
                 (std::span<const float>, std::size_t), (override));
 };
 
 class MockNormalizerWorker : public IFeatureNormalizer {
 public:
-    MOCK_METHOD(bool, loadMetadata, (const std::string&), (override));
-    MOCK_METHOD(std::vector<float>, normalize, (const std::vector<float>&),
+    MOCK_METHOD((std::expected<void, std::string>), loadMetadata,
+                (const std::string&), (override));
+    MOCK_METHOD(std::vector<float>, normalize, (std::span<const float>),
                 (const, override));
     MOCK_METHOD(bool, isLoaded, (), (const, noexcept, override));
     MOCK_METHOD(std::size_t, featureCount, (), (const, noexcept, override));
@@ -44,7 +48,7 @@ public:
     static std::unique_ptr<MockNormalizerWorker> createPassThrough() {
         auto mock = std::make_unique<MockNormalizerWorker>();
         ON_CALL(*mock, normalize(_)).WillByDefault(
-            [](const std::vector<float>& f) { return f; });
+            [](std::span<const float> f) { return std::vector<float>(f.begin(), f.end()); });
         return mock;
     }
 };
@@ -149,7 +153,7 @@ TEST(FlowAnalysisWorker, processSingleItem_mlOnly) {
     FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
     worker.start();
 
-    queue.push(makeItem());
+    std::ignore = queue.push(makeItem());
     queue.close();
 
     ASSERT_TRUE(waitFor([&] { return !worker.isRunning() || worker.processedCount() == 1; }));
@@ -191,9 +195,9 @@ TEST(FlowAnalysisWorker, processMultipleItems_mlOnly) {
     FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
     worker.start();
 
-    queue.push(makeItem(0.1f));
-    queue.push(makeItem(0.5f));
-    queue.push(makeItem(0.9f));
+    std::ignore = queue.push(makeItem(0.1f));
+    std::ignore = queue.push(makeItem(0.5f));
+    std::ignore = queue.push(makeItem(0.9f));
     queue.close();
 
     ASSERT_TRUE(waitFor([&] { return worker.processedCount() == 3; }));
@@ -227,7 +231,7 @@ TEST(FlowAnalysisWorker, hybridDetection_usesHybridService) {
     worker.setHybridDetection(&hybridService);
     worker.start();
 
-    queue.push(makeItem());
+    std::ignore = queue.push(makeItem());
     queue.close();
 
     ASSERT_TRUE(waitFor([&] { return worker.processedCount() == 1; }));
@@ -273,8 +277,8 @@ TEST(FlowAnalysisWorker, resultCallback_invokedForEachFlow) {
         });
     worker.start();
 
-    queue.push(makeItem(0.1f));
-    queue.push(makeItem(0.9f));
+    std::ignore = queue.push(makeItem(0.1f));
+    std::ignore = queue.push(makeItem(0.9f));
     queue.close();
 
     ASSERT_TRUE(waitFor([&] { return callbackCount.load() == 2; }));
@@ -296,7 +300,7 @@ TEST(FlowAnalysisWorker, normalizationIsApplied) {
 
     // Normalizer transforms features: multiply each by 2
     ON_CALL(normalizer, normalize(_)).WillByDefault(
-        [](const std::vector<float>& f) {
+        [](std::span<const float> f) {
             std::vector<float> result(f.size());
             std::ranges::transform(f, result.begin(),
                                    [](float v) { return v * 2.0f; });
@@ -316,7 +320,7 @@ TEST(FlowAnalysisWorker, normalizationIsApplied) {
     worker.start();
 
     auto item = makeItem(1.0f);
-    queue.push(std::move(item));
+    std::ignore = queue.push(std::move(item));
     queue.close();
 
     ASSERT_TRUE(waitFor([&] { return worker.processedCount() == 1; }));
@@ -369,7 +373,7 @@ TEST(FlowAnalysisWorker, destructorJoinsThread) {
     {
         FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
         worker.start();
-        queue.push(makeItem());
+        std::ignore = queue.push(makeItem());
         queue.close();
         // Destructor should join cleanly without hanging
     }
@@ -401,7 +405,7 @@ TEST(FlowAnalysisWorker, concurrentProducer_manyItems) {
     // Producer thread pushes items concurrently
     std::jthread producer([&queue] {
         for (std::size_t i = 0; i < kItemCount; ++i) {
-            queue.push(makeItem(static_cast<float>(i) / static_cast<float>(kItemCount)));
+            std::ignore = queue.push(makeItem(static_cast<float>(i) / static_cast<float>(kItemCount)));
         }
         queue.close();
     });
@@ -440,15 +444,15 @@ TEST(FlowAnalysisWorker, hybridDetection_protocolMapping) {
     // Push items with different protocols
     auto tcpItem = makeItem();
     tcpItem.metadata.protocol = 6;
-    queue.push(std::move(tcpItem));
+    std::ignore = queue.push(std::move(tcpItem));
 
     auto udpItem = makeItem();
     udpItem.metadata.protocol = 17;
-    queue.push(std::move(udpItem));
+    std::ignore = queue.push(std::move(udpItem));
 
     auto icmpItem = makeItem();
     icmpItem.metadata.protocol = 1;
-    queue.push(std::move(icmpItem));
+    std::ignore = queue.push(std::move(icmpItem));
 
     queue.close();
 

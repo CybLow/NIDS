@@ -3,8 +3,9 @@
 
 #include "app/CaptureController.h"
 #include "core/services/IPacketCapture.h"
-#include "core/services/PacketFilter.h"
+#include "core/model/PacketFilter.h"
 
+#include <expected>
 #include <string>
 #include <vector>
 
@@ -18,8 +19,8 @@ using ::testing::Return;
 
 class MockPacketCapture : public IPacketCapture {
 public:
-  MOCK_METHOD(bool, initialize, (const std::string &, const std::string &),
-              (override));
+  MOCK_METHOD((std::expected<void, std::string>), initialize,
+              (const std::string &, const std::string &), (override));
   MOCK_METHOD(void, startCapture, (const std::string &), (override));
   MOCK_METHOD(void, stopCapture, (), (override));
   MOCK_METHOD(bool, isCapturing, (), (const, override));
@@ -52,7 +53,8 @@ TEST_F(CaptureControllerTest, startCapture_initFailure_emitsError) {
   EXPECT_CALL(*mockPtr, setPacketCallback(_));
   EXPECT_CALL(*mockPtr, setErrorCallback(_));
   EXPECT_CALL(*mockPtr, isCapturing()).WillRepeatedly(Return(false));
-  EXPECT_CALL(*mockPtr, initialize(_, _)).WillOnce(Return(false));
+  EXPECT_CALL(*mockPtr, initialize(_, _))
+      .WillOnce(Return(std::unexpected<std::string>("mock init failure")));
   // startCapture should NOT be called when init fails
   EXPECT_CALL(*mockPtr, startCapture(_)).Times(0);
 
@@ -78,7 +80,8 @@ TEST_F(CaptureControllerTest, startCapture_initSuccess_emitsStarted) {
   EXPECT_CALL(*mockPtr, setPacketCallback(_));
   EXPECT_CALL(*mockPtr, setErrorCallback(_));
   EXPECT_CALL(*mockPtr, isCapturing()).WillRepeatedly(Return(false));
-  EXPECT_CALL(*mockPtr, initialize("eth0", _)).WillOnce(Return(true));
+  EXPECT_CALL(*mockPtr, initialize("eth0", _))
+      .WillOnce(Return(std::expected<void, std::string>{}));
   EXPECT_CALL(*mockPtr, startCapture(_)).Times(1);
 
   CaptureController controller(std::move(mock));

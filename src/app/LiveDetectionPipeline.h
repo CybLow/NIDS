@@ -19,7 +19,7 @@
 #include "app/FlowAnalysisWorker.h"
 #include "core/model/CaptureSession.h"
 #include "core/model/DetectionResult.h"
-#include "core/services/BoundedQueue.h"
+#include "core/concurrent/BoundedQueue.h"
 #include "core/services/IFeatureNormalizer.h"
 #include "core/services/IFlowExtractor.h"
 #include "core/services/IOutputSink.h"

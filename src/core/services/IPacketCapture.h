@@ -3,6 +3,7 @@
 #include "core/model/PacketInfo.h"
 
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <string>
 #include <vector>
@@ -35,10 +36,10 @@ public:
    * Open a capture handle on the given network interface.
    * @param iface Network interface name (e.g., "eth0").
    * @param bpfFilter BPF filter expression (empty string for no filter).
-   * @return True on success, false on failure.
+   * @return void on success, or an error message string on failure.
    */
-  [[nodiscard]] virtual bool initialize(const std::string &iface,
-                                        const std::string &bpfFilter) = 0;
+  [[nodiscard]] virtual std::expected<void, std::string> initialize(
+      const std::string &iface, const std::string &bpfFilter) = 0;
   /**
    * Begin capturing packets, optionally writing raw frames to a pcap dump file.
    * @param dumpFile Path for the pcap dump file (empty to disable dumping).

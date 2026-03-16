@@ -28,7 +28,7 @@ public:
 class MockRuleEngine : public IRuleEngine {
 public:
   MOCK_METHOD(std::vector<HeuristicRuleResult>, evaluate,
-              (const FlowMetadata &), (const, override));
+              (const FlowInfo &), (const, override));
   MOCK_METHOD(std::vector<HeuristicRuleResult>, evaluatePortScan,
               (std::string_view, const std::vector<std::uint16_t> &),
               (const, override));
@@ -62,13 +62,13 @@ protected:
   }
 
   /// Build a benign flow metadata.
-  static FlowMetadata makeBenignFlowMeta() {
-    FlowMetadata flow;
+  static FlowInfo makeBenignFlowMeta() {
+    FlowInfo flow;
     flow.srcIp = "192.168.1.10";
     flow.dstIp = "10.0.0.1";
     flow.srcPort = 45000;
     flow.dstPort = 80;
-    flow.protocol = "TCP";
+    flow.protocol = 6;
     flow.totalFwdPackets = 10;
     flow.totalBwdPackets = 8;
     return flow;

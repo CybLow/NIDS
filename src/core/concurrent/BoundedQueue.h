@@ -13,6 +13,7 @@
 ///
 /// Pure C++23, zero platform or framework dependencies.
 
+#include <concepts>
 #include <condition_variable>
 #include <cstddef>
 #include <mutex>
@@ -27,7 +28,7 @@ namespace nids::core {
  *
  * @tparam T  Element type (must be movable).
  */
-template <typename T>
+template <std::movable T>
 class BoundedQueue {
 public:
   /// Construct a queue with the given maximum capacity.
@@ -47,7 +48,7 @@ public:
    * @param value  Element to enqueue (moved in).
    * @return true if the element was enqueued, false if the queue was closed.
    */
-  bool push(T value) {
+  [[nodiscard]] bool push(T value) {
     std::unique_lock lock(mutex_);
     notFull_.wait(lock, [this] { return queue_.size() < capacity_ || closed_; });
     if (closed_)
@@ -64,7 +65,7 @@ public:
    * @param value  Element to enqueue (moved in).
    * @return true if enqueued, false if the queue was full or closed.
    */
-  bool tryPush(T value) {
+  [[nodiscard]] bool tryPush(T value) {
     std::unique_lock lock(mutex_);
     if (closed_ || queue_.size() >= capacity_)
       return false;

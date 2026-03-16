@@ -1,53 +1,11 @@
 #include "app/FlowAnalysisWorker.h"
 #include "app/HybridDetectionService.h"
-#include "core/services/IRuleEngine.h"
 
 #include <spdlog/spdlog.h>
 
 #include <utility>
 
 namespace nids::app {
-
-namespace {
-
-/// Convert a FlowInfo (from the extractor) to a FlowMetadata (for heuristic rules).
-nids::core::FlowMetadata toFlowMetadata(const nids::core::FlowInfo& info) {
-    nids::core::FlowMetadata meta;
-    meta.srcIp = info.srcIp;
-    meta.dstIp = info.dstIp;
-    meta.srcPort = info.srcPort;
-    meta.dstPort = info.dstPort;
-
-    switch (info.protocol) {
-        case 6:
-            meta.protocol = "TCP";
-            break;
-        case 17:
-            meta.protocol = "UDP";
-            break;
-        case 1:
-            meta.protocol = "ICMP";
-            break;
-        default:
-            meta.protocol = "OTHER";
-            break;
-    }
-
-    meta.totalFwdPackets = info.totalFwdPackets;
-    meta.totalBwdPackets = info.totalBwdPackets;
-    meta.flowDurationUs = info.flowDurationUs;
-    meta.fwdPacketsPerSecond = info.fwdPacketsPerSecond;
-    meta.bwdPacketsPerSecond = info.bwdPacketsPerSecond;
-    meta.synFlagCount = info.synFlagCount;
-    meta.ackFlagCount = info.ackFlagCount;
-    meta.rstFlagCount = info.rstFlagCount;
-    meta.finFlagCount = info.finFlagCount;
-    meta.avgPacketSize = info.avgPacketSize;
-
-    return meta;
-}
-
-} // anonymous namespace
 
 FlowAnalysisWorker::FlowAnalysisWorker(
     nids::core::BoundedQueue<FlowWorkItem>& queue,
@@ -168,10 +126,9 @@ void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem>& items,
                              : (mlResults.emplace_back(), mlResults.back());
 
         if (hybridService_ != nullptr) [[likely]] {
-            auto flowMeta = toFlowMetadata(items[i].metadata);
             result = hybridService_->evaluate(
                 mlResult, items[i].metadata.srcIp,
-                items[i].metadata.dstIp, flowMeta);
+                items[i].metadata.dstIp, items[i].metadata);
         } else {
             result.mlResult = mlResult;
             result.finalVerdict = mlResult.classification;
@@ -187,29 +144,6 @@ void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem>& items,
             resultCallback_(index, std::move(result),
                             std::move(items[i].metadata));
         }
-    }
-}
-
-void FlowAnalysisWorker::processItem(FlowWorkItem&& item, std::size_t index) {
-    auto normalized = normalizer_.normalize(item.features);
-
-    nids::core::DetectionResult result;
-
-    if (hybridService_ != nullptr) [[likely]] {
-        auto mlResult = analyzer_.predictWithConfidence(normalized);
-        auto flowMeta = toFlowMetadata(item.metadata);
-        result = hybridService_->evaluate(
-            mlResult, item.metadata.srcIp, item.metadata.dstIp, flowMeta);
-    } else {
-        auto attackType = analyzer_.predict(normalized);
-        result.finalVerdict = attackType;
-        result.detectionSource = nids::core::DetectionSource::MlOnly;
-    }
-
-    session_.setDetectionResult(index, result);
-
-    if (resultCallback_) {
-        resultCallback_(index, std::move(result), std::move(item.metadata));
     }
 }
 

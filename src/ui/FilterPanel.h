@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/services/PacketFilter.h"
+#include "core/model/PacketFilter.h"
 #include "core/services/ServiceRegistry.h"
 
 #include <QWidget>

@@ -9,6 +9,8 @@
 /// Defined in core/ to satisfy the Dependency Inversion Principle
 /// (AGENTS.md 1.1, 1.3).
 
+#include <expected>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -20,14 +22,15 @@ public:
     virtual ~IFeatureNormalizer() = default;
 
     /// Load normalization parameters (means, stds, clip_value) from a
-    /// model metadata file. Returns false on failure.
-    [[nodiscard]] virtual bool loadMetadata(const std::string& metadataPath) = 0;
+    /// model metadata file. Returns void on success, or an error string on failure.
+    [[nodiscard]] virtual std::expected<void, std::string> loadMetadata(
+        const std::string& metadataPath) = 0;
 
     /// Apply normalization to a raw feature vector.
     /// If metadata was not loaded or feature count mismatches, returns the
     /// input unchanged with a warning (graceful degradation).
     [[nodiscard]] virtual std::vector<float> normalize(
-        const std::vector<float>& features) const = 0;
+        std::span<const float> features) const = 0;
 
     /// Check whether normalization parameters have been loaded.
     [[nodiscard]] virtual bool isLoaded() const noexcept = 0;

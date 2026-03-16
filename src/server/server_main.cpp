@@ -15,25 +15,21 @@
 
 #include "server/NidsServer.h"
 
-#include "app/HybridDetectionService.h"
 #include "app/LiveDetectionPipeline.h"
+#include "app/PipelineFactory.h"
 #include "core/model/CaptureSession.h"
 #include "core/model/DetectionResult.h"
 #include "core/services/Configuration.h"
-#include "infra/analysis/AnalyzerFactory.h"
-#include "infra/analysis/FeatureNormalizer.h"
+#include "core/services/IFlowExtractor.h"
+#include "core/services/IPacketCapture.h"
 #include "infra/capture/PcapCapture.h"
 #include "infra/config/ConfigLoader.h"
-#include "infra/flow/NativeFlowExtractor.h"
 #include "infra/output/ConsoleAlertSink.h"
+#include "infra/platform/SignalHandler.h"
 #include "infra/platform/SocketInit.h"
-#include "infra/rules/HeuristicRuleEngine.h"
-#include "infra/threat/ThreatIntelProvider.h"
 
 #include <spdlog/spdlog.h>
 
-#include <atomic>
-#include <csignal>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -41,22 +37,9 @@
 #include <string_view>
 #include <thread>
 
-// gRPC 1.72.0 has use-after-poison false positives in its epoll/thread-pool
-// internals (abseil StatusRep::SetPayload) when compiled with GCC 15 + ASan.
-// Disable user-poisoning detection to avoid false aborts from gRPC's arena.
-#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
-extern "C" const char* __asan_default_options() {  // NOLINT
-    return "allow_user_poisoning=0";
-}
-#endif
+#include "infra/platform/AsanOptions.h" // shared gRPC ASan workaround
 
 namespace {
-
-std::atomic<bool> gShutdownRequested{false};
-
-void signalHandler(int /*signum*/) {
-    gShutdownRequested.store(true);
-}
 
 struct CliArgs {
     std::filesystem::path configPath;
@@ -104,8 +87,8 @@ CliArgs parseArgs(int argc, char* argv[]) {
 
 /// Run in standalone mode (no gRPC, direct capture + console output).
 int runStandalone(const CliArgs& args,
-                  nids::infra::PcapCapture& capture,
-                  nids::infra::NativeFlowExtractor& flowExtractor,
+                  nids::core::IPacketCapture& capture,
+                  nids::core::IFlowExtractor& flowExtractor,
                   nids::core::IPacketAnalyzer& analyzer,
                   nids::core::IFeatureNormalizer& normalizer,
                   nids::app::HybridDetectionService& hybridService) {
@@ -129,7 +112,7 @@ int runStandalone(const CliArgs& args,
     pipeline->start();
     capture.startCapture("");
 
-    while (!gShutdownRequested.load()) {
+    while (!nids::infra::platform::gShutdownRequested.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 
@@ -158,7 +141,7 @@ int main(int argc, char* argv[]) {
     }
 
     // -- Network init --
-    nids::platform::NetworkInitGuard networkGuard;
+    nids::infra::platform::NetworkInitGuard networkGuard;
     if (!networkGuard.isInitialized()) {
         spdlog::critical("Failed to initialize networking");
         return 1;
@@ -166,55 +149,23 @@ int main(int argc, char* argv[]) {
 
     // -- Configuration --
     auto& config = nids::core::Configuration::instance();
-    if (!args.configPath.empty() &&
-        !nids::infra::loadConfigFromFile(args.configPath, config)) {
-        spdlog::critical("Failed to parse config file '{}'",
-                         args.configPath.string());
-        return 1;
+    if (!args.configPath.empty()) {
+        if (auto result = nids::infra::loadConfigFromFile(args.configPath, config);
+            !result) {
+            spdlog::critical("Failed to parse config file '{}': {}",
+                             args.configPath.string(), result.error());
+            return 1;
+        }
     }
 
     // -- Signal handling --
-    std::signal(SIGINT, signalHandler);
-    std::signal(SIGTERM, signalHandler);
+    nids::infra::platform::installSignalHandlers();
 
-    // -- ML Analyzer --
-    auto analyzer = nids::infra::createAnalyzer();
-    if (!analyzer->loadModel(config.modelPath().string())) {
-        spdlog::warn("ML model not loaded from '{}' — analysis unavailable",
-                     config.modelPath().string());
-    }
+    // -- Detection services (TI + rules + hybrid) --
+    auto detection = nids::app::PipelineFactory::createDetectionServices(config);
 
-    // -- Threat Intelligence --
-    auto threatIntel = std::make_unique<nids::infra::ThreatIntelProvider>();
-    if (auto tiDir = config.threatIntelDirectory().string();
-        std::filesystem::is_directory(tiDir)) {
-        auto loaded = threatIntel->loadFeeds(tiDir);
-        spdlog::info("Loaded {} threat intelligence entries from {} feed(s)",
-                     loaded, threatIntel->feedCount());
-    }
-
-    // -- Heuristic Rule Engine --
-    auto ruleEngine = std::make_unique<nids::infra::HeuristicRuleEngine>();
-    spdlog::info("Heuristic rule engine initialized with {} rules",
-                 ruleEngine->ruleCount());
-
-    // -- Hybrid Detection Service --
-    auto hybridService = std::make_unique<nids::app::HybridDetectionService>(
-        threatIntel.get(), ruleEngine.get());
-    hybridService->setWeights({.ml = config.weightMl(),
-                               .threatIntel = config.weightThreatIntel(),
-                               .heuristic = config.weightHeuristic()});
-    hybridService->setConfidenceThreshold(config.mlConfidenceThreshold());
-
-    // -- Flow Extractor + Normalizer --
-    auto flowExtractor = std::make_unique<nids::infra::NativeFlowExtractor>();
-    flowExtractor->setFlowTimeout(config.liveFlowTimeoutUs());
-    flowExtractor->setMaxFlowDuration(config.maxFlowDurationUs());
-    auto normalizer = std::make_unique<nids::infra::FeatureNormalizer>();
-    if (!normalizer->loadMetadata(config.modelMetadataPath().string())) {
-        spdlog::warn("Feature normalization metadata not loaded — "
-                     "predictions may be inaccurate");
-    }
+    // -- ML services (analyzer + normalizer + flow extractor) --
+    auto ml = nids::app::PipelineFactory::createLiveMlServices(config);
 
     // -- Packet Capture --
     auto capture = std::make_unique<nids::infra::PcapCapture>();
@@ -222,28 +173,31 @@ int main(int argc, char* argv[]) {
     // -- Mode selection --
     if (args.noGrpc) {
         // Standalone mode: initialize capture immediately
-        if (!capture->initialize(args.interface, args.bpfFilter)) {
-            spdlog::critical("Failed to initialize capture on '{}'",
-                             args.interface);
+        if (auto result = capture->initialize(args.interface, args.bpfFilter);
+            !result) {
+            spdlog::critical("Failed to initialize capture on '{}': {}",
+                             args.interface, result.error());
             return 1;
         }
-        return runStandalone(args, *capture, *flowExtractor, *analyzer,
-                             *normalizer, *hybridService);
+        return runStandalone(args, *capture, *ml.flowExtractor, *ml.analyzer,
+                             *ml.normalizer, *detection.hybridService);
     }
 
     // -- gRPC server mode --
     // Pre-initialize capture if interface was specified via CLI
     if (!args.interface.empty()) {
-        if (!capture->initialize(args.interface, args.bpfFilter)) {
-            spdlog::critical("Failed to initialize capture on '{}'",
-                             args.interface);
+        if (auto result = capture->initialize(args.interface, args.bpfFilter);
+            !result) {
+            spdlog::critical("Failed to initialize capture on '{}': {}",
+                             args.interface, result.error());
             return 1;
         }
     }
 
     // Create gRPC service implementation
     auto service = std::make_unique<nids::server::NidsServiceImpl>(
-        *capture, *flowExtractor, *analyzer, *normalizer, *hybridService);
+        *capture, *ml.flowExtractor, *ml.analyzer, *ml.normalizer,
+        *detection.hybridService);
 
     // Create and start gRPC server
     nids::server::ServerConfig serverConfig{
@@ -258,7 +212,7 @@ int main(int argc, char* argv[]) {
     // (clients can also start capture later via StartCapture RPC)
 
     // Block until shutdown signal
-    while (!gShutdownRequested.load()) {
+    while (!nids::infra::platform::gShutdownRequested.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 

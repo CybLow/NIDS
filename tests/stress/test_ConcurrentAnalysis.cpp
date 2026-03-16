@@ -22,7 +22,7 @@
 using nids::app::HybridDetectionService;
 using nids::core::AttackType;
 using nids::core::DetectionResult;
-using nids::core::FlowMetadata;
+using nids::core::FlowInfo;
 using nids::core::PredictionResult;
 using nids::test::ScopedTimer;
 using nids::test::StubAnalyzer;
@@ -38,13 +38,13 @@ PredictionResult makePred(AttackType type, float confidence) {
   return pred;
 }
 
-FlowMetadata makeFlowMeta(std::uint32_t flowId, double pps = 500.0) {
-  FlowMetadata meta;
+FlowInfo makeFlowMeta(std::uint32_t flowId, double pps = 500.0) {
+  FlowInfo meta;
   meta.srcIp = std::format("10.0.{}.{}", (flowId >> 8) & 0xff, flowId & 0xff);
   meta.dstIp = "10.1.0.1";
   meta.srcPort = static_cast<std::uint16_t>(40000 + flowId);
   meta.dstPort = 80;
-  meta.protocol = "TCP";
+  meta.protocol = 6;
   meta.totalFwdPackets = 100;
   meta.totalBwdPackets = 80;
   meta.flowDurationUs = 1'000'000.0;

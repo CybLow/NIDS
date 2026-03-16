@@ -1,5 +1,6 @@
 #include "ui/DetectionDetailWidget.h"
 #include "core/model/AttackType.h"
+#include "core/model/ProtocolConstants.h"
 
 #include <QFont>
 #include <QHeaderView>
@@ -114,21 +115,10 @@ void DetectionDetailWidget::setResult(const nids::core::DetectionResult &result,
                                .arg(QString::fromStdString(metadata->dstIp))
                                .arg(metadata->dstPort));
 
-    QString protoStr;
-    switch (metadata->protocol) {
-    case 6:
-      protoStr = "TCP";
-      break;
-    case 17:
-      protoStr = "UDP";
-      break;
-    case 1:
-      protoStr = "ICMP";
-      break;
-    default:
-      protoStr = QString("Other (%1)").arg(metadata->protocol);
-      break;
-    }
+    auto protoName = nids::core::protocolToName(metadata->protocol);
+    QString protoStr = (protoName != "Other")
+        ? QString::fromUtf8(protoName.data(), static_cast<int>(protoName.size()))
+        : QString("Other (%1)").arg(metadata->protocol);
     flowProtocolLabel_->setText(QString("Protocol: %1").arg(protoStr));
 
     double durationSec = metadata->flowDurationUs / 1'000'000.0;

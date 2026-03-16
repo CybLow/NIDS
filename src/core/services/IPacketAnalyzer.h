@@ -3,6 +3,7 @@
 #include "core/model/AttackType.h"
 #include "core/model/PredictionResult.h"
 
+#include <expected>
 #include <span>
 #include <string>
 #include <vector>
@@ -17,21 +18,22 @@ public:
     /**
      * Load an ML model from the given file path.
      * @param modelPath Path to the ONNX model file.
-     * @return True if the model was loaded successfully.
+     * @return void on success, or an error message string on failure.
      */
-    [[nodiscard]] virtual bool loadModel(const std::string& modelPath) = 0;
+    [[nodiscard]] virtual std::expected<void, std::string> loadModel(
+        const std::string& modelPath) = 0;
 
     /**
      * Classify a flow given its feature vector.
      * @param features Normalized feature vector (kFlowFeatureCount elements).
      * @return Predicted attack type.
      */
-    [[nodiscard]] virtual AttackType predict(const std::vector<float>& features) = 0;
+    [[nodiscard]] virtual AttackType predict(std::span<const float> features) = 0;
 
     /// Enhanced prediction returning confidence scores and full probability distribution.
     /// Default implementation delegates to predict() and wraps the result.
     [[nodiscard]] virtual PredictionResult predictWithConfidence(
-        const std::vector<float>& features) {
+        std::span<const float> features) {
         auto type = predict(features);
         PredictionResult result;
         result.classification = type;
@@ -61,8 +63,7 @@ public:
         results.reserve(flowCount);
         for (std::size_t i = 0; i < flowCount; ++i) {
             auto flowData = batch.subspan(i * featureCount, featureCount);
-            results.push_back(predictWithConfidence(
-                std::vector<float>(flowData.begin(), flowData.end())));
+            results.push_back(predictWithConfidence(flowData));
         }
         return results;
     }

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "core/services/PacketFilter.h"
+#include "core/model/PacketFilter.h"
 
 using nids::core::PacketFilter;
 

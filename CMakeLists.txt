@@ -128,52 +128,8 @@ if(NIDS_BUILD_SERVER)
     # Suppress warnings in generated code
     target_compile_options(nids_proto PRIVATE -w)
 
-    # ── Server library ──────────────────────────────────────────
-    add_library(nids-server-lib STATIC
-        src/server/NidsServer.cpp
-    )
-    target_link_libraries(nids-server-lib PUBLIC
-        nids_proto
-        nids_app
-        nids_infra
-        nids_core
-        Threads::Threads
-        spdlog::spdlog
-    )
-    target_include_directories(nids-server-lib PUBLIC "${CMAKE_SOURCE_DIR}/src")
-    nids_set_target_defaults(nids-server-lib)
-
-    # ── Server executable ───────────────────────────────────────
-    add_executable(nids-server src/server/server_main.cpp)
-    target_link_libraries(nids-server PRIVATE
-        nids-server-lib
-        nids_app
-        nids_infra
-        nids_core
-        spdlog::spdlog
-    )
-    nids_set_target_defaults(nids-server)
-
-    # ── Client library ──────────────────────────────────────────
-    add_library(nids-client-lib STATIC
-        src/client/NidsClient.cpp
-    )
-    target_link_libraries(nids-client-lib PUBLIC
-        nids_proto
-        nids_core
-        Threads::Threads
-        spdlog::spdlog
-    )
-    target_include_directories(nids-client-lib PUBLIC "${CMAKE_SOURCE_DIR}/src")
-    nids_set_target_defaults(nids-client-lib)
-
-    # ── CLI client executable ───────────────────────────────────
-    add_executable(nids-cli src/client/cli_main.cpp)
-    target_link_libraries(nids-cli PRIVATE
-        nids-client-lib
-        spdlog::spdlog
-    )
-    nids_set_target_defaults(nids-cli)
+    add_subdirectory(src/server)
+    add_subdirectory(src/client)
 
     install(TARGETS nids-server nids-cli nids-server-lib nids-client-lib
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
