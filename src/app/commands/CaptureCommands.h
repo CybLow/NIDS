@@ -6,8 +6,8 @@
 /// following the Command pattern (AGENTS.md 5.7).  They can be logged, queued,
 /// and undone (start/stop are mutual inverses).
 
-#include "core/services/ICommand.h"
 #include "core/model/PacketFilter.h"
+#include "core/services/ICommand.h"
 
 #include <string>
 #include <string_view>
@@ -20,61 +20,58 @@ class CaptureController;
 /// Undo stops the capture.
 class StartCaptureCommand : public core::ICommand {
 public:
-    /**
-     * Construct the command.
-     * @param controller  Non-owning reference to the controller.
-     * @param filter      Capture filter to apply.
-     * @param dumpFile    Optional pcap dump file path.
-     */
-    StartCaptureCommand(CaptureController& controller,
-                        core::PacketFilter filter,
-                        std::string dumpFile = "")
-        : controller_(controller),
-          filter_(std::move(filter)),
-          dumpFile_(std::move(dumpFile)) {}
+  /**
+   * Construct the command.
+   * @param controller  Non-owning reference to the controller.
+   * @param filter      Capture filter to apply.
+   * @param dumpFile    Optional pcap dump file path.
+   */
+  StartCaptureCommand(CaptureController &controller, core::PacketFilter filter,
+                      std::string dumpFile = "")
+      : controller_(controller), filter_(std::move(filter)),
+        dumpFile_(std::move(dumpFile)) {}
 
-    void execute() override;
-    void undo() override;
+  void execute() override;
+  void undo() override;
 
-    [[nodiscard]] std::string_view name() const noexcept override {
-        return "StartCapture";
-    }
+  [[nodiscard]] std::string_view name() const noexcept override {
+    return "StartCapture";
+  }
 
 private:
-    CaptureController& controller_;
-    core::PacketFilter filter_;
-    std::string dumpFile_;
+  CaptureController &controller_;
+  core::PacketFilter filter_;
+  std::string dumpFile_;
 };
 
 /// Command that stops the current capture session.
 /// Undo restarts capture with the previously used filter.
 class StopCaptureCommand : public core::ICommand {
 public:
-    /**
-     * Construct the command.
-     * @param controller  Non-owning reference to the controller.
-     * @param filter      The filter that was used for the running capture
-     *                    (needed for undo to restart with the same config).
-     * @param dumpFile    The dump file that was used (needed for undo).
-     */
-    StopCaptureCommand(CaptureController& controller,
-                       core::PacketFilter filter = {},
-                       std::string dumpFile = "")
-        : controller_(controller),
-          filter_(std::move(filter)),
-          dumpFile_(std::move(dumpFile)) {}
+  /**
+   * Construct the command.
+   * @param controller  Non-owning reference to the controller.
+   * @param filter      The filter that was used for the running capture
+   *                    (needed for undo to restart with the same config).
+   * @param dumpFile    The dump file that was used (needed for undo).
+   */
+  explicit StopCaptureCommand(CaptureController &controller,
+                              core::PacketFilter filter = {},
+                              std::string dumpFile = "")
+      : controller_(controller), filter_(std::move(filter)),
+        dumpFile_(std::move(dumpFile)) {}
 
-    void execute() override;
-    void undo() override;
+  void execute() override;
+  void undo() override;
 
-    [[nodiscard]] std::string_view name() const noexcept override {
-        return "StopCapture";
-    }
+  [[nodiscard]] std::string_view name() const noexcept override {
+    return "StopCapture";
+  }
 
 private:
-    CaptureController& controller_;
-    core::PacketFilter filter_;
-    std::string dumpFile_;
+  CaptureController &controller_;
+  core::PacketFilter filter_;
+  std::string dumpFile_;
 };
 
 } // namespace nids::app

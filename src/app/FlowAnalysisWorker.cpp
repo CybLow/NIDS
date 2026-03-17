@@ -8,154 +8,152 @@
 
 namespace nids::app {
 
-FlowAnalysisWorker::FlowAnalysisWorker(
-    core::BoundedQueue<FlowWorkItem>& queue,
-    core::IPacketAnalyzer& analyzer,
-    core::IFeatureNormalizer& normalizer,
-    core::CaptureSession& session)
-    : queue_(queue)
-    , analyzer_(analyzer)
-    , normalizer_(normalizer)
-    , session_(session) {}
+FlowAnalysisWorker::FlowAnalysisWorker(core::BoundedQueue<FlowWorkItem> &queue,
+                                       core::IPacketAnalyzer &analyzer,
+                                       core::IFeatureNormalizer &normalizer,
+                                       core::CaptureSession &session)
+    : queue_(queue), analyzer_(analyzer), normalizer_(normalizer),
+      session_(session) {}
 
-FlowAnalysisWorker::~FlowAnalysisWorker() {
-    stop();
-}
+FlowAnalysisWorker::~FlowAnalysisWorker() { stop(); }
 
 void FlowAnalysisWorker::setHybridDetection(
-    HybridDetectionService* service) noexcept {
-    assert(!running_.load(std::memory_order_relaxed) &&
-           "setHybridDetection() must be called before start()");
-    hybridService_ = service;
+    HybridDetectionService *service) noexcept {
+  assert(!running_.load(std::memory_order_relaxed) &&
+         "setHybridDetection() must be called before start()");
+  hybridService_ = service;
 }
 
 void FlowAnalysisWorker::setResultCallback(ResultCallback cb) noexcept {
-    assert(!running_.load(std::memory_order_relaxed) &&
-           "setResultCallback() must be called before start()");
-    resultCallback_ = std::move(cb);
+  assert(!running_.load(std::memory_order_relaxed) &&
+         "setResultCallback() must be called before start()");
+  resultCallback_ = std::move(cb);
 }
 
 void FlowAnalysisWorker::start() {
-    if (running_.load(std::memory_order_relaxed)) {
-        return;
-    }
-    running_.store(true, std::memory_order_relaxed);
-    processedCount_.store(0, std::memory_order_relaxed);
-    batchCount_.store(0, std::memory_order_relaxed);
-    callbacksFired_.store(0, std::memory_order_relaxed);
-    thread_ = std::jthread([this](std::stop_token /*st*/) { run(); });
-    spdlog::debug("FlowAnalysisWorker started");
+  if (running_.load(std::memory_order_relaxed)) {
+    return;
+  }
+  running_.store(true, std::memory_order_relaxed);
+  processedCount_.store(0, std::memory_order_relaxed);
+  batchCount_.store(0, std::memory_order_relaxed);
+  callbacksFired_.store(0, std::memory_order_relaxed);
+  thread_ = std::jthread([this](std::stop_token /*st*/) { run(); });
+  spdlog::debug("FlowAnalysisWorker started");
 }
 
 void FlowAnalysisWorker::stop() {
-    if (!running_.load(std::memory_order_relaxed)) {
-        return;
-    }
-    // Close the queue so the consumer loop exits after draining.
-    // This is idempotent — safe even if the producer already closed it.
-    queue_.close();
-    // jthread destructor requests stop and joins, but we want explicit control
-    // over the running_ flag.
-    if (thread_.joinable()) {
-        thread_.join();
-    }
-    running_.store(false, std::memory_order_relaxed);
-    spdlog::info("=== FlowAnalysisWorker Diagnostics ===");
-    spdlog::info("  Flows processed:    {}", processedCount_.load(std::memory_order_relaxed));
-    spdlog::info("  Batches processed:  {}", batchCount_.load(std::memory_order_relaxed));
-    spdlog::info("  Callbacks fired:    {}", callbacksFired_.load(std::memory_order_relaxed));
-    spdlog::info("======================================");
+  if (!running_.load(std::memory_order_relaxed)) {
+    return;
+  }
+  // Close the queue so the consumer loop exits after draining.
+  // This is idempotent — safe even if the producer already closed it.
+  queue_.close();
+  // jthread destructor requests stop and joins, but we want explicit control
+  // over the running_ flag.
+  if (thread_.joinable()) {
+    thread_.join();
+  }
+  running_.store(false, std::memory_order_relaxed);
+  spdlog::info("=== FlowAnalysisWorker Diagnostics ===");
+  spdlog::info("  Flows processed:    {}",
+               processedCount_.load(std::memory_order_relaxed));
+  spdlog::info("  Batches processed:  {}",
+               batchCount_.load(std::memory_order_relaxed));
+  spdlog::info("  Callbacks fired:    {}",
+               callbacksFired_.load(std::memory_order_relaxed));
+  spdlog::info("======================================");
 }
 
 std::size_t FlowAnalysisWorker::processedCount() const noexcept {
-    return processedCount_.load(std::memory_order_relaxed);
+  return processedCount_.load(std::memory_order_relaxed);
 }
 
 bool FlowAnalysisWorker::isRunning() const noexcept {
-    return running_.load(std::memory_order_relaxed);
+  return running_.load(std::memory_order_relaxed);
 }
 
 void FlowAnalysisWorker::run() {
-    spdlog::debug("FlowAnalysisWorker consumer loop started (batch size up to {})",
-                  kMaxBatchSize);
+  spdlog::debug(
+      "FlowAnalysisWorker consumer loop started (batch size up to {})",
+      kMaxBatchSize);
 
-    while (true) {
-        auto batch = queue_.popBatch(kMaxBatchSize);
-        if (batch.empty()) {
-            break; // Queue closed and drained.
-        }
-
-        batchCount_.fetch_add(1, std::memory_order_relaxed);
-        auto startIndex = processedCount_.load(std::memory_order_relaxed);
-        processBatch(batch, startIndex);
-        processedCount_.fetch_add(batch.size(), std::memory_order_relaxed);
+  while (true) {
+    auto batch = queue_.popBatch(kMaxBatchSize);
+    if (batch.empty()) {
+      break; // Queue closed and drained.
     }
 
-    spdlog::debug("FlowAnalysisWorker consumer loop exited (queue closed)");
+    batchCount_.fetch_add(1, std::memory_order_relaxed);
+    auto startIndex = processedCount_.load(std::memory_order_relaxed);
+    processBatch(batch, startIndex);
+    processedCount_.fetch_add(batch.size(), std::memory_order_relaxed);
+  }
+
+  spdlog::debug("FlowAnalysisWorker consumer loop exited (queue closed)");
 }
 
-void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem>& items,
+void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem> &items,
                                       std::size_t startIndex) {
-    const auto batchSize = items.size();
+  const auto batchSize = items.size();
 
-    // 1. Normalize and pack features for batched ONNX inference.
-    auto [flatData, featureCount] = buildFlatBatch(items);
+  // 1. Normalize and pack features for batched ONNX inference.
+  auto [flatData, featureCount] = buildFlatBatch(items);
 
-    // 2. Batched ML inference — single ONNX Runtime session.Run() call.
-    auto mlResults = analyzer_.predictBatch(flatData, featureCount);
+  // 2. Batched ML inference — single ONNX Runtime session.Run() call.
+  auto mlResults = analyzer_.predictBatch(flatData, featureCount);
 
-    // 3. For each flow: run hybrid detection (TI + rules), store result,
-    //    fire callback.
-    for (std::size_t i = 0; i < batchSize; ++i) {
-        auto index = startIndex + i;
-        core::DetectionResult result;
+  // 3. For each flow: run hybrid detection (TI + rules), store result,
+  //    fire callback.
+  for (std::size_t i = 0; i < batchSize; ++i) {
+    auto index = startIndex + i;
+    core::DetectionResult result;
 
-        auto& mlResult = (i < mlResults.size())
-                             ? mlResults[i]
-                             : (mlResults.emplace_back(), mlResults.back());
+    const auto &mlResult = (i < mlResults.size())
+                               ? mlResults[i]
+                               : (mlResults.emplace_back(), mlResults.back());
 
-        if (hybridService_ != nullptr) [[likely]] {
-            result = hybridService_->evaluate(
-                mlResult, items[i].metadata.srcIp,
-                items[i].metadata.dstIp, items[i].metadata);
-        } else {
-            result.mlResult = mlResult;
-            result.finalVerdict = mlResult.classification;
-            result.detectionSource = core::DetectionSource::MlOnly;
-        }
-
-        session_.setDetectionResult(index, result);
-
-        if (resultCallback_) {
-            callbacksFired_.fetch_add(1, std::memory_order_relaxed);
-            resultCallback_(index, std::move(result),
-                            std::move(items[i].metadata));
-        }
+    if (hybridService_ != nullptr) [[likely]] {
+      result =
+          hybridService_->evaluate(mlResult, items[i].metadata.srcIp,
+                                   items[i].metadata.dstIp, items[i].metadata);
+    } else {
+      result.mlResult = mlResult;
+      result.finalVerdict = mlResult.classification;
+      result.detectionSource = core::DetectionSource::MlOnly;
     }
+
+    session_.setDetectionResult(index, result);
+
+    if (resultCallback_) {
+      callbacksFired_.fetch_add(1, std::memory_order_relaxed);
+      resultCallback_(index, std::move(result), std::move(items[i].metadata));
+    }
+  }
 }
 
-FlowAnalysisWorker::FlatBatch FlowAnalysisWorker::buildFlatBatch(
-    std::vector<FlowWorkItem>& items) {
-    FlatBatch result;
-    const auto batchSize = items.size();
+FlowAnalysisWorker::FlatBatch
+FlowAnalysisWorker::buildFlatBatch(std::vector<FlowWorkItem> &items) {
+  FlatBatch result;
+  const auto batchSize = items.size();
 
-    std::vector<std::vector<float>> normalizedVecs;
-    normalizedVecs.reserve(batchSize);
+  std::vector<std::vector<float>> normalizedVecs;
+  normalizedVecs.reserve(batchSize);
 
-    for (auto& item : items) {
-        normalizedVecs.push_back(normalizer_.normalize(item.features));
-        if (result.featureCount == 0 && !normalizedVecs.back().empty()) {
-            result.featureCount = normalizedVecs.back().size();
-        }
+  for (const auto &item : items) {
+    normalizedVecs.push_back(normalizer_.normalize(item.features));
+    if (result.featureCount == 0 && !normalizedVecs.back().empty()) {
+      result.featureCount = normalizedVecs.back().size();
     }
+  }
 
-    // Flat buffer: [flow0_f0, flow0_f1, ..., flow1_f0, flow1_f1, ...]
-    result.data.reserve(batchSize * result.featureCount);
-    for (const auto& nv : normalizedVecs) {
-        result.data.insert(result.data.end(), nv.begin(), nv.end());
-    }
+  // Flat buffer: [flow0_f0, flow0_f1, ..., flow1_f0, flow1_f1, ...]
+  result.data.reserve(batchSize * result.featureCount);
+  for (const auto &nv : normalizedVecs) {
+    result.data.insert(result.data.end(), nv.begin(), nv.end());
+  }
 
-    return result;
+  return result;
 }
 
 } // namespace nids::app

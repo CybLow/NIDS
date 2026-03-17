@@ -1,6 +1,6 @@
-#include "infra/flow/NativeFlowExtractor.h"
 #include "helpers/PcapTestHelpers.h"
 #include "helpers/TestHelpers.h"
+#include "infra/flow/NativeFlowExtractor.h"
 
 #include <filesystem>
 #include <gtest/gtest.h>
@@ -25,7 +25,7 @@ TEST(NativeFlowExtractor, ProcessPacket_singleTcpPacket) {
   std::vector<std::vector<float>> cbFeatures;
   std::vector<nids::core::FlowInfo> cbMeta;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&& f, nids::core::FlowInfo&& info) {
+      [&](std::vector<float> &&f, nids::core::FlowInfo &&info) {
         cbFeatures.push_back(std::move(f));
         cbMeta.push_back(std::move(info));
       });
@@ -50,7 +50,7 @@ TEST(NativeFlowExtractor, ProcessPacket_tcpFinCompletesFlow) {
 
   int cbCount = 0;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&&) { ++cbCount; });
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
 
   extractor.processPacket(syn.data(), syn.size(), 1'000'000);
   EXPECT_EQ(cbCount, 0);
@@ -66,7 +66,7 @@ TEST(NativeFlowExtractor, ProcessPacket_tcpRstCompletesFlow) {
 
   int cbCount = 0;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&&) { ++cbCount; });
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
 
   extractor.processPacket(syn.data(), syn.size(), 1'000'000);
   extractor.processPacket(rst.data(), rst.size(), 2'000'000);
@@ -80,7 +80,7 @@ TEST(NativeFlowExtractor, ProcessPacket_bidirectionalFlow) {
 
   std::vector<nids::core::FlowInfo> cbMeta;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&& info) {
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
         cbMeta.push_back(std::move(info));
       });
 
@@ -101,7 +101,7 @@ TEST(NativeFlowExtractor, ProcessPacket_udpPacket) {
 
   std::vector<nids::core::FlowInfo> cbMeta;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&& info) {
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
         cbMeta.push_back(std::move(info));
       });
 
@@ -119,7 +119,7 @@ TEST(NativeFlowExtractor, ProcessPacket_icmpPacket) {
 
   std::vector<nids::core::FlowInfo> cbMeta;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&& info) {
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
         cbMeta.push_back(std::move(info));
       });
 
@@ -139,7 +139,7 @@ TEST(NativeFlowExtractor, ProcessPacket_nonIpv4Skipped) {
 
   int cbCount = 0;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&&) { ++cbCount; });
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
 
   extractor.processPacket(arpPkt.data(), arpPkt.size(), 1'000'000);
   extractor.finalizeAllFlows();
@@ -152,7 +152,7 @@ TEST(NativeFlowExtractor, ProcessPacket_maxFlowSplitting) {
 
   int cbCount = 0;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&&) { ++cbCount; });
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
 
   for (std::uint32_t i = 0; i < 250; ++i) {
     auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
@@ -172,7 +172,7 @@ TEST(NativeFlowExtractor, ProcessPacket_periodicSweep) {
 
   int cbCount = 0;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&&) { ++cbCount; });
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
 
   auto pktA = buildUdpPacket("10.0.0.1", "10.0.0.2", 5000, 53);
   extractor.processPacket(pktA.data(), pktA.size(), 0);
@@ -207,7 +207,7 @@ TEST(NativeFlowExtractor, ProcessPacket_featureVectorMatchesBatchMode) {
   NativeFlowExtractor liveExtractor;
   std::vector<std::vector<float>> liveFeatures;
   liveExtractor.setFlowCompletionCallback(
-      [&](std::vector<float>&& f, nids::core::FlowInfo&&) {
+      [&](std::vector<float> &&f, nids::core::FlowInfo &&) {
         liveFeatures.push_back(std::move(f));
       });
 
@@ -233,7 +233,7 @@ TEST(NativeFlowExtractor, FinalizeAllFlows_multipleActiveFlows) {
 
   int cbCount = 0;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&&) { ++cbCount; });
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
 
   auto pktA = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   auto pktB = buildUdpPacket("10.0.0.3", "10.0.0.4", 6000, 53);
@@ -265,7 +265,7 @@ TEST(NativeFlowExtractor, Reset_clearsAllState) {
 
   int cbCount = 0;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&&) { ++cbCount; });
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
 
   auto pkt = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x02);
   extractor.processPacket(pkt.data(), pkt.size(), 1'000'000);
@@ -281,7 +281,7 @@ TEST(NativeFlowExtractor, Reset_allowsNewSession) {
 
   std::vector<nids::core::FlowInfo> cbMeta;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&& info) {
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
         cbMeta.push_back(std::move(info));
       });
 
@@ -299,6 +299,7 @@ TEST(NativeFlowExtractor, Reset_allowsNewSession) {
   extractor.finalizeAllFlows();
 
   ASSERT_EQ(cbMeta.size(), 1u);
+  ASSERT_FALSE(cbMeta.empty()); // Satisfy cppcheck bounds analysis.
   EXPECT_EQ(cbMeta[0].srcIp, "192.168.1.1");
   EXPECT_EQ(cbMeta[0].dstPort, 443);
   EXPECT_EQ(cbMeta[0].protocol, 17);
@@ -313,7 +314,7 @@ TEST(NativeFlowExtractor, ProcessPacket_durationSplit_completesLongFlow) {
   int cbCount = 0;
   std::vector<nids::core::FlowInfo> cbMeta;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&& info) {
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
         ++cbCount;
         cbMeta.push_back(std::move(info));
       });
@@ -330,7 +331,7 @@ TEST(NativeFlowExtractor, ProcessPacket_durationSplit_completesLongFlow) {
   extractor.finalizeAllFlows();
   EXPECT_GE(cbCount, 3);
 
-  for (const auto& m : cbMeta) {
+  for (const auto &m : cbMeta) {
     EXPECT_EQ(m.srcIp, "10.0.0.1");
     EXPECT_EQ(m.dstIp, "10.0.0.2");
     EXPECT_EQ(m.dstPort, 80);
@@ -343,7 +344,7 @@ TEST(NativeFlowExtractor, ProcessPacket_durationSplit_disabledWhenZero) {
 
   int cbCount = 0;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&&) { ++cbCount; });
+      [&](std::vector<float> &&, nids::core::FlowInfo &&) { ++cbCount; });
 
   constexpr std::int64_t kBase = 1'000'000'000;
   for (int i = 0; i < 20; ++i) {
@@ -364,7 +365,7 @@ TEST(NativeFlowExtractor, ProcessPacket_durationSplit_restartsFreshStats) {
 
   std::vector<nids::core::FlowInfo> cbMeta;
   extractor.setFlowCompletionCallback(
-      [&](std::vector<float>&&, nids::core::FlowInfo&& info) {
+      [&](std::vector<float> &&, nids::core::FlowInfo &&info) {
         cbMeta.push_back(std::move(info));
       });
 
@@ -373,7 +374,8 @@ TEST(NativeFlowExtractor, ProcessPacket_durationSplit_restartsFreshStats) {
   extractor.processPacket(pkt.data(), pkt.size(), kBase);
   extractor.processPacket(pkt.data(), pkt.size(), kBase + 2'000'000);
   extractor.processPacket(pkt.data(), pkt.size(), kBase + 4'000'000);
-  extractor.processPacket(pkt.data(), pkt.size(), kBase + 6'000'000); // triggers split
+  extractor.processPacket(pkt.data(), pkt.size(),
+                          kBase + 6'000'000); // triggers split
   extractor.processPacket(pkt.data(), pkt.size(), kBase + 8'000'000);
 
   ASSERT_EQ(cbMeta.size(), 1u);
@@ -389,7 +391,7 @@ TEST(NativeFlowExtractor, ProcessPacket_durationSplit_diagnosticsCounted) {
   extractor.setMaxFlowDuration(5'000'000);
 
   extractor.setFlowCompletionCallback(
-      [](std::vector<float>&&, nids::core::FlowInfo&&) {});
+      [](std::vector<float> &&, nids::core::FlowInfo &&) {});
 
   constexpr std::int64_t kBase = 1'000'000'000;
   for (int i = 0; i < 10; ++i) {
@@ -398,7 +400,7 @@ TEST(NativeFlowExtractor, ProcessPacket_durationSplit_diagnosticsCounted) {
                             kBase + static_cast<std::int64_t>(i) * 1'600'000);
   }
 
-  const auto& diag = extractor.diagCounters();
+  const auto &diag = extractor.diagCounters();
   EXPECT_EQ(diag.packetsReceived, 10u);
   EXPECT_EQ(diag.packetsParsed, 10u);
   EXPECT_EQ(diag.packetsSkipped, 0u);

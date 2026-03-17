@@ -40,14 +40,15 @@ public:
   NativeFlowExtractor();
 
   /// Register a callback for completed flows.  Pass nullptr to disable.
-  void setFlowCompletionCallback(core::IFlowExtractor::FlowCompletionCallback cb) override;
+  void setFlowCompletionCallback(
+      core::IFlowExtractor::FlowCompletionCallback cb) override;
 
   /**
    * Override the flow inactivity timeout.
    * @param timeoutUs  Timeout in microseconds; flows idle longer than this are
    * finalized.
    */
-  void setFlowTimeout(std::int64_t timeoutUs);
+  void setFlowTimeout(std::int64_t timeoutUs) override;
 
   /**
    * Set the maximum flow duration for time-window splitting.
@@ -63,7 +64,7 @@ public:
    * @param durationUs  Maximum flow age in microseconds.  Default: 15 seconds
    *                    (from Configuration::maxFlowDurationUs()).
    */
-  void setMaxFlowDuration(std::int64_t durationUs);
+  void setMaxFlowDuration(std::int64_t durationUs) override;
 
   /**
    * Sweep all active flows and expire those idle longer than flowTimeoutUs_.
@@ -97,19 +98,24 @@ public:
 
   /// Diagnostic counters for live detection pipeline analysis.
   struct DiagCounters {
-    std::uint64_t packetsReceived = 0;   ///< Total calls to processPacket().
-    std::uint64_t packetsParsed = 0;     ///< Packets that passed parsePacketHeaders().
-    std::uint64_t packetsSkipped = 0;    ///< Packets rejected by parsePacketHeaders().
-    std::uint64_t flowsCompletedFinRst = 0;  ///< Flows completed by TCP FIN/RST.
-    std::uint64_t flowsCompletedMaxPkts = 0; ///< Flows completed by kMaxFlowPackets split.
-    std::uint64_t flowsCompletedTimeout = 0; ///< Flows expired by idle timeout sweep.
-    std::uint64_t flowsCompletedDuration = 0; ///< Flows split by max duration (time-window).
+    std::uint64_t packetsReceived = 0; ///< Total calls to processPacket().
+    std::uint64_t packetsParsed =
+        0; ///< Packets that passed parsePacketHeaders().
+    std::uint64_t packetsSkipped =
+        0; ///< Packets rejected by parsePacketHeaders().
+    std::uint64_t flowsCompletedFinRst = 0; ///< Flows completed by TCP FIN/RST.
+    std::uint64_t flowsCompletedMaxPkts =
+        0; ///< Flows completed by kMaxFlowPackets split.
+    std::uint64_t flowsCompletedTimeout =
+        0; ///< Flows expired by idle timeout sweep.
+    std::uint64_t flowsCompletedDuration =
+        0; ///< Flows split by max duration (time-window).
     std::uint64_t flowsCompletedFinalize = 0; ///< Flows finalized at shutdown.
-    std::uint64_t sweepCount = 0;        ///< Number of sweep passes executed.
+    std::uint64_t sweepCount = 0; ///< Number of sweep passes executed.
   };
 
   /// Access diagnostic counters (read-only snapshot).
-  [[nodiscard]] const DiagCounters& diagCounters() const noexcept {
+  [[nodiscard]] const DiagCounters &diagCounters() const noexcept {
     return diag_;
   }
 
@@ -121,17 +127,22 @@ private:
   std::vector<std::pair<FlowKey, FlowStats>> completedFlows_;
   std::vector<core::FlowInfo> flowMetadata_; ///< Populated by extractFeatures()
   core::IFlowExtractor::FlowCompletionCallback flowCompletionCallback_;
-  std::int64_t flowTimeoutUs_;      ///< Flow inactivity timeout (from Configuration).
-  std::int64_t maxFlowDurationUs_;  ///< Max flow age before time-window split (0=disabled).
-  std::int64_t idleThresholdUs_;    ///< Idle vs active period threshold (from Configuration).
+  std::int64_t
+      flowTimeoutUs_; ///< Flow inactivity timeout (from Configuration).
+  std::int64_t maxFlowDurationUs_;   ///< Max flow age before time-window split
+                                     ///< (0=disabled).
+  std::int64_t idleThresholdUs_;     ///< Idle vs active period threshold (from
+                                     ///< Configuration).
   std::int64_t lastSweepTimeUs_ = 0; ///< Timestamp of the last periodic sweep.
-  bool liveMode_ = false; ///< True when processPacket() has been called (live capture).
+  bool liveMode_ =
+      false; ///< True when processPacket() has been called (live capture).
   DiagCounters diag_; ///< Diagnostic counters for pipeline analysis.
 
   /// Alias for the shared parsed packet struct from infra/parsing/.
   using ParsedPacket = ParsedFields;
 
-  void processPacketInternal(pcpp::RawPacket &rawPacket, std::int64_t timestampUs);
+  void processPacketInternal(pcpp::RawPacket &rawPacket,
+                             std::int64_t timestampUs);
   void
   buildFlowMetadata(); ///< Populate flowMetadata_ from completed + active flows
 

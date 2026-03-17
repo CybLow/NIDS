@@ -8,8 +8,7 @@
 namespace nids::app {
 
 HybridDetectionService::HybridDetectionService(
-    core::IThreatIntelligence *threatIntel,
-    core::IRuleEngine *ruleEngine)
+    core::IThreatIntelligence *threatIntel, core::IRuleEngine *ruleEngine)
     : threatIntel_(threatIntel), ruleEngine_(ruleEngine) {}
 
 void HybridDetectionService::setWeights(const Weights &weights) noexcept {
@@ -20,6 +19,7 @@ void HybridDetectionService::setConfidenceThreshold(float threshold) noexcept {
   confidenceThreshold_ = threshold;
 }
 
+// cppcheck-suppress constParameterReference
 void HybridDetectionService::populateThreatIntel(
     core::DetectionResult &result, const std::string &srcIp,
     const std::string &dstIp) const {
@@ -137,9 +137,10 @@ HybridDetectionService::determineSource(bool mlIsAttack, bool hasTiMatch,
   return kSourceTable[index];
 }
 
-core::AttackType HybridDetectionService::verdictForBenign(
-    const core::PredictionResult &mlResult, bool hasTiMatch,
-    bool hasRuleMatch, float maxRuleSeverity) const noexcept {
+core::AttackType
+HybridDetectionService::verdictForBenign(const core::PredictionResult &mlResult,
+                                         bool hasTiMatch, bool hasRuleMatch,
+                                         float maxRuleSeverity) const noexcept {
 
   using enum core::AttackType;
 
@@ -157,9 +158,10 @@ core::AttackType HybridDetectionService::verdictForBenign(
   return Benign;
 }
 
-core::AttackType HybridDetectionService::determineVerdict(
-    const core::PredictionResult &mlResult, bool hasTiMatch,
-    bool hasRuleMatch, float maxRuleSeverity) const noexcept {
+core::AttackType
+HybridDetectionService::determineVerdict(const core::PredictionResult &mlResult,
+                                         bool hasTiMatch, bool hasRuleMatch,
+                                         float maxRuleSeverity) const noexcept {
 
   using enum core::AttackType;
 

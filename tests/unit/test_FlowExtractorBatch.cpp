@@ -1,9 +1,10 @@
-#include "infra/flow/NativeFlowExtractor.h"
 #include "helpers/PcapTestHelpers.h"
 #include "helpers/TestHelpers.h"
+#include "infra/flow/NativeFlowExtractor.h"
 
 #include <filesystem>
 #include <gtest/gtest.h>
+#include <tuple>
 
 using nids::core::kFlowFeatureCount;
 using nids::infra::kMaxFlowPackets;
@@ -13,8 +14,8 @@ using nids::testing::buildTcpPacket;
 using nids::testing::buildUdpPacket;
 using nids::testing::buildVlanTcpPacket;
 using nids::testing::PcapPacketEntry;
-using nids::testing::writeNBO16;
 using nids::testing::writeIPv4;
+using nids::testing::writeNBO16;
 using nids::testing::writePcapFile;
 
 namespace fs = std::filesystem;
@@ -37,7 +38,7 @@ TEST(NativeFlowExtractor, ExtractFeaturesWithMinimalTcpPcap) {
     EXPECT_FLOAT_EQ(features[0][0], 443.0f);
   }
 
-  const auto& metadata = extractor.flowMetadata();
+  const auto &metadata = extractor.flowMetadata();
   EXPECT_EQ(metadata.size(), 1u);
   if (!metadata.empty()) {
     EXPECT_EQ(metadata[0].srcIp, "192.168.1.1");
@@ -78,7 +79,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_udpPacket) {
     EXPECT_FLOAT_EQ(features[0][0], 53.0f); // Destination port
   }
 
-  const auto& meta = extractor.flowMetadata();
+  const auto &meta = extractor.flowMetadata();
   EXPECT_EQ(meta.size(), 1u);
   if (!meta.empty()) {
     EXPECT_EQ(meta[0].protocol, 17); // UDP
@@ -100,7 +101,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_icmpPacket) {
 
   EXPECT_EQ(features.size(), 1u);
 
-  const auto& meta = extractor.flowMetadata();
+  const auto &meta = extractor.flowMetadata();
   EXPECT_EQ(meta.size(), 1u);
   if (!meta.empty()) {
     EXPECT_EQ(meta[0].protocol, 1); // ICMP
@@ -305,7 +306,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_tcpFlagsCounted) {
   fs::remove(path);
 
   ASSERT_EQ(features.size(), 1u);
-  auto& f = features[0];
+  auto &f = features[0];
   EXPECT_FLOAT_EQ(f[44], 2.0f); // SYN count: 2
   EXPECT_FLOAT_EQ(f[47], 4.0f); // ACK count: 4
   EXPECT_FLOAT_EQ(f[46], 1.0f); // PSH count: 1
@@ -332,7 +333,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_backwardStatsPopulated) {
   fs::remove(path);
 
   ASSERT_EQ(features.size(), 1u);
-  auto& f = features[0];
+  auto &f = features[0];
   EXPECT_FLOAT_EQ(f[2], 1.0f); // Total Fwd Packets = 1
   EXPECT_FLOAT_EQ(f[3], 2.0f); // Total Bwd Packets = 2
   EXPECT_GT(f[10], 0.0f);      // Bwd Pkt Len Max > 0
@@ -395,7 +396,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_truncatedTcpHeader_skipped) {
   std::vector<std::uint8_t> pkt(44, 0);
   pkt[12] = 0x08;
   pkt[13] = 0x00;
-  auto* ip = pkt.data() + 14;
+  auto *ip = pkt.data() + 14;
   ip[0] = 0x45;
   writeNBO16(ip + 2, 30); // IP total = 30 (20 IP + 10 "TCP" -- too short)
   ip[8] = 0x40;
@@ -416,7 +417,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_truncatedUdpHeader_skipped) {
   std::vector<std::uint8_t> pkt(38, 0);
   pkt[12] = 0x08;
   pkt[13] = 0x00;
-  auto* ip = pkt.data() + 14;
+  auto *ip = pkt.data() + 14;
   ip[0] = 0x45;
   writeNBO16(ip + 2, 24); // IP total = 24 (20 IP + 4 "UDP" -- too short)
   ip[8] = 0x40;
@@ -437,7 +438,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_truncatedIcmpHeader_skipped) {
   std::vector<std::uint8_t> pkt(36, 0);
   pkt[12] = 0x08;
   pkt[13] = 0x00;
-  auto* ip = pkt.data() + 14;
+  auto *ip = pkt.data() + 14;
   ip[0] = 0x45;
   writeNBO16(ip + 2, 22); // IP total = 22 (20 IP + 2 "ICMP" -- too short)
   ip[8] = 0x40;
@@ -458,7 +459,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_ipHeaderTooShort_skipped) {
   std::vector<std::uint8_t> pkt(24, 0);
   pkt[12] = 0x08;
   pkt[13] = 0x00;
-  auto* ip = pkt.data() + 14;
+  auto *ip = pkt.data() + 14;
   ip[0] = 0x45;
   writeNBO16(ip + 2, 10); // IP total length = 10 (< IHL of 20)
 
@@ -661,7 +662,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_tcpPayloadTracked) {
   fs::remove(path);
 
   ASSERT_EQ(features.size(), 1u);
-  auto& f = features[0];
+  auto &f = features[0];
   EXPECT_FLOAT_EQ(f[67], 3.0f);  // act_data_pkt_fwd
   EXPECT_FLOAT_EQ(f[68], 50.0f); // min_seg_size_forward = 50
   EXPECT_FLOAT_EQ(f[30], 3.0f);  // Fwd PSH Flags
@@ -688,7 +689,7 @@ TEST(NativeFlowExtractor, ExtractFeatures_urgAndCwrAndEceFlags) {
   fs::remove(path);
 
   ASSERT_EQ(features.size(), 1u);
-  auto& f = features[0];
+  auto &f = features[0];
   EXPECT_FLOAT_EQ(f[32], 1.0f); // Fwd URG Flags
   EXPECT_FLOAT_EQ(f[33], 1.0f); // Bwd URG Flags
   EXPECT_FLOAT_EQ(f[31], 1.0f); // Bwd PSH Flags
@@ -726,18 +727,17 @@ TEST(NativeFlowExtractor, FlowMetadata_populatedCorrectly) {
   auto pkt2 = buildTcpPacket("10.0.0.1", "10.0.0.2", 5000, 80, 0x10);
   auto pkt3 = buildTcpPacket("10.0.0.2", "10.0.0.1", 80, 5000, 0x10);
 
-  auto path =
-      writePcapFile("nfe_meta.pcap", {
-                                         {pkt1, 0, 0},
-                                         {pkt2, 1, 0},
-                                         {pkt3, 2, 0},
-                                     });
+  auto path = writePcapFile("nfe_meta.pcap", {
+                                                 {pkt1, 0, 0},
+                                                 {pkt2, 1, 0},
+                                                 {pkt3, 2, 0},
+                                             });
 
   NativeFlowExtractor extractor;
   [[maybe_unused]] auto features = extractor.extractFeatures(path);
   fs::remove(path);
 
-  const auto& meta = extractor.flowMetadata();
+  const auto &meta = extractor.flowMetadata();
   ASSERT_EQ(meta.size(), 1u);
   EXPECT_EQ(meta[0].srcIp, "10.0.0.1");
   EXPECT_EQ(meta[0].dstIp, "10.0.0.2");
@@ -760,7 +760,7 @@ TEST(NativeFlowExtractor, FlowMetadata_singlePacket_zeroDuration) {
   [[maybe_unused]] auto features = extractor.extractFeatures(path);
   fs::remove(path);
 
-  const auto& meta = extractor.flowMetadata();
+  const auto &meta = extractor.flowMetadata();
   ASSERT_EQ(meta.size(), 1u);
   EXPECT_DOUBLE_EQ(meta[0].flowDurationUs, 0.0);
   EXPECT_NEAR(meta[0].fwdPacketsPerSecond, 0.0f, 1e-6f);
@@ -814,7 +814,7 @@ TEST(NativeFlowExtractor, SweepExpiredFlows_returnsZeroWhenNoneExpired) {
   auto path = writePcapFile("nfe_sweep_none.pcap", {{pkt, 1, 0}});
 
   NativeFlowExtractor extractor;
-  auto features = extractor.extractFeatures(path);
+  std::ignore = extractor.extractFeatures(path);
   fs::remove(path);
 
   auto swept = extractor.sweepExpiredFlows(2'000'000);
