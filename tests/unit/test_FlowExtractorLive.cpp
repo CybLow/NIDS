@@ -298,8 +298,8 @@ TEST(NativeFlowExtractor, Reset_allowsNewSession) {
   extractor.processPacket(pkt2.data(), pkt2.size(), 5'000'000);
   extractor.finalizeAllFlows();
 
-  ASSERT_EQ(cbMeta.size(), 1u);
   ASSERT_FALSE(cbMeta.empty()); // Satisfy cppcheck bounds analysis.
+  ASSERT_EQ(cbMeta.size(), 1u);
   EXPECT_EQ(cbMeta[0].srcIp, "192.168.1.1");
   EXPECT_EQ(cbMeta[0].dstPort, 443);
   EXPECT_EQ(cbMeta[0].protocol, 17);

@@ -19,8 +19,8 @@ void HybridDetectionService::setConfidenceThreshold(float threshold) noexcept {
   confidenceThreshold_ = threshold;
 }
 
-// cppcheck-suppress constParameterReference
 void HybridDetectionService::populateThreatIntel(
+    // cppcheck-suppress constParameterReference
     core::DetectionResult &result, const std::string &srcIp,
     const std::string &dstIp) const {
   if (threatIntel_ == nullptr) {

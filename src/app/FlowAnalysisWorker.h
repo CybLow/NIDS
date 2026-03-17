@@ -9,10 +9,10 @@
 /// Lives in the app/ layer: depends on core/ interfaces and app/ services.
 /// Infrastructure implementations are injected via non-owning pointers.
 
+#include "core/concurrent/BoundedQueue.h"
 #include "core/model/CaptureSession.h"
 #include "core/model/DetectionResult.h"
 #include "core/model/FlowInfo.h"
-#include "core/concurrent/BoundedQueue.h"
 #include "core/services/IFeatureNormalizer.h"
 #include "core/services/IPacketAnalyzer.h"
 
@@ -28,8 +28,8 @@ class HybridDetectionService;
 
 /// Work item pushed into the queue by the flow extractor callback.
 struct FlowWorkItem {
-    std::vector<float> features;
-    core::FlowInfo metadata;
+  std::vector<float> features;
+  core::FlowInfo metadata;
 };
 
 /**
@@ -48,87 +48,89 @@ struct FlowWorkItem {
  */
 class FlowAnalysisWorker {
 public:
-    /// Callback invoked on the worker thread for each processed flow.
-    /// Parameters: (flow index, detection result, flow metadata).
-    using ResultCallback =
-        std::function<void(std::size_t, core::DetectionResult,
-                           core::FlowInfo)>;
+  /// Callback invoked on the worker thread for each processed flow.
+  /// Parameters: (flow index, detection result, flow metadata).
+  using ResultCallback =
+      std::function<void(std::size_t, core::DetectionResult, core::FlowInfo)>;
 
-    /**
-     * Construct the worker with its required dependencies.
-     *
-     * @param queue       Shared bounded queue (producer pushes, worker pops).
-     * @param analyzer    ML inference engine (non-owning, must outlive worker).
-     * @param normalizer  Feature normalizer (non-owning, must outlive worker).
-     * @param session     Thread-safe result storage (non-owning, must outlive worker).
-     */
-    FlowAnalysisWorker(core::BoundedQueue<FlowWorkItem>& queue,
-                       core::IPacketAnalyzer& analyzer,
-                       core::IFeatureNormalizer& normalizer,
-                       core::CaptureSession& session);
+  /**
+   * Construct the worker with its required dependencies.
+   *
+   * @param queue       Shared bounded queue (producer pushes, worker pops).
+   * @param analyzer    ML inference engine (non-owning, must outlive worker).
+   * @param normalizer  Feature normalizer (non-owning, must outlive worker).
+   * @param session     Thread-safe result storage (non-owning, must outlive
+   * worker).
+   */
+  FlowAnalysisWorker(core::BoundedQueue<FlowWorkItem> &queue,
+                     core::IPacketAnalyzer &analyzer,
+                     core::IFeatureNormalizer &normalizer,
+                     core::CaptureSession &session);
 
-    ~FlowAnalysisWorker();
+  ~FlowAnalysisWorker();
 
-    // Non-copyable, non-movable (owns a thread).
-    FlowAnalysisWorker(const FlowAnalysisWorker&) = delete;
-    FlowAnalysisWorker& operator=(const FlowAnalysisWorker&) = delete;
-    FlowAnalysisWorker(FlowAnalysisWorker&&) = delete;
-    FlowAnalysisWorker& operator=(FlowAnalysisWorker&&) = delete;
+  // Non-copyable, non-movable (owns a thread).
+  FlowAnalysisWorker(const FlowAnalysisWorker &) = delete;
+  FlowAnalysisWorker &operator=(const FlowAnalysisWorker &) = delete;
+  FlowAnalysisWorker(FlowAnalysisWorker &&) = delete;
+  FlowAnalysisWorker &operator=(FlowAnalysisWorker &&) = delete;
 
-    /// Set the hybrid detection service for multi-layer analysis.
-    /// Pass nullptr to use ML-only mode. Must be called before start().
-    /// @pre !isRunning()
-    void setHybridDetection(HybridDetectionService* service) noexcept;
+  /// Set the hybrid detection service for multi-layer analysis.
+  /// Pass nullptr to use ML-only mode. Must be called before start().
+  /// @pre !isRunning()
+  void setHybridDetection(HybridDetectionService *service) noexcept;
 
-    /// Set a callback invoked on the worker thread for each processed flow.
-    /// Must be called before start().
-    /// @pre !isRunning()
-    void setResultCallback(ResultCallback cb) noexcept;
+  /// Set a callback invoked on the worker thread for each processed flow.
+  /// Must be called before start().
+  /// @pre !isRunning()
+  void setResultCallback(ResultCallback cb) noexcept;
 
-    /// Launch the consumer thread.  No-op if already running.
-    void start();
+  /// Launch the consumer thread.  No-op if already running.
+  void start();
 
-    /// Close the queue and join the worker thread.
-    /// Blocks until all queued items are drained and processed.
-    /// Safe to call multiple times.
-    void stop();
+  /// Close the queue and join the worker thread.
+  /// Blocks until all queued items are drained and processed.
+  /// Safe to call multiple times.
+  void stop();
 
-    /// Number of flows processed so far (atomically read).
-    [[nodiscard]] std::size_t processedCount() const noexcept;
+  /// Number of flows processed so far (atomically read).
+  [[nodiscard]] std::size_t processedCount() const noexcept;
 
-    /// Check whether the worker thread is currently running.
-    [[nodiscard]] bool isRunning() const noexcept;
+  /// Check whether the worker thread is currently running.
+  [[nodiscard]] bool isRunning() const noexcept;
 
 private:
-    /// Maximum number of flows per inference batch.
-    static constexpr std::size_t kMaxBatchSize = 32;
+  /// Maximum number of flows per inference batch.
+  static constexpr std::size_t kMaxBatchSize = 32;
 
-    /// Consumer loop executed on the worker thread.
-    void run();
+  /// Consumer loop executed on the worker thread.
+  void run();
 
-    /// Process a batch of flow work items via batched inference.
-    void processBatch(std::vector<FlowWorkItem>& items, std::size_t startIndex);
+  /// Process a batch of flow work items via batched inference.
+  void processBatch(std::vector<FlowWorkItem> &items, std::size_t startIndex);
 
-    /// Normalize features and pack into a flat contiguous buffer for ONNX.
-    /// Returns {flatBuffer, featureCount}.
-    struct FlatBatch {
-        std::vector<float> data;
-        std::size_t featureCount = 0;
-    };
-    [[nodiscard]] FlatBatch buildFlatBatch(std::vector<FlowWorkItem>& items);
+  /// Normalize features and pack into a flat contiguous buffer for ONNX.
+  /// Returns {flatBuffer, featureCount}.
+  struct FlatBatch {
+    std::vector<float> data;
+    std::size_t featureCount = 0;
+  };
+  [[nodiscard]] FlatBatch
+  buildFlatBatch(const std::vector<FlowWorkItem> &items);
 
-    core::BoundedQueue<FlowWorkItem>& queue_;
-    core::IPacketAnalyzer& analyzer_;
-    core::IFeatureNormalizer& normalizer_;
-    core::CaptureSession& session_;
-    HybridDetectionService* hybridService_ = nullptr;
-    ResultCallback resultCallback_;
+  core::BoundedQueue<FlowWorkItem> &queue_;
+  core::IPacketAnalyzer &analyzer_;
+  core::IFeatureNormalizer &normalizer_;
+  core::CaptureSession &session_;
+  HybridDetectionService *hybridService_ = nullptr;
+  ResultCallback resultCallback_;
 
-    std::jthread thread_;
-    std::atomic<std::size_t> processedCount_{0};
-    std::atomic<std::size_t> batchCount_{0};     ///< Number of batches processed.
-    std::atomic<std::size_t> callbacksFired_{0}; ///< Number of result callbacks fired.
-    std::atomic<bool> running_{false};
+  std::jthread thread_;
+  std::atomic<std::size_t> processedCount_{0};
+  std::atomic<std::size_t> batchCount_{0}; ///< Number of batches processed.
+  std::atomic<std::size_t> callbacksFired_{
+      0}; ///< Number of result callbacks fired.
+  std::atomic<bool> running_{false};
 };
 
 } // namespace nids::app

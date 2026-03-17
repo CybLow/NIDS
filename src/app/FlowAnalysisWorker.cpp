@@ -133,7 +133,7 @@ void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem> &items,
 }
 
 FlowAnalysisWorker::FlatBatch
-FlowAnalysisWorker::buildFlatBatch(std::vector<FlowWorkItem> &items) {
+FlowAnalysisWorker::buildFlatBatch(const std::vector<FlowWorkItem> &items) {
   FlatBatch result;
   const auto batchSize = items.size();
 
