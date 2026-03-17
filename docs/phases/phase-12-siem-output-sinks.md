@@ -461,3 +461,45 @@ is needed.
 | 3 | `JsonFileSink` with rotation + `SinkChain` + unit tests |
 | 4 | `OutputSinkFactory` + configuration parsing + integration with `LiveDetectionPipeline` and `server_main.cpp` |
 | 5 | `WazuhApiSink` (optional) + integration tests + documentation |
+
+---
+
+## Implementation Status
+
+> **Status**: Core implementation complete. WazuhApiSink deferred (requires libcurl dependency).
+
+### Completed Components
+
+| Component | Header | Implementation | Tests | Status |
+|-----------|--------|----------------|-------|--------|
+| `CefFormatter` | `infra/output/CefFormatter.h` | `infra/output/CefFormatter.cpp` | 10 tests | Done |
+| `LeefFormatter` | `infra/output/LeefFormatter.h` | `infra/output/LeefFormatter.cpp` | 9 tests | Done |
+| `SyslogSink` | `infra/output/SyslogSink.h` | `infra/output/SyslogSink.cpp` | 13 tests | Done |
+| `JsonFileSink` | `infra/output/JsonFileSink.h` | `infra/output/JsonFileSink.cpp` | 12 tests | Done |
+| `SinkChain` | `app/SinkChain.h` | `app/SinkChain.cpp` | 12 tests | Done |
+| `OutputSinkFactory` | `app/OutputSinkFactory.h` | `app/OutputSinkFactory.cpp` | — | Done |
+| Configuration structs | `core/services/Configuration.h` | `core/services/Configuration.cpp` | — | Done |
+| ConfigLoader output section | `infra/config/ConfigLoader.cpp` | — | — | Done |
+
+### Test Results
+
+- **56 new tests** across 5 test suites (CefFormatter, LeefFormatter, SyslogSink, JsonFileSink, SinkChain)
+- **479 total tests** passing (zero regressions)
+- Build: clean (0 warnings, 0 errors)
+
+### Architecture Notes
+
+- `OutputSinkFactory` lives in `app/` (not `infra/`) to avoid circular dependency
+  (`nids_app` depends on `nids_infra`, so the factory that creates infra sinks and
+  assembles them into an app-layer `SinkChain` belongs in `app/`).
+- `SinkChain` supports both owned (`unique_ptr`) and non-owned (raw pointer) sinks,
+  enabling the gRPC `StreamSink` (owned by the server) to be added without ownership transfer.
+- Error isolation: if one sink throws in `onFlowResult()`, the remaining sinks still receive the result.
+
+### Deferred
+
+- **WazuhApiSink**: Requires `libcurl` or `cpp-httplib` dependency. Recommended path:
+  use `SyslogSink` pointed at Wazuh agent's syslog collector instead.
+- **Server wiring**: `OutputSinkFactory::createFromConfig()` is ready to be called from
+  `server_main.cpp` and `HeadlessCaptureRunner` — integration deferred to next PR to
+  keep this PR focused on sink implementations.

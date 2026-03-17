@@ -13,6 +13,10 @@ add_library(nids_infra STATIC
     threat/ThreatIntelProvider.cpp
     rules/HeuristicRuleEngine.cpp
     output/ConsoleAlertSink.cpp
+    output/CefFormatter.cpp
+    output/LeefFormatter.cpp
+    output/SyslogSink.cpp
+    output/JsonFileSink.cpp
     parsing/PacketParser.cpp
     platform/SocketInit.cpp
 )
