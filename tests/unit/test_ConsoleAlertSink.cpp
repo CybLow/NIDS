@@ -1,8 +1,6 @@
 #include "infra/output/ConsoleAlertSink.h"
 #include <gtest/gtest.h>
 
-#include <spdlog/spdlog.h>
-
 using nids::core::AttackType;
 using nids::core::DetectionResult;
 using nids::core::DetectionSource;
