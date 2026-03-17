@@ -433,6 +433,98 @@ remote monitoring.
 
 ---
 
+## Phase 12: SIEM / OSSEC Output Sinks
+
+**Goal**: Forward detection alerts to SIEM, HIDS, and log management infrastructure.
+
+See [detailed spec](phases/phase-12-siem-output-sinks.md) for full component designs.
+
+- [ ] 12.1 — `SyslogSink` (RFC 5424 over UDP/TCP/TLS)
+- [ ] 12.2 — `CefFormatter` (ArcSight Common Event Format)
+- [ ] 12.3 — `LeefFormatter` (IBM QRadar LEEF)
+- [ ] 12.4 — `WazuhApiSink` (Wazuh manager REST API)
+- [ ] 12.5 — `JsonFileSink` (JSON-lines file output with rotation)
+- [ ] 12.6 — `SinkChain` (fan-out to multiple sinks)
+- [ ] 12.7 — `OutputSinkFactory` (create sinks from config)
+
+---
+
+## Phase 13: Threat Hunting Capabilities
+
+**Goal**: Proactive retroactive search for threats in historical network traffic.
+
+See [detailed spec](phases/phase-13-threat-hunting.md) for full component designs.
+
+- [ ] 13.1 — `PcapRingBuffer` (rolling PCAP storage with retention policies)
+- [ ] 13.2 — `SqliteFlowIndex` (flow metadata database for historical queries)
+- [ ] 13.3 — `HuntEngine` (retroactive analysis, IOC search, correlation, timeline)
+- [ ] 13.4 — `StatisticalBaseline` (traffic pattern baselining + anomaly detection)
+- [ ] 13.5 — gRPC hunt RPCs + CLI `nids-cli hunt` commands
+
+Dependencies: SQLite3 or DuckDB
+
+---
+
+## Phase 14: YARA Rules Integration
+
+**Goal**: Content/pattern scanning for malware signatures, C2 beacons, and exploit payloads.
+
+See [detailed spec](phases/phase-14-yara-rules.md) for full component designs.
+
+- [ ] 14.1 — `IContentScanner` interface + `ContentMatch` model
+- [ ] 14.2 — `YaraScanner` (libyara RAII wrapper)
+- [ ] 14.3 — `TcpReassembler` (PcapPlusPlus TCP stream reassembly)
+- [ ] 14.4 — Pipeline integration (per-packet + per-stream scanning)
+- [ ] 14.5 — `HybridDetectionService` 5-layer evaluation with YARA
+- [ ] 14.6 — Bundled YARA rules (C2, exploits, tools) + hot reload
+
+Dependencies: libyara 4.x
+
+---
+
+## Phase 15: Snort Rules Compatibility
+
+**Goal**: Per-packet signature matching with Snort 3.x rule syntax.
+
+See [detailed spec](phases/phase-15-snort-rules.md) for full component designs.
+
+- [ ] 15.1 — `ISignatureEngine` interface + `SignatureMatch` + `SnortRule` models
+- [ ] 15.2 — `SnortRuleParser` (parse Snort rule syntax into AST)
+- [ ] 15.3 — `ContentMatcher` (Aho-Corasick multi-pattern search)
+- [ ] 15.4 — `PcreEngine` (PCRE2 regex wrapper)
+- [ ] 15.5 — `FlowStateTracker` (TCP connection state for `flow:` option)
+- [ ] 15.6 — `FlowbitsManager` (cross-rule stateful correlation)
+- [ ] 15.7 — `RuleVariableStore` (`$HOME_NET`, `$EXTERNAL_NET` resolution)
+- [ ] 15.8 — `SnortRuleEngine` (main orchestrator with port-group pre-filter)
+- [ ] 15.9 — Pipeline integration + ET Open ruleset testing
+
+Dependencies: PCRE2, optionally Hyperscan (Intel x86_64)
+
+---
+
+## Phase 16: Inline IPS Gateway Mode
+
+**Goal**: Active inline prevention — dual-NIC bridge with per-packet forward/drop.
+
+See [detailed spec](phases/phase-16-inline-ips.md) for full component designs.
+
+**Requires Phase 15** (Snort rules for per-packet verdicts).
+
+- [ ] 16.1 — `PacketVerdict` + `IInlineCapture` interface
+- [ ] 16.2 — `NfqueueCapture` (Netfilter Queue inline, simpler path)
+- [ ] 16.3 — `AfPacketCapture` (AF_PACKET v3, high-performance)
+- [ ] 16.4 — `VerdictEngine` (combine TI + signatures + ML into per-packet verdict)
+- [ ] 16.5 — `NetfilterBlocker` (dynamic iptables/nftables for ML-informed blocking)
+- [ ] 16.6 — `BypassManager` (kernel-level forwarding for verified-clean flows)
+- [ ] 16.7 — `InlinePipeline` (orchestrator for inline IPS lifecycle)
+- [ ] 16.8 — Fail-open / fail-closed modes + watchdog
+- [ ] 16.9 — Docker sandbox dual-network topology + integration tests
+
+Dependencies: Linux kernel headers, libnetfilter_queue, Phase 15
+Platform: **Linux only** (passive mode remains cross-platform)
+
+---
+
 ## Future / Long-Term (No Current Timeline)
 
 These items are documented for completeness but are not planned for near-term work.
@@ -440,8 +532,6 @@ These items are documented for completeness but are not planned for near-term wo
 | Item | Source | Notes |
 |------|--------|-------|
 | Web dashboard | README.md | Would replace or supplement Qt UI for remote monitoring |
-| YARA rules integration | README.md | Signature-based detection, overlaps with Snort/Suricata |
-| Deep Packet Inspection | README.md | Explicitly out-of-scope per architecture.md |
 | NLFlowLyzer feature extraction | ADR-004 | Requires reimplementing NLFlowLyzer in C++ |
 | Hyperparameter search (Optuna) | ADR-004 | Low priority given accuracy ceiling evidence |
 | Additional ML backends (TensorRT, OpenVINO) | architecture.md | AnalyzerFactory designed for extensibility |
@@ -453,6 +543,9 @@ These items are documented for completeness but are not planned for near-term wo
 | ~~Command pattern for capture operations~~ | ~~AGENTS.md §5.7~~ | **Done** — `ICommand` + `CaptureCommands` in `app/commands/` |
 | ~~`std::expected<T, E>` error handling~~ | ~~AGENTS.md §6.1~~ | **Done** — `loadModel()`, `loadMetadata()`, `initialize()` return `std::expected` |
 | ~~`ServiceRegistry` optimize to `unordered_map`~~ | ~~`ServiceRegistry.h:23`~~ | **Done** — already uses `std::unordered_map` |
+| ~~YARA rules integration~~ | ~~README.md~~ | **Planned** — Phase 14 |
+| ~~Snort rules / DPI~~ | ~~README.md~~ | **Planned** — Phase 15 (see ADR-008) |
+| ~~Inline IPS~~ | ~~README.md~~ | **Planned** — Phase 16 (see ADR-008) |
 
 ---
 
@@ -466,3 +559,8 @@ For implementation, the recommended order is:
 4. ~~**Phase 9** — gRPC server/client~~ [DONE]
 5. **Phase 10** — Model improvements (iterative, can be done in parallel with others)
 6. **Phase 11** — Documentation polish (ongoing)
+7. **Phase 12** — SIEM output sinks (4-5 weeks, zero new deps, immediate operational value)
+8. **Phase 13** — Threat hunting (6-8 weeks, SQLite, high SOC value)
+9. **Phase 14** — YARA rules (6-8 weeks, libyara, malware/C2 detection)
+10. **Phase 15** — Snort rules (10-14 weeks, PCRE2, comprehensive signature coverage)
+11. **Phase 16** — Inline IPS gateway (13-18 weeks, Linux-only, depends on Phase 15)
