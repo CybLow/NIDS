@@ -343,6 +343,124 @@ TEST(SqliteFlowIndex, index_withThreatIntelMatches) {
     EXPECT_NE(flows[0].tiMatchesJson.find("feodo"), std::string::npos);
 }
 
+TEST(SqliteFlowIndex, query_filterByDstIp) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_filter_dst.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+    auto r = makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                        core::DetectionSource::None);
+
+    index.index(makeFlow("10.0.0.1", "1.1.1.1", 111, 80, 6), r, "", 0);
+    index.index(makeFlow("10.0.0.2", "2.2.2.2", 222, 80, 6), r, "", 0);
+
+    core::FlowQuery q;
+    q.dstIp = "1.1.1.1";
+    EXPECT_EQ(index.count(q), 1u);
+}
+
+TEST(SqliteFlowIndex, query_filterBySrcPort) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_filter_srcport.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+    auto r = makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                        core::DetectionSource::None);
+
+    index.index(makeFlow("10.0.0.1", "1.1.1.1", 111, 80, 6), r, "", 0);
+    index.index(makeFlow("10.0.0.1", "1.1.1.1", 222, 80, 6), r, "", 0);
+
+    core::FlowQuery q;
+    q.srcPort = static_cast<std::uint16_t>(111);
+    EXPECT_EQ(index.count(q), 1u);
+}
+
+TEST(SqliteFlowIndex, query_filterByDstPort) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_filter_dstport.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+    auto r = makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                        core::DetectionSource::None);
+
+    index.index(makeFlow("10.0.0.1", "1.1.1.1", 111, 80, 6), r, "", 0);
+    index.index(makeFlow("10.0.0.1", "1.1.1.1", 222, 443, 6), r, "", 0);
+
+    core::FlowQuery q;
+    q.dstPort = static_cast<std::uint16_t>(443);
+    EXPECT_EQ(index.count(q), 1u);
+}
+
+TEST(SqliteFlowIndex, query_filterByDetectionSource) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_filter_source.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+    auto flow = makeFlow("10.0.0.1", "1.1.1.1", 111, 80, 6);
+
+    index.index(flow,
+        makeResult(core::AttackType::DdosUdp, 0.95f, 0.87f,
+                   core::DetectionSource::Ensemble), "", 0);
+    index.index(flow,
+        makeResult(core::AttackType::SynFlood, 0.9f, 0.8f,
+                   core::DetectionSource::MlOnly), "", 0);
+
+    core::FlowQuery q;
+    q.detectionSource = core::DetectionSource::Ensemble;
+    EXPECT_EQ(index.count(q), 1u);
+}
+
+TEST(SqliteFlowIndex, query_multipleFilters_combined) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_multi_filter.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+
+    index.index(makeFlow("10.0.0.1", "1.1.1.1", 111, 80, 6),
+        makeResult(core::AttackType::SynFlood, 0.9f, 0.85f,
+                   core::DetectionSource::MlOnly), "", 0);
+    index.index(makeFlow("10.0.0.1", "2.2.2.2", 222, 443, 6),
+        makeResult(core::AttackType::DdosUdp, 0.95f, 0.87f,
+                   core::DetectionSource::Ensemble), "", 0);
+    index.index(makeFlow("10.0.0.2", "1.1.1.1", 333, 80, 17),
+        makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                   core::DetectionSource::None), "", 0);
+
+    core::FlowQuery q;
+    q.srcIp = "10.0.0.1";
+    q.protocol = static_cast<std::uint8_t>(6);
+    EXPECT_EQ(index.count(q), 2u);
+
+    q.dstPort = static_cast<std::uint16_t>(443);
+    EXPECT_EQ(index.count(q), 1u);
+}
+
+TEST(SqliteFlowIndex, query_withTimeRange) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_timerange.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+    auto r = makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                        core::DetectionSource::None);
+
+    // Insert multiple flows — all get current timestamp.
+    for (int i = 0; i < 5; ++i) {
+        index.index(makeFlow("10.0.0.1", "1.1.1.1", 111, 80, 6), r, "", 0);
+    }
+
+    // Query with a wide time range should return all.
+    core::FlowQuery q;
+    q.startTimeUs = 0;
+    q.endTimeUs = 9'999'999'999'999'999; // ~year 2286
+    EXPECT_EQ(index.count(q), 5u);
+
+    // Query with a very old time range should return none.
+    core::FlowQuery q2;
+    q2.startTimeUs = 1;
+    q2.endTimeUs = 2;
+    EXPECT_EQ(index.count(q2), 0u);
+}
+
 TEST(SqliteFlowIndex, query_filterByMinCombinedScore) {
     auto dbPath = fs::temp_directory_path() / "nids_test_min_score.db";
     DbGuard guard{dbPath};
