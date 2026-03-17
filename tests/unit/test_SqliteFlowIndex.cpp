@@ -461,6 +461,94 @@ TEST(SqliteFlowIndex, query_withTimeRange) {
     EXPECT_EQ(index.count(q2), 0u);
 }
 
+TEST(SqliteFlowIndex, query_noFlaggedFlows_flaggedOnlyReturnsEmpty) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_no_flagged.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+    index.index(makeFlow("10.0.0.1", "1.1.1.1", 111, 80, 6),
+        makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                   core::DetectionSource::None), "", 0);
+
+    core::FlowQuery q;
+    q.flaggedOnly = true;
+    EXPECT_EQ(index.count(q), 0u);
+}
+
+TEST(SqliteFlowIndex, aggregate_emptyDb_returnsZeros) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_agg_empty.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+
+    core::FlowQuery q;
+    auto stats = index.aggregate(q);
+
+    EXPECT_EQ(stats.totalFlows, 0u);
+    EXPECT_EQ(stats.flaggedFlows, 0u);
+    EXPECT_EQ(stats.totalPackets, 0u);
+    EXPECT_EQ(stats.totalBytes, 0u);
+    EXPECT_FLOAT_EQ(stats.avgCombinedScore, 0.0f);
+    EXPECT_FLOAT_EQ(stats.maxCombinedScore, 0.0f);
+}
+
+TEST(SqliteFlowIndex, index_multipleFlows_countCorrect) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_multi_index.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+    auto r = makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                        core::DetectionSource::None);
+
+    for (int i = 0; i < 50; ++i) {
+        index.index(
+            makeFlow("10.0.0." + std::to_string(i % 10),
+                     "1.1.1." + std::to_string(i % 5),
+                     static_cast<std::uint16_t>(1000 + i), 80, 6),
+            r, "batch.pcap", static_cast<std::size_t>(i));
+    }
+
+    core::FlowQuery q;
+    EXPECT_EQ(index.count(q), 50u);
+}
+
+TEST(SqliteFlowIndex, sizeBytes_growsWithInserts) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_sizetrack.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+    auto sizeBefore = index.sizeBytes();
+
+    auto r = makeResult(core::AttackType::DdosUdp, 0.95f, 0.87f,
+                        core::DetectionSource::Ensemble);
+    for (int i = 0; i < 100; ++i) {
+        index.index(makeFlow("10.0.0.1", "1.1.1.1", 111, 80, 6),
+                    r, "test.pcap", 0);
+    }
+
+    EXPECT_GT(index.sizeBytes(), sizeBefore);
+}
+
+TEST(SqliteFlowIndex, index_withRuleMatches) {
+    auto dbPath = fs::temp_directory_path() / "nids_test_rule_matches.db";
+    DbGuard guard{dbPath};
+
+    infra::SqliteFlowIndex index(dbPath);
+    auto flow = makeFlow("10.0.0.1", "1.1.1.1", 111, 80, 6);
+    auto result = makeResult(core::AttackType::PortScanning, 0.6f, 0.55f,
+                             core::DetectionSource::MlPlusHeuristic);
+    result.ruleMatches.push_back({"rule_a", "Rule A", 0.3f});
+
+    index.index(flow, result, "rules.pcap", 200);
+
+    core::FlowQuery q;
+    auto flows = index.query(q);
+
+    ASSERT_EQ(flows.size(), 1u);
+    EXPECT_FALSE(flows[0].ruleMatchesJson.empty());
+    EXPECT_NE(flows[0].ruleMatchesJson.find("rule_a"), std::string::npos);
+}
+
 TEST(SqliteFlowIndex, query_filterByMinCombinedScore) {
     auto dbPath = fs::temp_directory_path() / "nids_test_min_score.db";
     DbGuard guard{dbPath};
