@@ -2,7 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
-#include <exception>
+#include <stdexcept>
 
 namespace nids::app {
 
@@ -27,7 +27,7 @@ bool SinkChain::start() {
                              sink->name());
                 allOk = false;
             }
-        } catch (const std::exception& e) {
+        } catch (const std::runtime_error& e) {
             spdlog::error("SinkChain: sink '{}' threw on start(): {}",
                           sink->name(), e.what());
             allOk = false;
@@ -40,7 +40,7 @@ bool SinkChain::start() {
                              sink->name());
                 allOk = false;
             }
-        } catch (const std::exception& e) {
+        } catch (const std::runtime_error& e) {
             spdlog::error("SinkChain: sink '{}' threw on start(): {}",
                           sink->name(), e.what());
             allOk = false;
@@ -57,7 +57,7 @@ void SinkChain::onFlowResult(std::size_t flowIndex,
     for (const auto& sink : ownedSinks_) {
         try {
             sink->onFlowResult(flowIndex, result, flow);
-        } catch (const std::exception& e) {
+        } catch (const std::runtime_error& e) {
             spdlog::error("SinkChain: sink '{}' threw on onFlowResult(): {}",
                           sink->name(), e.what());
         }
@@ -65,7 +65,7 @@ void SinkChain::onFlowResult(std::size_t flowIndex,
     for (auto* sink : nonOwnedSinks_) {
         try {
             sink->onFlowResult(flowIndex, result, flow);
-        } catch (const std::exception& e) {
+        } catch (const std::runtime_error& e) {
             spdlog::error("SinkChain: sink '{}' threw on onFlowResult(): {}",
                           sink->name(), e.what());
         }
@@ -76,7 +76,7 @@ void SinkChain::stop() {
     for (const auto& sink : ownedSinks_) {
         try {
             sink->stop();
-        } catch (const std::exception& e) {
+        } catch (const std::runtime_error& e) {
             spdlog::error("SinkChain: sink '{}' threw on stop(): {}",
                           sink->name(), e.what());
         }
@@ -84,7 +84,7 @@ void SinkChain::stop() {
     for (auto* sink : nonOwnedSinks_) {
         try {
             sink->stop();
-        } catch (const std::exception& e) {
+        } catch (const std::runtime_error& e) {
             spdlog::error("SinkChain: sink '{}' threw on stop(): {}",
                           sink->name(), e.what());
         }

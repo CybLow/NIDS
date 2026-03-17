@@ -22,11 +22,11 @@ JsonFileSink::JsonFileSink(JsonFileConfig config)
     : config_(std::move(config)) {}
 
 JsonFileSink::~JsonFileSink() {
-  try {
-    stop();
-  } catch (const std::exception &e) {
-    spdlog::error("JsonFileSink: exception in destructor: {}", e.what());
-  }
+    try {
+        stop();
+    } catch (...) {
+        // Swallow all exceptions — destructors must never throw.
+    }
 }
 
 bool JsonFileSink::start() {

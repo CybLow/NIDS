@@ -46,7 +46,7 @@ std::string CefFormatter::format(
         << escapeHeader(verdictStr) << '|'
         << severity << '|';
 
-    // Extension key=value pairs (space-separated)
+    // Append the CEF extension fields, each space-separated.
     oss << "src=" << escapeExtension(flow.srcIp)
         << " dst=" << escapeExtension(flow.dstIp)
         << " spt=" << flow.srcPort

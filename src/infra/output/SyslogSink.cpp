@@ -60,11 +60,11 @@ void closeSocket(SocketHandle s) {
 SyslogSink::SyslogSink(SyslogConfig config) : config_(std::move(config)) {}
 
 SyslogSink::~SyslogSink() {
-  try {
-    stop();
-  } catch (const std::exception &e) {
-    spdlog::error("SyslogSink: exception in destructor: {}", e.what());
-  }
+    try {
+        stop();
+    } catch (...) {
+        // Swallow all exceptions — destructors must never throw.
+    }
 }
 
 bool SyslogSink::start() {

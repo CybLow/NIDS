@@ -27,7 +27,7 @@ std::string LeefFormatter::format(
     std::ostringstream oss;
     oss << "LEEF:2.0|NIDS|NIDS|0.2.0|" << eventId << "|\t";
 
-    // Key=value pairs (tab-separated)
+    // Append the LEEF attributes, each tab-separated.
     oss << "src=" << flow.srcIp
         << "\tdst=" << flow.dstIp
         << "\tsrcPort=" << flow.srcPort
