@@ -555,7 +555,7 @@ TEST(ConfigLoader, validJsonOverridesHuntingConfig) {
 }
 
 TEST(Configuration, huntingConfigDefaults) {
-  auto &config = Configuration::instance();
+  const auto &config = Configuration::instance();
   const auto &hc = config.huntingConfig();
 
   EXPECT_FALSE(hc.enabled);
