@@ -9,8 +9,8 @@
 #include "app/HybridDetectionService.h"
 #include "core/model/CaptureSession.h"
 #include "core/model/DetectionResult.h"
-#include "core/model/PredictionResult.h"
 #include "core/model/FlowConstants.h"
+#include "core/model/PredictionResult.h"
 
 #include <expected>
 #include <span>
@@ -460,7 +460,8 @@ TEST_F(AnalysisServiceTest, analyzeCapture_success_classifiesAllFlows) {
 
   service.setStartedCallback([&]() { ++startedCount; });
   service.setFinishedCallback([&]() { ++finishedCount; });
-  service.setErrorCallback([&](const std::string &msg) { errors.push_back(msg); });
+  service.setErrorCallback(
+      [&](const std::string &msg) { errors.push_back(msg); });
   service.setProgressCallback([&](int current, int total) {
     progressCalls.emplace_back(current, total);
   });
@@ -507,7 +508,8 @@ TEST_F(AnalysisServiceTest,
   std::vector<std::pair<int, int>> progressCalls;
 
   service.setFinishedCallback([&]() { ++finishedCount; });
-  service.setErrorCallback([&](const std::string &msg) { errors.push_back(msg); });
+  service.setErrorCallback(
+      [&](const std::string &msg) { errors.push_back(msg); });
   service.setProgressCallback([&](int current, int total) {
     progressCalls.emplace_back(current, total);
   });
@@ -518,6 +520,50 @@ TEST_F(AnalysisServiceTest,
   EXPECT_EQ(finishedCount, 1);
   EXPECT_EQ(errors.size(), 0u);
   EXPECT_EQ(progressCalls.size(), 0u);
+}
+
+TEST_F(AnalysisServiceTest, analyzeCapture_noCallbacksSet_completes) {
+  // Exercise the code paths where onStarted_ and onFinished_ are null.
+  auto analyzer = std::make_unique<MockAnalyzer>();
+  auto extractor = std::make_unique<MockFlowExtractor>();
+
+  EXPECT_CALL(*extractor, extractFeatures(_))
+      .WillOnce(Return(std::vector<std::vector<float>>{}));
+  EXPECT_CALL(*analyzer, predict(_)).Times(0);
+
+  AnalysisService service(std::move(analyzer), std::move(extractor),
+                          MockNormalizer::createPassThrough());
+  // Do NOT set any callbacks — exercises null callback guard paths.
+
+  CaptureSession session;
+  service.analyzeCapture("test.pcap", session);
+  // No crash means success — all null callback guards were hit.
+}
+
+TEST_F(AnalysisServiceTest,
+       analyzeCapture_emptyFeatures_progressCallbackNotFired) {
+  // When no flows are processed and noFeatures is true, the final progress
+  // callback (total > 0 guard in reportResults) is NOT fired. This covers
+  // the branch where total == 0 so onProgress_ is skipped.
+  auto analyzer = std::make_unique<MockAnalyzer>();
+  auto extractor = std::make_unique<MockFlowExtractor>();
+
+  EXPECT_CALL(*extractor, extractFeatures(_))
+      .WillOnce(Return(std::vector<std::vector<float>>{}));
+
+  AnalysisService service(std::move(analyzer), std::move(extractor),
+                          MockNormalizer::createPassThrough());
+
+  std::vector<std::pair<int, int>> progressCalls;
+  service.setProgressCallback([&](int current, int total) {
+    progressCalls.emplace_back(current, total);
+  });
+
+  CaptureSession session;
+  service.analyzeCapture("empty.pcap", session);
+
+  // No flows processed → no progress callbacks fired.
+  EXPECT_TRUE(progressCalls.empty());
 }
 
 TEST_F(AnalysisServiceTest, analyzeCapture_singleFlow_correctProgress) {

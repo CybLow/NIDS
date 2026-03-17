@@ -1,5 +1,5 @@
-#include "infra/analysis/FeatureNormalizer.h"
 #include "core/model/FlowConstants.h"
+#include "infra/analysis/FeatureNormalizer.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -9,8 +9,8 @@
 #include <fstream>
 #include <vector>
 
-using nids::infra::FeatureNormalizer;
 using nids::core::kFlowFeatureCount;
+using nids::infra::FeatureNormalizer;
 
 namespace fs = std::filesystem;
 
@@ -335,6 +335,38 @@ TEST_F(FeatureNormalizerTest, normalize_allZeroInputs_normalizedCorrectly) {
 }
 
 // ── Normalize with wrong feature count ───────────────────────────────
+
+TEST_F(FeatureNormalizerTest, loadMetadata_emptyFile_returnsError) {
+  // An empty file is invalid JSON — triggers the json::exception catch path.
+  auto path = writeMetadata("empty_file.json", "");
+  FeatureNormalizer normalizer;
+  EXPECT_FALSE(normalizer.loadMetadata(path));
+  EXPECT_FALSE(normalizer.isLoaded());
+}
+
+TEST_F(FeatureNormalizerTest, loadMetadata_truncatedJson_returnsError) {
+  // Truncated JSON to stress the exception handler.
+  auto path =
+      writeMetadata("truncated.json", R"({"normalization":{"means":[1.0,2)");
+  FeatureNormalizer normalizer;
+  EXPECT_FALSE(normalizer.loadMetadata(path));
+  EXPECT_FALSE(normalizer.isLoaded());
+}
+
+TEST_F(FeatureNormalizerTest, loadMetadata_negativeStdValues_replacedWithOne) {
+  // Negative std values (absolute value near zero) should be replaced with 1.0.
+  auto path = writeMetadata(
+      "neg_std.json",
+      R"({"normalization":{"means":[0.0],"stds":[-1e-10],"clip_value":10.0}})");
+  FeatureNormalizer normalizer;
+  ASSERT_TRUE(normalizer.loadMetadata(path));
+
+  // std replaced with 1.0, so (5 - 0) / 1.0 = 5.0
+  const std::vector<float> input = {5.0f};
+  auto result = normalizer.normalize(input);
+  ASSERT_EQ(result.size(), 1u);
+  EXPECT_FLOAT_EQ(result[0], 5.0f);
+}
 
 TEST_F(FeatureNormalizerTest, normalize_featureCountMismatch_returnsRaw) {
   // Load valid 2-feature metadata

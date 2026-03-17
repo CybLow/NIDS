@@ -587,6 +587,214 @@ TEST_F(HeuristicRuleEngineTest, evaluatePortScan_manyPorts_severityCapped) {
 
 // ── Non-TCP protocols don't trigger TCP-specific rules ───────────────
 
+// ── Brute force: each auth port produces a different service name ──
+
+TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_ftpPort_fires) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.dstPort = 21; // FTP
+  flow.totalFwdPackets = 100;
+  flow.totalBwdPackets = 50;
+  flow.flowDurationUs = 1'000'000; // 1s → rate = 150 > 10
+  auto results = engine_.evaluate(flow);
+
+  bool found = false;
+  for (const auto &r : results) {
+    if (r.ruleName == "brute_force") {
+      found = true;
+      EXPECT_NE(r.description.find("FTP"), std::string::npos);
+    }
+  }
+  EXPECT_TRUE(found) << "Expected brute_force to fire for FTP port";
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_telnetPort_fires) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.dstPort = 23; // Telnet
+  flow.totalFwdPackets = 100;
+  flow.totalBwdPackets = 50;
+  flow.flowDurationUs = 1'000'000;
+  auto results = engine_.evaluate(flow);
+
+  bool found = false;
+  for (const auto &r : results) {
+    if (r.ruleName == "brute_force") {
+      found = true;
+      EXPECT_NE(r.description.find("Telnet"), std::string::npos);
+    }
+  }
+  EXPECT_TRUE(found) << "Expected brute_force to fire for Telnet port";
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_vncPort_fires) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.dstPort = 5900; // VNC
+  flow.totalFwdPackets = 100;
+  flow.totalBwdPackets = 50;
+  flow.flowDurationUs = 1'000'000;
+  auto results = engine_.evaluate(flow);
+
+  bool found = false;
+  for (const auto &r : results) {
+    if (r.ruleName == "brute_force") {
+      found = true;
+      EXPECT_NE(r.description.find("VNC"), std::string::npos);
+    }
+  }
+  EXPECT_TRUE(found) << "Expected brute_force to fire for VNC port";
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_sshPort_mentionsSSH) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.dstPort = 22; // SSH
+  flow.totalFwdPackets = 100;
+  flow.totalBwdPackets = 50;
+  flow.flowDurationUs = 1'000'000;
+  auto results = engine_.evaluate(flow);
+
+  bool found = false;
+  for (const auto &r : results) {
+    if (r.ruleName == "brute_force") {
+      found = true;
+      EXPECT_NE(r.description.find("SSH"), std::string::npos);
+    }
+  }
+  EXPECT_TRUE(found) << "Expected brute_force to fire for SSH port";
+}
+
+// ── Severity boundary tests ──────────────────────────────────────────
+
+TEST_F(HeuristicRuleEngineTest, evaluate_synFlood_severityCappedAtOne) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.synFlagCount = 10000;
+  flow.ackFlagCount = 1; // ratio 10000.0
+  flow.totalFwdPackets = 10000;
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    if (r.ruleName == "syn_flood") {
+      EXPECT_LE(r.severity, 1.0f);
+    }
+  }
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_icmpFlood_severityCappedAtOne) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 1;
+  flow.totalFwdPackets = 50000;
+  flow.totalBwdPackets = 50000;
+  flow.flowDurationUs = 1'000'000; // 1s → rate = 100000
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    if (r.ruleName == "icmp_flood") {
+      EXPECT_LE(r.severity, 1.0f);
+    }
+  }
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_severityCappedAtOne) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.dstPort = 22;
+  flow.totalFwdPackets = 5000;
+  flow.totalBwdPackets = 5000;
+  flow.flowDurationUs = 1'000'000; // rate = 10000
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    if (r.ruleName == "brute_force") {
+      EXPECT_LE(r.severity, 1.0f);
+    }
+  }
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_highPacketRate_severityCappedAtOne) {
+  auto flow = makeBenignFlow();
+  flow.totalFwdPackets = 100000;
+  flow.totalBwdPackets = 100000;
+  flow.flowDurationUs = 1'000'000; // rate = 200000
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    if (r.ruleName == "high_packet_rate") {
+      EXPECT_LE(r.severity, 1.0f);
+    }
+  }
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_resetFlood_severityCappedAtOne) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.rstFlagCount = 100;
+  flow.totalFwdPackets = 100;
+  flow.totalBwdPackets = 0; // ratio = 100/100 = 1.0
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    if (r.ruleName == "reset_flood") {
+      EXPECT_LE(r.severity, 1.0f);
+      EXPECT_FLOAT_EQ(r.severity, 1.0f);
+    }
+  }
+}
+
+// ── All suspicious port values covered ───────────────────────────────
+
+TEST_F(HeuristicRuleEngineTest, evaluate_allSuspiciousPorts_detected) {
+  // Ensure each suspicious port triggers the rule.
+  const std::vector<std::uint16_t> suspiciousPorts = {
+      4444, 5555, 31337, 1337, 12345, 54321,
+      6666, 6667, 6668,  6669, 8888,  9999};
+
+  for (auto port : suspiciousPorts) {
+    auto flow = makeBenignFlow();
+    flow.dstPort = port;
+    auto results = engine_.evaluate(flow);
+
+    bool found = false;
+    for (const auto &r : results) {
+      if (r.ruleName == "suspicious_port") {
+        found = true;
+      }
+    }
+    EXPECT_TRUE(found) << "Expected suspicious_port rule for port " << port;
+  }
+}
+
+// ── SYN flood: non-TCP protocol check ────────────────────────────────
+
+TEST_F(HeuristicRuleEngineTest, evaluate_synFlood_icmpProtocol_doesNotFire) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 1; // ICMP, not TCP
+  flow.synFlagCount = 500;
+  flow.ackFlagCount = 0;
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    EXPECT_NE(r.ruleName, "syn_flood")
+        << "syn_flood should not fire for ICMP protocol";
+  }
+}
+
+// ── Port scan: exactly at threshold ──────────────────────────────────
+
+TEST_F(HeuristicRuleEngineTest, evaluatePortScan_exactlyAtThreshold_fires) {
+  std::vector<std::uint16_t> ports;
+  for (std::uint16_t i = 1; i <= 20; ++i) {
+    ports.push_back(i);
+  }
+  auto results = engine_.evaluatePortScan("10.0.0.1", ports);
+  EXPECT_FALSE(results.empty());
+  EXPECT_EQ(results[0].ruleName, "port_scan");
+}
+
+// ── Non-TCP protocols vs brute force / reset flood ───────────────────
+
 TEST_F(HeuristicRuleEngineTest, evaluate_udpFlow_noTcpRules) {
   auto flow = makeBenignFlow();
   flow.protocol = 17;
