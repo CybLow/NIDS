@@ -68,6 +68,7 @@ add_executable(nids_tests
     unit/test_PipelineFactory.cpp
     unit/test_CaptureCommands.cpp
     unit/test_ProtocolConstants.cpp
+    unit/test_ConsoleAlertSink.cpp
 )
 
 target_include_directories(nids_tests PRIVATE
