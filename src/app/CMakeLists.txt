@@ -11,6 +11,7 @@ add_library(nids_app STATIC
     PipelineFactory.cpp
     SinkChain.cpp
     OutputSinkFactory.cpp
+    HuntEngine.cpp
     commands/CaptureCommands.cpp
 )
 
