@@ -39,9 +39,9 @@ public:
     // -- Model --
 
     /** Get the path to the ONNX ML model file. */
-    [[nodiscard]] const std::filesystem::path& modelPath() const;
+    [[nodiscard]] const std::filesystem::path& modelPath() const noexcept;
     /** Get the path to the model metadata (normalizer parameters) file. */
-    [[nodiscard]] const std::filesystem::path& modelMetadataPath() const;
+    [[nodiscard]] const std::filesystem::path& modelMetadataPath() const noexcept;
 
     /** Set the path to the ONNX ML model file. */
     void setModelPath(const std::filesystem::path& path);
@@ -51,7 +51,7 @@ public:
     // -- Capture --
 
     /** Get the default pcap dump file path. */
-    [[nodiscard]] const std::string& defaultDumpFile() const;
+    [[nodiscard]] const std::string& defaultDumpFile() const noexcept;
     /** Get the flow timeout in microseconds. Flows idle beyond this are exported.
      *  Used for batch (post-capture) analysis. Default: 10 minutes. */
     [[nodiscard]] int64_t flowTimeoutUs() const noexcept;
@@ -91,7 +91,7 @@ public:
     // -- Threat Intelligence --
 
     /** Get the directory containing threat intelligence feed files. */
-    [[nodiscard]] const std::filesystem::path& threatIntelDirectory() const;
+    [[nodiscard]] const std::filesystem::path& threatIntelDirectory() const noexcept;
     /** Set the directory containing threat intelligence feed files. */
     void setThreatIntelDirectory(const std::filesystem::path& path);
 
@@ -118,7 +118,7 @@ public:
     // -- UI --
 
     /** Get the main window title string. */
-    [[nodiscard]] const std::string& windowTitle() const;
+    [[nodiscard]] const std::string& windowTitle() const noexcept;
     /** Set the main window title string. */
     void setWindowTitle(std::string_view title);
 

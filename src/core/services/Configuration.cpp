@@ -13,8 +13,8 @@ Configuration &Configuration::instance() {
   return instance;
 }
 
-const fs::path& Configuration::modelPath() const { return modelPath_; }
-const fs::path& Configuration::modelMetadataPath() const { return metadataPath_; }
+const fs::path& Configuration::modelPath() const noexcept { return modelPath_; }
+const fs::path& Configuration::modelMetadataPath() const noexcept { return metadataPath_; }
 
 void Configuration::setModelPath(const fs::path &path) { modelPath_ = path; }
 
@@ -22,7 +22,7 @@ void Configuration::setModelMetadataPath(const fs::path &path) {
   metadataPath_ = path;
 }
 
-const std::string &Configuration::defaultDumpFile() const {
+const std::string &Configuration::defaultDumpFile() const noexcept {
   return defaultDumpFile_;
 }
 int64_t Configuration::flowTimeoutUs() const noexcept { return flowTimeoutUs_; }
@@ -58,7 +58,7 @@ void Configuration::setOnnxIntraOpThreads(int threads) {
   onnxIntraOpThreads_ = threads;
 }
 
-const fs::path& Configuration::threatIntelDirectory() const { return threatIntelDir_; }
+const fs::path& Configuration::threatIntelDirectory() const noexcept { return threatIntelDir_; }
 
 void Configuration::setThreatIntelDirectory(const fs::path &path) {
   threatIntelDir_ = path;
@@ -89,7 +89,7 @@ void Configuration::setWeightHeuristic(float weight) {
   weightHeuristic_ = weight;
 }
 
-const std::string &Configuration::windowTitle() const { return windowTitle_; }
+const std::string &Configuration::windowTitle() const noexcept { return windowTitle_; }
 
 void Configuration::setWindowTitle(std::string_view title) {
   windowTitle_ = title;
