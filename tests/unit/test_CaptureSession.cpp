@@ -1,161 +1,248 @@
-#include <gtest/gtest.h>
 #include "core/model/CaptureSession.h"
 #include "core/model/ProtocolConstants.h"
+#include <gtest/gtest.h>
 
-using nids::core::CaptureSession;
-using nids::core::PacketInfo;
 using nids::core::AttackType;
+using nids::core::CaptureSession;
 using nids::core::DetectionResult;
 using nids::core::kIpProtoTcp;
 using nids::core::kIpProtoUdp;
+using nids::core::PacketInfo;
 
 /// Helper: create a DetectionResult with the given final verdict.
 static DetectionResult makeResult(AttackType verdict) {
-    DetectionResult result;
-    result.finalVerdict = verdict;
-    return result;
+  DetectionResult result;
+  result.finalVerdict = verdict;
+  return result;
 }
 
 TEST(CaptureSession, initiallyEmpty) {
-    CaptureSession session;
-    EXPECT_EQ(session.packetCount(), 0u);
-    EXPECT_EQ(session.detectionResultCount(), 0u);
+  CaptureSession session;
+  EXPECT_EQ(session.packetCount(), 0u);
+  EXPECT_EQ(session.detectionResultCount(), 0u);
 }
 
 TEST(CaptureSession, addPacketIncreasesCount) {
-    CaptureSession session;
-    PacketInfo pkt;
-    pkt.protocol = kIpProtoTcp;
-    pkt.ipSource = "192.168.1.1";
-    session.addPacket(pkt);
-    EXPECT_EQ(session.packetCount(), 1u);
+  CaptureSession session;
+  PacketInfo pkt;
+  pkt.protocol = kIpProtoTcp;
+  pkt.ipSource = "192.168.1.1";
+  session.addPacket(pkt);
+  EXPECT_EQ(session.packetCount(), 1u);
 }
 
 TEST(CaptureSession, getPacketReturnsCorrectData) {
-    CaptureSession session;
-    PacketInfo pkt;
-    pkt.protocol = kIpProtoUdp;
-    pkt.ipSource = "10.0.0.1";
-    pkt.ipDestination = "10.0.0.2";
-    pkt.portSource = 53;
-    pkt.portDestination = 1234;
-    session.addPacket(pkt);
+  CaptureSession session;
+  PacketInfo pkt;
+  pkt.protocol = kIpProtoUdp;
+  pkt.ipSource = "10.0.0.1";
+  pkt.ipDestination = "10.0.0.2";
+  pkt.portSource = 53;
+  pkt.portDestination = 1234;
+  session.addPacket(pkt);
 
-    const auto retrieved = session.getPacket(0);  // Returns by value (safe).
-    EXPECT_EQ(retrieved.protocol, kIpProtoUdp);
-    EXPECT_EQ(retrieved.ipSource, "10.0.0.1");
-    EXPECT_EQ(retrieved.ipDestination, "10.0.0.2");
-    EXPECT_EQ(retrieved.portSource, 53);
-    EXPECT_EQ(retrieved.portDestination, 1234);
+  const auto retrieved = session.getPacket(0); // Returns by value (safe).
+  EXPECT_EQ(retrieved.protocol, kIpProtoUdp);
+  EXPECT_EQ(retrieved.ipSource, "10.0.0.1");
+  EXPECT_EQ(retrieved.ipDestination, "10.0.0.2");
+  EXPECT_EQ(retrieved.portSource, 53);
+  EXPECT_EQ(retrieved.portDestination, 1234);
 }
 
 TEST(CaptureSession, getPacketOutOfRangeThrows) {
-    CaptureSession session;
-    EXPECT_THROW([[maybe_unused]] auto pkt = session.getPacket(0), std::out_of_range);
+  CaptureSession session;
+  EXPECT_THROW([[maybe_unused]] auto pkt = session.getPacket(0),
+               std::out_of_range);
 }
 
 TEST(CaptureSession, setAndGetDetectionResult) {
-    CaptureSession session;
-    session.setDetectionResult(0, makeResult(AttackType::DdosIcmp));
-    EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::DdosIcmp);
+  CaptureSession session;
+  session.setDetectionResult(0, makeResult(AttackType::DdosIcmp));
+  EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::DdosIcmp);
 }
 
 TEST(CaptureSession, getDetectionResultOutOfRangeReturnsUnknown) {
-    CaptureSession session;
-    EXPECT_EQ(session.getDetectionResult(999).finalVerdict, AttackType::Unknown);
+  CaptureSession session;
+  EXPECT_EQ(session.getDetectionResult(999).finalVerdict, AttackType::Unknown);
 }
 
 TEST(CaptureSession, clearResetsEverything) {
-    CaptureSession session;
-    PacketInfo pkt;
-    pkt.protocol = kIpProtoTcp;
-    session.addPacket(pkt);
-    session.setDetectionResult(0, makeResult(AttackType::Benign));
+  CaptureSession session;
+  PacketInfo pkt;
+  pkt.protocol = kIpProtoTcp;
+  session.addPacket(pkt);
+  session.setDetectionResult(0, makeResult(AttackType::Benign));
 
-    session.clear();
-    EXPECT_EQ(session.packetCount(), 0u);
-    EXPECT_EQ(session.detectionResultCount(), 0u);
+  session.clear();
+  EXPECT_EQ(session.packetCount(), 0u);
+  EXPECT_EQ(session.detectionResultCount(), 0u);
 }
 
 TEST(CaptureSession, multiplePackets) {
-    CaptureSession session;
-    for (int i = 0; i < 100; ++i) {
-        PacketInfo pkt;
-        pkt.protocol = kIpProtoTcp;
-        pkt.portSource = static_cast<std::uint16_t>(i);
-        session.addPacket(pkt);
-    }
-    EXPECT_EQ(session.packetCount(), 100u);
-    EXPECT_EQ(session.getPacket(50).portSource, 50);
+  CaptureSession session;
+  for (int i = 0; i < 100; ++i) {
+    PacketInfo pkt;
+    pkt.protocol = kIpProtoTcp;
+    pkt.portSource = static_cast<std::uint16_t>(i);
+    session.addPacket(pkt);
+  }
+  EXPECT_EQ(session.packetCount(), 100u);
+  EXPECT_EQ(session.getPacket(50).portSource, 50);
 }
 
 // ── Sparse index auto-resize ─────────────────────────────────────────
 
 TEST(CaptureSession, setDetectionResult_sparseIndex_autoResizes) {
-    CaptureSession session;
-    // Set result at index 10 without any prior results → should resize to 11
-    session.setDetectionResult(10, makeResult(AttackType::DdosIcmp));
-    EXPECT_EQ(session.detectionResultCount(), 11u);
+  CaptureSession session;
+  // Set result at index 10 without any prior results → should resize to 11
+  session.setDetectionResult(10, makeResult(AttackType::DdosIcmp));
+  EXPECT_EQ(session.detectionResultCount(), 11u);
 
-    EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::Unknown);
-    EXPECT_EQ(session.getDetectionResult(5).finalVerdict, AttackType::Unknown);
+  EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::Unknown);
+  EXPECT_EQ(session.getDetectionResult(5).finalVerdict, AttackType::Unknown);
 
-    // Index 10 should have our value
-    EXPECT_EQ(session.getDetectionResult(10).finalVerdict, AttackType::DdosIcmp);
+  // Index 10 should have our value
+  EXPECT_EQ(session.getDetectionResult(10).finalVerdict, AttackType::DdosIcmp);
 }
 
 // ── Overwrite detection result ───────────────────────────────────────
 
 TEST(CaptureSession, setDetectionResult_overwrite) {
-    CaptureSession session;
-    session.setDetectionResult(0, makeResult(AttackType::DdosIcmp));
-    EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::DdosIcmp);
+  CaptureSession session;
+  session.setDetectionResult(0, makeResult(AttackType::DdosIcmp));
+  EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::DdosIcmp);
 
-    // Overwrite with a different verdict
-    session.setDetectionResult(0, makeResult(AttackType::SynFlood));
-    EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::SynFlood);
+  // Overwrite with a different verdict
+  session.setDetectionResult(0, makeResult(AttackType::SynFlood));
+  EXPECT_EQ(session.getDetectionResult(0).finalVerdict, AttackType::SynFlood);
 }
 
 // ── Multiple detection results ───────────────────────────────────────
 
 TEST(CaptureSession, setDetectionResult_multipleResults) {
-    using enum AttackType;
-    CaptureSession session;
-    session.setDetectionResult(0, makeResult(Benign));
-    session.setDetectionResult(1, makeResult(SshBruteForce));
-    session.setDetectionResult(2, makeResult(PortScanning));
+  using enum AttackType;
+  CaptureSession session;
+  session.setDetectionResult(0, makeResult(Benign));
+  session.setDetectionResult(1, makeResult(SshBruteForce));
+  session.setDetectionResult(2, makeResult(PortScanning));
 
-    EXPECT_EQ(session.detectionResultCount(), 3u);
-    EXPECT_EQ(session.getDetectionResult(0).finalVerdict, Benign);
-    EXPECT_EQ(session.getDetectionResult(1).finalVerdict, SshBruteForce);
-    EXPECT_EQ(session.getDetectionResult(2).finalVerdict, PortScanning);
+  EXPECT_EQ(session.detectionResultCount(), 3u);
+  EXPECT_EQ(session.getDetectionResult(0).finalVerdict, Benign);
+  EXPECT_EQ(session.getDetectionResult(1).finalVerdict, SshBruteForce);
+  EXPECT_EQ(session.getDetectionResult(2).finalVerdict, PortScanning);
 }
 
 // ── Clear resets detection results ───────────────────────────────────
 
 TEST(CaptureSession, clear_alsoResetsDetectionResults) {
-    CaptureSession session;
-    session.setDetectionResult(5, makeResult(AttackType::DdosIcmp));
-    EXPECT_EQ(session.detectionResultCount(), 6u);
+  CaptureSession session;
+  session.setDetectionResult(5, makeResult(AttackType::DdosIcmp));
+  EXPECT_EQ(session.detectionResultCount(), 6u);
 
-    session.clear();
-    EXPECT_EQ(session.detectionResultCount(), 0u);
-    // After clear, getting any result returns default Unknown
-    EXPECT_EQ(session.getDetectionResult(5).finalVerdict, AttackType::Unknown);
+  session.clear();
+  EXPECT_EQ(session.detectionResultCount(), 0u);
+  // After clear, getting any result returns default Unknown
+  EXPECT_EQ(session.getDetectionResult(5).finalVerdict, AttackType::Unknown);
 }
 
 // ── Packets and results are independent ──────────────────────────────
 
 TEST(CaptureSession, packetsAndResults_independent) {
-    CaptureSession session;
-    PacketInfo pkt;
-    pkt.protocol = kIpProtoTcp;
-    session.addPacket(pkt);
-    // 1 packet but no detection results yet
-    EXPECT_EQ(session.packetCount(), 1u);
-    EXPECT_EQ(session.detectionResultCount(), 0u);
+  CaptureSession session;
+  PacketInfo pkt;
+  pkt.protocol = kIpProtoTcp;
+  session.addPacket(pkt);
+  // 1 packet but no detection results yet
+  EXPECT_EQ(session.packetCount(), 1u);
+  EXPECT_EQ(session.detectionResultCount(), 0u);
 
-    session.setDetectionResult(0, makeResult(AttackType::Benign));
-    EXPECT_EQ(session.packetCount(), 1u);
-    EXPECT_EQ(session.detectionResultCount(), 1u);
+  session.setDetectionResult(0, makeResult(AttackType::Benign));
+  EXPECT_EQ(session.packetCount(), 1u);
+  EXPECT_EQ(session.detectionResultCount(), 1u);
+}
+
+// ── flaggedResultCount ──────────────────────────────────────────────
+
+TEST(CaptureSession, flaggedResultCount_noResults_returnsZero) {
+  CaptureSession session;
+  EXPECT_EQ(session.flaggedResultCount(), 0u);
+}
+
+TEST(CaptureSession, flaggedResultCount_allBenign_returnsZero) {
+  CaptureSession session;
+  session.setDetectionResult(0, makeResult(AttackType::Benign));
+  session.setDetectionResult(1, makeResult(AttackType::Benign));
+  EXPECT_EQ(session.flaggedResultCount(), 0u);
+}
+
+TEST(CaptureSession, flaggedResultCount_mixedResults_countsAttacksOnly) {
+  using enum AttackType;
+  CaptureSession session;
+  session.setDetectionResult(0, makeResult(Benign));
+  session.setDetectionResult(1, makeResult(DdosIcmp));
+  session.setDetectionResult(2, makeResult(Benign));
+  session.setDetectionResult(3, makeResult(SshBruteForce));
+  // isFlagged() checks mlResult.isAttack() || hasThreatIntelMatch() ||
+  // hasRuleMatch() makeResult only sets finalVerdict -- mlResult defaults to
+  // Unknown which is not an attack.  To truly exercise isFlagged via mlResult,
+  // set mlResult.classification.
+  DetectionResult flagged;
+  flagged.finalVerdict = DdosIcmp;
+  flagged.mlResult.classification = DdosIcmp;
+  flagged.mlResult.confidence = 0.95f;
+
+  DetectionResult benign;
+  benign.finalVerdict = Benign;
+  benign.mlResult.classification = Benign;
+  benign.mlResult.confidence = 0.99f;
+
+  CaptureSession session2;
+  session2.setDetectionResult(0, benign);
+  session2.setDetectionResult(1, flagged);
+  session2.setDetectionResult(2, benign);
+  session2.setDetectionResult(3, flagged);
+  EXPECT_EQ(session2.flaggedResultCount(), 2u);
+}
+
+// ── Injected repository constructor ─────────────────────────────────
+
+/// Simple in-memory repository for testing the injected-repo constructor.
+namespace {
+class TestRepository : public nids::core::IAnalysisRepository {
+public:
+  void store(std::size_t flowIndex, const DetectionResult &result) override {
+    if (flowIndex >= results_.size())
+      results_.resize(flowIndex + 1);
+    results_[flowIndex] = result;
+  }
+  [[nodiscard]] DetectionResult get(std::size_t flowIndex) const override {
+    if (flowIndex >= results_.size())
+      return {};
+    return results_[flowIndex];
+  }
+  [[nodiscard]] std::size_t size() const noexcept override {
+    return results_.size();
+  }
+  void clear() override { results_.clear(); }
+
+private:
+  std::vector<DetectionResult> results_;
+};
+} // anonymous namespace
+
+TEST(CaptureSession, injectedRepository_usesExternalStorage) {
+  TestRepository repo;
+  CaptureSession session(repo);
+
+  session.setDetectionResult(0, makeResult(AttackType::PortScanning));
+  EXPECT_EQ(session.detectionResultCount(), 1u);
+  EXPECT_EQ(session.getDetectionResult(0).finalVerdict,
+            AttackType::PortScanning);
+
+  // The external repo also has the result.
+  EXPECT_EQ(repo.get(0).finalVerdict, AttackType::PortScanning);
+
+  session.clear();
+  EXPECT_EQ(session.detectionResultCount(), 0u);
+  EXPECT_EQ(repo.size(), 0u);
 }

@@ -98,6 +98,43 @@ TEST(CaptureCommands, StartCommand_undo_callsStopCapture) {
   EXPECT_FALSE(controller.isCapturing());
 }
 
+TEST(CaptureCommands, StopCommand_undo_restartsCapture) {
+  auto mockCapture = std::make_unique<MockPacketCapture>();
+  auto *raw = mockCapture.get();
+
+  bool capturing = false;
+  ON_CALL(*raw, isCapturing()).WillByDefault([&] { return capturing; });
+
+  // First start + stop + restart (undo) sequence.
+  EXPECT_CALL(*raw, initialize(_, _))
+      .WillRepeatedly(testing::Return(std::expected<void, std::string>{}));
+  EXPECT_CALL(*raw, startCapture(_))
+      .Times(2)
+      .WillRepeatedly([&](const std::string &) { capturing = true; });
+  // stopCapture called once from execute(), and once from ~CaptureController
+  // when the controller is destroyed while still capturing after undo().
+  EXPECT_CALL(*raw, stopCapture()).Times(2).WillRepeatedly([&] {
+    capturing = false;
+  });
+
+  CaptureController controller(std::move(mockCapture));
+  PacketFilter filter;
+  filter.networkCard = "lo";
+
+  // Start a capture so there's something to stop.
+  controller.startCapture(filter);
+  EXPECT_TRUE(controller.isCapturing());
+
+  StopCaptureCommand cmd(controller, filter);
+  cmd.execute();
+  EXPECT_FALSE(controller.isCapturing());
+
+  // Undo should restart with the same filter.
+  cmd.undo();
+  EXPECT_TRUE(controller.isCapturing());
+  // Destructor of CaptureController will call stopCapture() again.
+}
+
 TEST(CaptureCommands, StopCommand_execute_callsStopCapture) {
   auto mockCapture = std::make_unique<MockPacketCapture>();
   auto *raw = mockCapture.get();

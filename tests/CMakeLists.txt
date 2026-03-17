@@ -69,6 +69,8 @@ add_executable(nids_tests
     unit/test_CaptureCommands.cpp
     unit/test_ProtocolConstants.cpp
     unit/test_ConsoleAlertSink.cpp
+    unit/test_HeadlessCaptureRunner.cpp
+    unit/test_InterfaceDestructors.cpp
 )
 
 target_include_directories(nids_tests PRIVATE

@@ -298,6 +298,49 @@ TEST(ConfigLoader, validJsonOverridesOnnxThreads) {
 
 // ── ConfigLoader: all sections combined ──────────────────────────────
 
+// ── Direct setter/getter round-trip tests ─────────────────────────────
+// These cover setter code paths not exercised via ConfigLoader.
+
+TEST(Configuration, setAndGetLiveFlowTimeoutUs) {
+  auto &config = Configuration::instance();
+  auto orig = config.liveFlowTimeoutUs();
+
+  config.setLiveFlowTimeoutUs(30'000'000);
+  EXPECT_EQ(config.liveFlowTimeoutUs(), 30'000'000);
+
+  config.setLiveFlowTimeoutUs(orig);
+}
+
+TEST(Configuration, setAndGetMaxFlowDurationUs) {
+  auto &config = Configuration::instance();
+  auto orig = config.maxFlowDurationUs();
+
+  config.setMaxFlowDurationUs(20'000'000);
+  EXPECT_EQ(config.maxFlowDurationUs(), 20'000'000);
+
+  config.setMaxFlowDurationUs(orig);
+}
+
+TEST(Configuration, setAndGetModelMetadataPath) {
+  auto &config = Configuration::instance();
+  auto orig = config.modelMetadataPath();
+
+  config.setModelMetadataPath("/tmp/test_meta.json");
+  EXPECT_EQ(config.modelMetadataPath(), fs::path("/tmp/test_meta.json"));
+
+  config.setModelMetadataPath(orig);
+}
+
+TEST(Configuration, setAndGetThreatIntelDirectory) {
+  auto &config = Configuration::instance();
+  auto orig = config.threatIntelDirectory();
+
+  config.setThreatIntelDirectory("/opt/ti_feeds");
+  EXPECT_EQ(config.threatIntelDirectory(), fs::path("/opt/ti_feeds"));
+
+  config.setThreatIntelDirectory(orig);
+}
+
 TEST(ConfigLoader, validJsonOverridesMultipleSections) {
   auto &config = Configuration::instance();
   auto origModel = config.modelPath();
