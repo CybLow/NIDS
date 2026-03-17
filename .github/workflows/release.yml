@@ -61,7 +61,7 @@ jobs:
         shell: bash
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - run: cmake --preset ci-msvc -DPROJECT_VERSION_OVERRIDE=${{ steps.v.outputs.version }}
+      - run: cmake --preset ci-msvc "-DPROJECT_VERSION_OVERRIDE=${{ steps.v.outputs.version }}"
       - run: cmake --build --preset ci-msvc
       - name: Smoke test
         shell: pwsh
