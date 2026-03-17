@@ -56,7 +56,8 @@ void CaptureSession::addPacket(const PacketInfo& packet) {
     packets_.push_back(packet);
 }
 
-void CaptureSession::setDetectionResult(std::size_t index, const DetectionResult& result) {
+void CaptureSession::setDetectionResult(std::size_t index, const DetectionResult& result) const
+{
     repository_->store(index, result);
 }
 
@@ -79,6 +80,17 @@ std::size_t CaptureSession::packetCount() const {
 
 std::size_t CaptureSession::detectionResultCount() const {
     return repository_->size();
+}
+
+std::size_t CaptureSession::flaggedResultCount() const {
+    const auto total = repository_->size();
+    std::size_t flagged = 0;
+    for (std::size_t i = 0; i < total; ++i) {
+        if (repository_->get(i).isFlagged()) {
+            ++flagged;
+        }
+    }
+    return flagged;
 }
 
 void CaptureSession::clear() {

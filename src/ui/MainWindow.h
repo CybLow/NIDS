@@ -12,15 +12,15 @@
 #include "ui/HexView.h"
 #include "ui/PacketTableModel.h"
 
-#include <QAction>
-#include <QLabel>
 #include <QMainWindow>
-#include <QProgressBar>
-#include <QScrollArea>
-#include <QSplitter>
-#include <QSystemTrayIcon>
-#include <QTabWidget>
-#include <QTableView>
+
+class QAction;
+class QLabel;
+class QProgressBar;
+class QScrollArea;
+class QSystemTrayIcon;
+class QTabWidget;
+class QTableView;
 
 #include <memory>
 #include <thread>
@@ -43,16 +43,16 @@ public:
    * @param parent           Parent widget.
    */
   explicit MainWindow(
-      std::unique_ptr<nids::app::CaptureController> controller,
-      std::unique_ptr<nids::app::AnalysisService> analysisService,
-      nids::app::HybridDetectionService *hybridService = nullptr,
-      nids::core::IThreatIntelligence *threatIntel = nullptr,
-      nids::core::IRuleEngine *ruleEngine = nullptr, QWidget *parent = nullptr);
+      std::unique_ptr<app::CaptureController> controller,
+      std::unique_ptr<app::AnalysisService> analysisService,
+      app::HybridDetectionService *hybridService = nullptr,
+      core::IThreatIntelligence *threatIntel = nullptr,
+      core::IRuleEngine *ruleEngine = nullptr, QWidget *parent = nullptr);
   ~MainWindow() override;
 
 private slots:
   void toggleCapture();
-  void onPacketReceived(const nids::core::PacketInfo &info);
+  void onPacketReceived(const core::PacketInfo &info);
   void displaySelectedPacketRawData();
   void onFlowSelectionChanged();
   void notificationSettings();
@@ -67,12 +67,12 @@ private:
 
   void updateTiStatus();
 
-  std::unique_ptr<nids::app::CaptureController> controller_;
-  std::unique_ptr<nids::app::AnalysisService> analysisService_;
-  nids::core::ServiceRegistry serviceRegistry_;
-  nids::core::IThreatIntelligence *threatIntel_ = nullptr;     // non-owning
-  nids::core::IRuleEngine *ruleEngine_ = nullptr;              // non-owning
-  nids::app::HybridDetectionService *hybridService_ = nullptr; // non-owning
+  std::unique_ptr<app::CaptureController> controller_;
+  std::unique_ptr<app::AnalysisService> analysisService_;
+  core::ServiceRegistry serviceRegistry_;
+  core::IThreatIntelligence *threatIntel_ = nullptr;     // non-owning
+  core::IRuleEngine *ruleEngine_ = nullptr;              // non-owning
+  app::HybridDetectionService *hybridService_ = nullptr; // non-owning
 
   void wireControllerCallbacks();
   void wireAnalysisCallbacks();

@@ -11,13 +11,12 @@
 
 #include "core/model/CaptureSession.h"
 #include "core/model/DetectionResult.h"
+#include "core/model/FlowInfo.h"
 #include "core/concurrent/BoundedQueue.h"
 #include "core/services/IFeatureNormalizer.h"
-#include "core/services/IFlowExtractor.h"
 #include "core/services/IPacketAnalyzer.h"
 
 #include <atomic>
-#include <cassert>
 #include <cstddef>
 #include <functional>
 #include <thread>
@@ -30,7 +29,7 @@ class HybridDetectionService;
 /// Work item pushed into the queue by the flow extractor callback.
 struct FlowWorkItem {
     std::vector<float> features;
-    nids::core::FlowInfo metadata;
+    core::FlowInfo metadata;
 };
 
 /**
@@ -52,8 +51,8 @@ public:
     /// Callback invoked on the worker thread for each processed flow.
     /// Parameters: (flow index, detection result, flow metadata).
     using ResultCallback =
-        std::function<void(std::size_t, nids::core::DetectionResult,
-                           nids::core::FlowInfo)>;
+        std::function<void(std::size_t, core::DetectionResult,
+                           core::FlowInfo)>;
 
     /**
      * Construct the worker with its required dependencies.
@@ -63,10 +62,10 @@ public:
      * @param normalizer  Feature normalizer (non-owning, must outlive worker).
      * @param session     Thread-safe result storage (non-owning, must outlive worker).
      */
-    FlowAnalysisWorker(nids::core::BoundedQueue<FlowWorkItem>& queue,
-                       nids::core::IPacketAnalyzer& analyzer,
-                       nids::core::IFeatureNormalizer& normalizer,
-                       nids::core::CaptureSession& session);
+    FlowAnalysisWorker(core::BoundedQueue<FlowWorkItem>& queue,
+                       core::IPacketAnalyzer& analyzer,
+                       core::IFeatureNormalizer& normalizer,
+                       core::CaptureSession& session);
 
     ~FlowAnalysisWorker();
 
@@ -110,10 +109,18 @@ private:
     /// Process a batch of flow work items via batched inference.
     void processBatch(std::vector<FlowWorkItem>& items, std::size_t startIndex);
 
-    nids::core::BoundedQueue<FlowWorkItem>& queue_;
-    nids::core::IPacketAnalyzer& analyzer_;
-    nids::core::IFeatureNormalizer& normalizer_;
-    nids::core::CaptureSession& session_;
+    /// Normalize features and pack into a flat contiguous buffer for ONNX.
+    /// Returns {flatBuffer, featureCount}.
+    struct FlatBatch {
+        std::vector<float> data;
+        std::size_t featureCount = 0;
+    };
+    [[nodiscard]] FlatBatch buildFlatBatch(std::vector<FlowWorkItem>& items);
+
+    core::BoundedQueue<FlowWorkItem>& queue_;
+    core::IPacketAnalyzer& analyzer_;
+    core::IFeatureNormalizer& normalizer_;
+    core::CaptureSession& session_;
     HybridDetectionService* hybridService_ = nullptr;
     ResultCallback resultCallback_;
 

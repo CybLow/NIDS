@@ -8,8 +8,8 @@
 namespace nids::app {
 
 HybridDetectionService::HybridDetectionService(
-    nids::core::IThreatIntelligence *threatIntel,
-    nids::core::IRuleEngine *ruleEngine)
+    core::IThreatIntelligence *threatIntel,
+    core::IRuleEngine *ruleEngine)
     : threatIntel_(threatIntel), ruleEngine_(ruleEngine) {}
 
 void HybridDetectionService::setWeights(const Weights &weights) noexcept {
@@ -21,7 +21,7 @@ void HybridDetectionService::setConfidenceThreshold(float threshold) noexcept {
 }
 
 void HybridDetectionService::populateThreatIntel(
-    nids::core::DetectionResult &result, const std::string &srcIp,
+    core::DetectionResult &result, const std::string &srcIp,
     const std::string &dstIp) const {
   if (threatIntel_ == nullptr) {
     return;
@@ -36,11 +36,11 @@ void HybridDetectionService::populateThreatIntel(
   }
 }
 
-nids::core::DetectionResult HybridDetectionService::evaluate(
-    const nids::core::PredictionResult &mlResult, const std::string &srcIp,
-    const std::string &dstIp, const nids::core::FlowInfo &flowInfo) const {
+core::DetectionResult HybridDetectionService::evaluate(
+    const core::PredictionResult &mlResult, const std::string &srcIp,
+    const std::string &dstIp, const core::FlowInfo &flowInfo) const {
 
-  nids::core::DetectionResult result;
+  core::DetectionResult result;
   result.mlResult = mlResult;
 
   // -- Layer 2: Threat Intelligence --
@@ -64,19 +64,19 @@ nids::core::DetectionResult HybridDetectionService::evaluate(
   if (hasTi && !mlResult.isAttack()) {
     spdlog::info("TI override: ML classified flow as {} (conf={:.3f}) but "
                  "IP matched threat intel feed",
-                 nids::core::attackTypeToString(mlResult.classification),
+                 core::attackTypeToString(mlResult.classification),
                  mlResult.confidence);
   }
 
   return result;
 }
 
-nids::core::DetectionResult
-HybridDetectionService::evaluate(const nids::core::PredictionResult &mlResult,
+core::DetectionResult
+HybridDetectionService::evaluate(const core::PredictionResult &mlResult,
                                  const std::string &srcIp,
                                  const std::string &dstIp) const {
 
-  nids::core::DetectionResult result;
+  core::DetectionResult result;
   result.mlResult = mlResult;
 
   // -- Layer 2: Threat Intelligence (no heuristic rules) --
@@ -91,14 +91,14 @@ HybridDetectionService::evaluate(const nids::core::PredictionResult &mlResult,
 }
 
 float HybridDetectionService::computeCombinedScore(
-    const nids::core::PredictionResult &mlResult, bool hasTiMatch,
+    const core::PredictionResult &mlResult, bool hasTiMatch,
     float maxRuleSeverity) const noexcept {
 
   // ML score: probability of being malicious
   float mlScore = 0.0f;
   if (mlResult.isAttack()) {
     mlScore = mlResult.confidence;
-  } else if (mlResult.classification == nids::core::AttackType::Benign) {
+  } else if (mlResult.classification == core::AttackType::Benign) {
     // Invert: benign with high confidence = low threat
     mlScore = 1.0f - mlResult.confidence;
   }
@@ -113,14 +113,14 @@ float HybridDetectionService::computeCombinedScore(
   return std::clamp(combined, 0.0f, 1.0f);
 }
 
-nids::core::DetectionSource
+core::DetectionSource
 HybridDetectionService::determineSource(bool mlIsAttack, bool hasTiMatch,
                                         bool hasRuleMatch) noexcept {
 
   // Encode the three booleans as a 3-bit index: (ml << 2 | ti << 1 | rule)
   // This replaces 6 chained if-statements with a single table lookup.
-  using enum nids::core::DetectionSource;
-  static constexpr std::array<nids::core::DetectionSource, 8> kSourceTable = {{
+  using enum core::DetectionSource;
+  static constexpr std::array<core::DetectionSource, 8> kSourceTable = {{
       /* 0b000: !ml, !ti, !rule */ None,
       /* 0b001: !ml, !ti,  rule */ HeuristicRule,
       /* 0b010: !ml,  ti, !rule */ ThreatIntel,
@@ -137,11 +137,11 @@ HybridDetectionService::determineSource(bool mlIsAttack, bool hasTiMatch,
   return kSourceTable[index];
 }
 
-nids::core::AttackType HybridDetectionService::verdictForBenign(
-    const nids::core::PredictionResult &mlResult, bool hasTiMatch,
+core::AttackType HybridDetectionService::verdictForBenign(
+    const core::PredictionResult &mlResult, bool hasTiMatch,
     bool hasRuleMatch, float maxRuleSeverity) const noexcept {
 
-  using enum nids::core::AttackType;
+  using enum core::AttackType;
 
   // TI match overrides benign verdict -- this is the key escalation
   if (hasTiMatch) {
@@ -157,11 +157,11 @@ nids::core::AttackType HybridDetectionService::verdictForBenign(
   return Benign;
 }
 
-nids::core::AttackType HybridDetectionService::determineVerdict(
-    const nids::core::PredictionResult &mlResult, bool hasTiMatch,
+core::AttackType HybridDetectionService::determineVerdict(
+    const core::PredictionResult &mlResult, bool hasTiMatch,
     bool hasRuleMatch, float maxRuleSeverity) const noexcept {
 
-  using enum nids::core::AttackType;
+  using enum core::AttackType;
 
   // ML says attack (any confidence) -- trust the classification
   if (mlResult.isAttack()) {

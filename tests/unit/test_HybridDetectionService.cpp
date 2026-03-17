@@ -1,39 +1,22 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "helpers/MockRuleEngine.h"
+#include "helpers/MockThreatIntel.h"
+#include "helpers/TestHelpers.h"
+
 #include "app/HybridDetectionService.h"
 #include "core/model/AttackType.h"
 #include "core/model/DetectionResult.h"
 #include "core/model/PredictionResult.h"
-#include "core/services/IRuleEngine.h"
-#include "core/services/IThreatIntelligence.h"
 
 using namespace nids::core;
 using namespace nids::app;
+using nids::testing::MockThreatIntel;
+using nids::testing::MockRuleEngine;
+using nids::testing::makePrediction;
 using ::testing::_;
 using ::testing::Return;
-
-// ── Mocks ────────────────────────────────────────────────────────────
-
-class MockThreatIntel : public IThreatIntelligence {
-public:
-  MOCK_METHOD(std::size_t, loadFeeds, (const std::string &), (override));
-  MOCK_METHOD(ThreatIntelLookup, lookup, (std::string_view), (const, override));
-  MOCK_METHOD(ThreatIntelLookup, lookup, (std::uint32_t), (const, override));
-  MOCK_METHOD(std::size_t, entryCount, (), (const, noexcept, override));
-  MOCK_METHOD(std::size_t, feedCount, (), (const, noexcept, override));
-  MOCK_METHOD(std::vector<std::string>, feedNames, (), (const, override));
-};
-
-class MockRuleEngine : public IRuleEngine {
-public:
-  MOCK_METHOD(std::vector<HeuristicRuleResult>, evaluate,
-              (const FlowInfo &), (const, override));
-  MOCK_METHOD(std::vector<HeuristicRuleResult>, evaluatePortScan,
-              (std::string_view, const std::vector<std::uint16_t> &),
-              (const, override));
-  MOCK_METHOD(std::size_t, ruleCount, (), (const, noexcept, override));
-};
 
 // ── Fixture ──────────────────────────────────────────────────────────
 
@@ -42,17 +25,9 @@ protected:
   MockThreatIntel mockTi_;
   MockRuleEngine mockRules_;
 
-  /// Build a PredictionResult with given classification and confidence.
-  static PredictionResult makePrediction(AttackType type, float confidence) {
-    PredictionResult pred;
-    pred.classification = type;
-    pred.confidence = confidence;
-    return pred;
-  }
-
   /// Set up mock expectations: no TI match, rule fires with given matches.
   void
-  expectNoTiMatchWithRules(std::vector<HeuristicRuleResult> ruleMatches) const {
+  expectNoTiMatchWithRules(std::vector<RuleMatch> ruleMatches) const {
     EXPECT_CALL(mockTi_, lookup(std::string_view("192.168.1.10")))
         .WillOnce(Return(ThreatIntelLookup{false, ""}));
     EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
@@ -246,7 +221,7 @@ TEST_F(HybridDetectionServiceTest, allThreeLayers_detectionSourceIsEnsemble) {
       .WillOnce(Return(ThreatIntelLookup{false, ""}));
 
   // Rule match
-  std::vector<HeuristicRuleResult> ruleMatches = {
+  std::vector<RuleMatch> ruleMatches = {
       {"suspicious_port", "Port 4444", 0.6f}};
   EXPECT_CALL(mockRules_, evaluate(_)).WillOnce(Return(ruleMatches));
 
@@ -363,7 +338,7 @@ TEST_F(HybridDetectionServiceTest,
   EXPECT_CALL(mockTi_, lookup(std::string_view("10.0.0.1")))
       .WillRepeatedly(Return(ThreatIntelLookup{false, ""}));
 
-  std::vector<HeuristicRuleResult> ruleMatches = {
+  std::vector<RuleMatch> ruleMatches = {
       {"syn_flood", "SYN flood detected", 0.85f}};
   EXPECT_CALL(mockRules_, evaluate(_)).WillRepeatedly(Return(ruleMatches));
 

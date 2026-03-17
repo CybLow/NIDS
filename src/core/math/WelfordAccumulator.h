@@ -26,47 +26,43 @@ namespace nids::core {
  * in O(1) space per update.  Replaces per-packet vectors that previously
  * stored all values for offline statistics computation (~7 KB per flow).
  */
-struct WelfordAccumulator {
-  std::uint64_t n = 0;
-  double mean_ = 0.0;
-  double m2_ = 0.0;   ///< Sum of squared deviations from the running mean.
-  double sum_ = 0.0;
-  double min_ = std::numeric_limits<double>::max();
-  double max_ = std::numeric_limits<double>::lowest();
-
+class WelfordAccumulator {
+public:
   /** Feed a new observation. */
   void update(double x) noexcept {
-    ++n;
+    ++n_;
     sum_ += x;
-    if (n == 1) {
+    if (n_ == 1) {
       min_ = max_ = x;
     } else {
       min_ = std::min(min_, x);
       max_ = std::max(max_, x);
     }
     double delta = x - mean_;
-    mean_ += delta / static_cast<double>(n);
+    mean_ += delta / static_cast<double>(n_);
     double delta2 = x - mean_;
     m2_ += delta * delta2;
   }
 
-  [[nodiscard]] double mean() const noexcept { return n > 0 ? mean_ : 0.0; }
+  /** Number of observations fed so far. */
+  [[nodiscard]] std::uint64_t count() const noexcept { return n_; }
+  [[nodiscard]] double mean() const noexcept { return n_ > 0 ? mean_ : 0.0; }
   [[nodiscard]] double sum() const noexcept { return sum_; }
   [[nodiscard]] double min() const noexcept {
-    return n > 0 ? min_ : 0.0;
+    return n_ > 0 ? min_ : 0.0;
   }
   [[nodiscard]] double max() const noexcept {
-    return n > 0 ? max_ : 0.0;
+    return n_ > 0 ? max_ : 0.0;
   }
 
   /** Population variance (divide by N). */
   [[nodiscard]] double populationVariance() const noexcept {
-    return n > 0 ? m2_ / static_cast<double>(n) : 0.0;
+    return n_ > 0 ? m2_ / static_cast<double>(n_) : 0.0;
   }
 
   /** Sample variance (divide by N-1, Bessel's correction). */
   [[nodiscard]] double sampleVariance() const noexcept {
-    return n > 1 ? m2_ / static_cast<double>(n - 1) : 0.0;
+    return n_ > 1 ? m2_ / static_cast<double>(n_ - 1) : 0.0;
   }
 
   /** Sample standard deviation (sqrt of sample variance, N-1 denominator).
@@ -79,6 +75,14 @@ struct WelfordAccumulator {
   [[nodiscard]] double stddev() const noexcept {
     return std::sqrt(sampleVariance());
   }
+
+private:
+  std::uint64_t n_ = 0;
+  double mean_ = 0.0;
+  double m2_ = 0.0;   ///< Sum of squared deviations from the running mean.
+  double sum_ = 0.0;
+  double min_ = std::numeric_limits<double>::max();
+  double max_ = std::numeric_limits<double>::lowest();
 };
 
 } // namespace nids::core

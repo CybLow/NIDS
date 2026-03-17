@@ -11,7 +11,7 @@
 #include "core/model/PredictionResult.h"
 #include "infra/analysis/AnalyzerFactory.h"
 #include "infra/analysis/OnnxAnalyzer.h"
-#include "infra/flow/NativeFlowExtractor.h" // kFlowFeatureCount
+#include "core/model/FlowConstants.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -25,7 +25,7 @@ using nids::core::kAttackTypeCount;
 using nids::core::PredictionResult;
 using nids::infra::AnalyzerBackend;
 using nids::infra::createAnalyzer;
-using nids::infra::kFlowFeatureCount;
+using nids::core::kFlowFeatureCount;
 using nids::infra::OnnxAnalyzer;
 
 namespace fs = std::filesystem;

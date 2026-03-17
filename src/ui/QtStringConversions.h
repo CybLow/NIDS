@@ -22,19 +22,19 @@ inline QString toQString(std::string_view sv) {
 }
 
 /// Convert an AttackType enum to its display QString.
-inline QString attackTypeQString(nids::core::AttackType type) {
-    return toQString(nids::core::attackTypeToString(type));
+inline QString attackTypeQString(core::AttackType type) {
+    return toQString(core::attackTypeToString(type));
 }
 
 /// Convert a DetectionSource enum to its display QString.
-inline QString detectionSourceQString(nids::core::DetectionSource src) {
-    return toQString(nids::core::detectionSourceToString(src));
+inline QString detectionSourceQString(core::DetectionSource src) {
+    return toQString(core::detectionSourceToString(src));
 }
 
 /// Convert a protocol number to its display QString.
 /// Returns "Other (N)" for unrecognized protocols.
 inline QString protocolQString(std::uint8_t protocol) {
-    auto name = nids::core::protocolToName(protocol);
+    auto name = core::protocolToName(protocol);
     if (name != "Other") {
         return toQString(name);
     }

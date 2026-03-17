@@ -10,7 +10,7 @@ namespace {
 /// Push max, min, mean, std from an accumulator, or 4 zeros if empty.
 void pushLengthStats(std::vector<float>& features,
                      const WelfordAccumulator& acc) {
-    if (acc.n == 0) {
+    if (acc.count() == 0) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
     } else {
         features.push_back(static_cast<float>(acc.max()));
@@ -23,7 +23,7 @@ void pushLengthStats(std::vector<float>& features,
 /// Push total, mean, std, max, min from an accumulator, or 5 zeros if empty.
 void pushIatStats(std::vector<float>& features,
                   const WelfordAccumulator& acc) {
-    if (acc.n == 0) {
+    if (acc.count() == 0) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
     } else {
         features.push_back(static_cast<float>(acc.sum()));
@@ -43,7 +43,7 @@ void pushRate(std::vector<float>& features, double count, double durationUs) {
 /// Push min, max, mean, std, variance from an accumulator, or 5 zeros.
 void pushFullLengthStats(std::vector<float>& features,
                          const WelfordAccumulator& acc) {
-    if (acc.n == 0) {
+    if (acc.count() == 0) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
     } else {
         features.push_back(static_cast<float>(acc.min()));
@@ -57,7 +57,7 @@ void pushFullLengthStats(std::vector<float>& features,
 /// Push mean, std, max, min from an accumulator, or 4 zeros if empty.
 void pushPeriodStats(std::vector<float>& features,
                      const WelfordAccumulator& acc) {
-    if (acc.n == 0) {
+    if (acc.count() == 0) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f, 0.0f});
     } else {
         features.push_back(static_cast<float>(acc.mean()));
@@ -72,7 +72,7 @@ void pushBulkStats(std::vector<float>& features,
                    const WelfordAccumulator& bytesAcc,
                    const WelfordAccumulator& pktsAcc,
                    double durationUs) {
-    if (bytesAcc.n == 0) {
+    if (bytesAcc.count() == 0) {
         features.insert(features.end(), {0.0f, 0.0f, 0.0f});
     } else {
         features.push_back(static_cast<float>(bytesAcc.mean()));
@@ -235,8 +235,8 @@ const std::vector<std::string>& flowFeatureNames() {
     return names;
 }
 
-nids::core::FlowInfo buildFlowInfo(const FlowKey& key, const FlowStats& stats) {
-    nids::core::FlowInfo info;
+core::FlowInfo buildFlowInfo(const FlowKey& key, const FlowStats& stats) {
+    core::FlowInfo info;
     info.srcIp = key.srcIp;
     info.dstIp = key.dstIp;
     info.srcPort = key.srcPort;

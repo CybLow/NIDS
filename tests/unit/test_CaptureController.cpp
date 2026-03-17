@@ -1,9 +1,11 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "helpers/MockPacketCapture.h"
+
 #include "app/CaptureController.h"
-#include "core/services/IPacketCapture.h"
 #include "core/model/PacketFilter.h"
+#include "core/model/ProtocolConstants.h"
 
 #include <expected>
 #include <string>
@@ -11,24 +13,10 @@
 
 using namespace nids::core;
 using namespace nids::app;
+using nids::testing::MockPacketCapture;
 using ::testing::_;
 using ::testing::Invoke;
 using ::testing::Return;
-
-// ── Mock ─────────────────────────────────────────────────────────────
-
-class MockPacketCapture : public IPacketCapture {
-public:
-  MOCK_METHOD((std::expected<void, std::string>), initialize,
-              (const std::string &, const std::string &), (override));
-  MOCK_METHOD(void, startCapture, (const std::string &), (override));
-  MOCK_METHOD(void, stopCapture, (), (override));
-  MOCK_METHOD(bool, isCapturing, (), (const, override));
-  MOCK_METHOD(void, setPacketCallback, (PacketCallback), (override));
-  MOCK_METHOD(void, setErrorCallback, (ErrorCallback), (override));
-  void setRawPacketCallback(RawPacketCallback /*cb*/) override {}
-  MOCK_METHOD(std::vector<std::string>, listInterfaces, (), (override));
-};
 
 // ── Fixture ──────────────────────────────────────────────────────────
 
@@ -173,12 +161,12 @@ TEST_F(CaptureControllerTest, packetCallback_forwardsToSession) {
 
   // Simulate a packet arrival
   PacketInfo pkt;
-  pkt.protocol = "TCP";
+  pkt.protocol = kIpProtoTcp;
   pkt.ipSource = "1.2.3.4";
   storedCallback(pkt);
 
   EXPECT_EQ(controller.session().packetCount(), 1u);
-  EXPECT_EQ(controller.session().getPacket(0).protocol, "TCP");
+  EXPECT_EQ(controller.session().getPacket(0).protocol, kIpProtoTcp);
   EXPECT_EQ(packetCount, 1);
 }
 

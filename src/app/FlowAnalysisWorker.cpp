@@ -3,15 +3,16 @@
 
 #include <spdlog/spdlog.h>
 
+#include <cassert>
 #include <utility>
 
 namespace nids::app {
 
 FlowAnalysisWorker::FlowAnalysisWorker(
-    nids::core::BoundedQueue<FlowWorkItem>& queue,
-    nids::core::IPacketAnalyzer& analyzer,
-    nids::core::IFeatureNormalizer& normalizer,
-    nids::core::CaptureSession& session)
+    core::BoundedQueue<FlowWorkItem>& queue,
+    core::IPacketAnalyzer& analyzer,
+    core::IFeatureNormalizer& normalizer,
+    core::CaptureSession& session)
     : queue_(queue)
     , analyzer_(analyzer)
     , normalizer_(normalizer)
@@ -97,34 +98,17 @@ void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem>& items,
                                       std::size_t startIndex) {
     const auto batchSize = items.size();
 
-    // 1. Normalize all features and pack into a flat contiguous buffer
-    //    for batched ONNX inference.  Each flow contributes featureCount floats.
-    std::vector<std::vector<float>> normalizedVecs;
-    normalizedVecs.reserve(batchSize);
-    std::size_t featureCount = 0;
-
-    for (auto& item : items) {
-        normalizedVecs.push_back(normalizer_.normalize(item.features));
-        if (featureCount == 0 && !normalizedVecs.back().empty()) {
-            featureCount = normalizedVecs.back().size();
-        }
-    }
-
-    // Build flat buffer: [flow0_f0, flow0_f1, ..., flow1_f0, flow1_f1, ...]
-    std::vector<float> flatBatch;
-    flatBatch.reserve(batchSize * featureCount);
-    for (const auto& nv : normalizedVecs) {
-        flatBatch.insert(flatBatch.end(), nv.begin(), nv.end());
-    }
+    // 1. Normalize and pack features for batched ONNX inference.
+    auto [flatData, featureCount] = buildFlatBatch(items);
 
     // 2. Batched ML inference — single ONNX Runtime session.Run() call.
-    auto mlResults = analyzer_.predictBatch(flatBatch, featureCount);
+    auto mlResults = analyzer_.predictBatch(flatData, featureCount);
 
     // 3. For each flow: run hybrid detection (TI + rules), store result,
     //    fire callback.
     for (std::size_t i = 0; i < batchSize; ++i) {
         auto index = startIndex + i;
-        nids::core::DetectionResult result;
+        core::DetectionResult result;
 
         auto& mlResult = (i < mlResults.size())
                              ? mlResults[i]
@@ -137,9 +121,7 @@ void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem>& items,
         } else {
             result.mlResult = mlResult;
             result.finalVerdict = mlResult.classification;
-            result.detectionSource = (mlResult.isAttack())
-                                         ? nids::core::DetectionSource::MlOnly
-                                         : nids::core::DetectionSource::None;
+            result.detectionSource = core::DetectionSource::MlOnly;
         }
 
         session_.setDetectionResult(index, result);
@@ -150,6 +132,30 @@ void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem>& items,
                             std::move(items[i].metadata));
         }
     }
+}
+
+FlowAnalysisWorker::FlatBatch FlowAnalysisWorker::buildFlatBatch(
+    std::vector<FlowWorkItem>& items) {
+    FlatBatch result;
+    const auto batchSize = items.size();
+
+    std::vector<std::vector<float>> normalizedVecs;
+    normalizedVecs.reserve(batchSize);
+
+    for (auto& item : items) {
+        normalizedVecs.push_back(normalizer_.normalize(item.features));
+        if (result.featureCount == 0 && !normalizedVecs.back().empty()) {
+            result.featureCount = normalizedVecs.back().size();
+        }
+    }
+
+    // Flat buffer: [flow0_f0, flow0_f1, ..., flow1_f0, flow1_f1, ...]
+    result.data.reserve(batchSize * result.featureCount);
+    for (const auto& nv : normalizedVecs) {
+        result.data.insert(result.data.end(), nv.begin(), nv.end());
+    }
+
+    return result;
 }
 
 } // namespace nids::app

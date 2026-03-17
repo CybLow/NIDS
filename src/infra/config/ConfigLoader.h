@@ -49,6 +49,6 @@ namespace nids::infra {
 /// @return void on success (or file not found), or an error message on parse error.
 [[nodiscard]] std::expected<void, std::string> loadConfigFromFile(
     const std::filesystem::path& configPath,
-    nids::core::Configuration& config);
+    core::Configuration& config);
 
 } // namespace nids::infra

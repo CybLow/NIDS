@@ -59,7 +59,7 @@ ServiceRegistry::ServiceRegistry()
         {33434, "traceroute"},
     } {}
 
-std::string ServiceRegistry::getServiceByPort(int port) const {
+std::string ServiceRegistry::getServiceByPort(std::uint16_t port) const {
   if (auto it = portToService_.find(port); it != portToService_.end()) {
     return it->second;
   }

@@ -22,7 +22,7 @@ enum class ConsoleFilter : std::uint8_t {
     Clean     ///< Log only clean (benign) flows
 };
 
-class ConsoleAlertSink final : public nids::core::IOutputSink {
+class ConsoleAlertSink final : public core::IOutputSink {
 public:
     explicit ConsoleAlertSink(ConsoleFilter filter = ConsoleFilter::Flagged)
         : filter_(filter) {}
@@ -33,8 +33,8 @@ public:
 
     [[nodiscard]] bool start() override;
     void onFlowResult(std::size_t flowIndex,
-                      const nids::core::DetectionResult& result,
-                      const nids::core::FlowInfo& flow) override;
+                      const core::DetectionResult& result,
+                      const core::FlowInfo& flow) override;
     void stop() override;
 
 private:

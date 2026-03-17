@@ -28,8 +28,8 @@ namespace nids::app {
  * The bundle owns the three services and exposes non-owning pointers.
  */
 struct DetectionServices {
-    std::unique_ptr<nids::core::IThreatIntelligence> threatIntel;
-    std::unique_ptr<nids::core::IRuleEngine> ruleEngine;
+    std::unique_ptr<core::IThreatIntelligence> threatIntel;
+    std::unique_ptr<core::IRuleEngine> ruleEngine;
     std::unique_ptr<HybridDetectionService> hybridService;
 };
 
@@ -40,9 +40,9 @@ struct DetectionServices {
  * are not thread-safe and flow extractors maintain per-flow state.
  */
 struct MlServices {
-    std::unique_ptr<nids::core::IPacketAnalyzer> analyzer;
-    std::unique_ptr<nids::core::IFeatureNormalizer> normalizer;
-    std::unique_ptr<nids::core::IFlowExtractor> flowExtractor;
+    std::unique_ptr<core::IPacketAnalyzer> analyzer;
+    std::unique_ptr<core::IFeatureNormalizer> normalizer;
+    std::unique_ptr<core::IFlowExtractor> flowExtractor;
 };
 
 /**
@@ -59,17 +59,17 @@ public:
     /// Create the shared detection services (TI, rules, hybrid).
     /// Loads TI feeds from the configured directory and sets hybrid weights.
     [[nodiscard]] static DetectionServices createDetectionServices(
-        const nids::core::Configuration& config);
+        const core::Configuration& config);
 
     /// Create a set of ML services for batch analysis.
     /// Does NOT set flow extractor timeouts (batch uses file timestamps).
     [[nodiscard]] static MlServices createMlServices(
-        const nids::core::Configuration& config);
+        const core::Configuration& config);
 
     /// Create a set of ML services configured for live capture.
     /// Sets flow extractor timeouts from config (live mode values).
     [[nodiscard]] static MlServices createLiveMlServices(
-        const nids::core::Configuration& config);
+        const core::Configuration& config);
 };
 
 } // namespace nids::app

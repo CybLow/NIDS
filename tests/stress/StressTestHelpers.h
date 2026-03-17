@@ -8,6 +8,7 @@
  */
 
 #include "core/model/AttackType.h"
+#include "core/model/FlowConstants.h"
 #include "core/model/PacketInfo.h"
 #include "core/model/PredictionResult.h"
 #include "core/services/IFeatureNormalizer.h"
@@ -227,7 +228,7 @@ public:
   }
   [[nodiscard]] bool isLoaded() const noexcept override { return true; }
   [[nodiscard]] std::size_t featureCount() const noexcept override {
-    return static_cast<std::size_t>(infra::kFlowFeatureCount);
+    return static_cast<std::size_t>(core::kFlowFeatureCount);
   }
 };
 
@@ -266,18 +267,18 @@ private:
 /** Stub rule engine that fires on high packet rates. */
 class StubRuleEngine : public core::IRuleEngine {
 public:
-  [[nodiscard]] std::vector<core::HeuristicRuleResult>
+  [[nodiscard]] std::vector<core::RuleMatch>
   evaluate(const core::FlowInfo &flow) const override {
-    std::vector<core::HeuristicRuleResult> results;
+    std::vector<core::RuleMatch> results;
     if (flow.fwdPacketsPerSecond > 10000.0) {
       results.emplace_back("high_rate", "High packet rate", 0.8f);
     }
     return results;
   }
-  [[nodiscard]] std::vector<core::HeuristicRuleResult>
+  [[nodiscard]] std::vector<core::RuleMatch>
   evaluatePortScan(std::string_view /*srcIp*/,
                    const std::vector<std::uint16_t> &ports) const override {
-    std::vector<core::HeuristicRuleResult> results;
+    std::vector<core::RuleMatch> results;
     if (ports.size() > 100) {
       results.emplace_back("port_scan", "Port scan detected", 0.9f);
     }

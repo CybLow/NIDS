@@ -13,11 +13,11 @@ constexpr std::size_t kStreamEventQueueCapacity = 1024;
 } // namespace
 
 NidsServiceImpl::NidsServiceImpl(
-    nids::core::IPacketCapture& capture,
-    nids::core::IFlowExtractor& extractor,
-    nids::core::IPacketAnalyzer& analyzer,
-    nids::core::IFeatureNormalizer& normalizer,
-    nids::app::HybridDetectionService& hybridService)
+    core::IPacketCapture& capture,
+    core::IFlowExtractor& extractor,
+    core::IPacketAnalyzer& analyzer,
+    core::IFeatureNormalizer& normalizer,
+    app::HybridDetectionService& hybridService)
     : capture_(capture),
       extractor_(extractor),
       analyzer_(analyzer),
@@ -26,8 +26,8 @@ NidsServiceImpl::NidsServiceImpl(
 
 grpc::Status NidsServiceImpl::ListInterfaces(
     grpc::ServerContext* /*context*/,
-    const ::nids::ListInterfacesRequest* /*request*/,
-    ::nids::ListInterfacesResponse* response) {
+    const ListInterfacesRequest* /*request*/,
+    ListInterfacesResponse* response) {
 
     auto interfaces = capture_.listInterfaces();
     for (auto& iface : interfaces) {
@@ -40,8 +40,8 @@ grpc::Status NidsServiceImpl::ListInterfaces(
 
 grpc::Status NidsServiceImpl::StartCapture(
     grpc::ServerContext* /*context*/,
-    const ::nids::StartCaptureRequest* request,
-    ::nids::StartCaptureResponse* response) {
+    const StartCaptureRequest* request,
+    StartCaptureResponse* response) {
 
     std::scoped_lock lock(sessionMutex_);
 
@@ -72,36 +72,7 @@ grpc::Status NidsServiceImpl::StartCapture(
         return grpc::Status::OK;
     }
 
-    // Create session and pipeline
-    session_ = std::make_unique<nids::core::CaptureSession>();
-    pipeline_ = std::make_unique<nids::app::LiveDetectionPipeline>(
-        extractor_, analyzer_, normalizer_, *session_);
-    pipeline_->setHybridDetection(&hybridService_);
-
-    // Register all active stream sinks
-    {
-        std::scoped_lock sinkLock(sinksMutex_);
-        for (auto* sink : activeSinks_) {
-            pipeline_->addOutputSink(sink);
-        }
-    }
-
-    // Generate session ID
-    auto now = std::chrono::system_clock::now();
-    auto epoch = now.time_since_epoch();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(epoch).count();
-    sessionId_ = std::format("session-{}", ms);
-    currentInterface_ = iface;
-
-    // Wire raw packets into pipeline
-    capture_.setRawPacketCallback(
-        [this](const std::uint8_t* data, std::size_t length,
-               std::int64_t timestampUs) {
-            pipeline_->feedPacket(data, length, timestampUs);
-        });
-
-    // Start pipeline and capture
-    pipeline_->start();
+    createSessionPipeline(iface);
     capture_.startCapture(request->dump_file());
     capturing_.store(true);
 
@@ -116,8 +87,8 @@ grpc::Status NidsServiceImpl::StartCapture(
 
 grpc::Status NidsServiceImpl::StopCapture(
     grpc::ServerContext* /*context*/,
-    const ::nids::StopCaptureRequest* /*request*/,
-    ::nids::StopCaptureResponse* response) {
+    const StopCaptureRequest* /*request*/,
+    StopCaptureResponse* response) {
 
     std::scoped_lock lock(sessionMutex_);
 
@@ -140,7 +111,7 @@ grpc::Status NidsServiceImpl::StopCapture(
     response->set_success(true);
     response->set_total_packets(session_ ? session_->packetCount() : 0);
     response->set_total_flows(flowsDetected);
-    response->set_flagged_flows(session_ ? session_->detectionResultCount() : 0);
+    response->set_flagged_flows(session_ ? session_->flaggedResultCount() : 0);
     response->set_dropped_flows(droppedFlows);
 
     spdlog::info("gRPC: Capture stopped — {} flows detected, {} dropped",
@@ -150,8 +121,8 @@ grpc::Status NidsServiceImpl::StopCapture(
 
 grpc::Status NidsServiceImpl::StreamDetections(
     grpc::ServerContext* context,
-    const ::nids::StreamDetectionsRequest* request,
-    grpc::ServerWriter<::nids::DetectionEvent>* writer) {
+    const StreamDetectionsRequest* request,
+    grpc::ServerWriter<DetectionEvent>* writer) {
 
     spdlog::info("gRPC: Client connected for detection streaming (filter={})",
                  static_cast<int>(request->filter()));
@@ -199,8 +170,8 @@ grpc::Status NidsServiceImpl::StreamDetections(
 
 grpc::Status NidsServiceImpl::StreamPackets(
     grpc::ServerContext* /*context*/,
-    const ::nids::StreamPacketsRequest* /*request*/,
-    grpc::ServerWriter<::nids::PacketEvent>* /*writer*/) {
+    const StreamPacketsRequest* /*request*/,
+    grpc::ServerWriter<PacketEvent>* /*writer*/) {
 
     return grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
                         "Packet streaming not yet implemented");
@@ -208,8 +179,8 @@ grpc::Status NidsServiceImpl::StreamPackets(
 
 grpc::Status NidsServiceImpl::AnalyzeCapture(
     grpc::ServerContext* /*context*/,
-    const ::nids::AnalyzeCaptureRequest* /*request*/,
-    ::nids::AnalyzeCaptureResponse* response) {
+    const AnalyzeCaptureRequest* /*request*/,
+    AnalyzeCaptureResponse* response) {
 
     response->set_success(false);
     return grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
@@ -218,8 +189,8 @@ grpc::Status NidsServiceImpl::AnalyzeCapture(
 
 grpc::Status NidsServiceImpl::GetStatus(
     grpc::ServerContext* /*context*/,
-    const ::nids::GetStatusRequest* /*request*/,
-    ::nids::GetStatusResponse* response) {
+    const GetStatusRequest* /*request*/,
+    GetStatusResponse* response) {
 
     std::scoped_lock lock(sessionMutex_);
 
@@ -235,20 +206,44 @@ grpc::Status NidsServiceImpl::GetStatus(
         response->set_flows_dropped(pipeline_->droppedFlows());
     }
 
-    // Count flagged flows
     if (session_) {
-        std::size_t flagged = 0;
-        const auto total = session_->detectionResultCount();
-        for (std::size_t i = 0; i < total; ++i) {
-            const auto& result = session_->getDetectionResult(i);
-            if (result.isFlagged()) {
-                ++flagged;
-            }
-        }
-        response->set_flows_flagged(flagged);
+        response->set_flows_flagged(session_->flaggedResultCount());
     }
 
     return grpc::Status::OK;
+}
+
+void NidsServiceImpl::createSessionPipeline(const std::string& iface) {
+    // Create session and pipeline
+    session_ = std::make_unique<core::CaptureSession>();
+    pipeline_ = std::make_unique<app::LiveDetectionPipeline>(
+        extractor_, analyzer_, normalizer_, *session_);
+    pipeline_->setHybridDetection(&hybridService_);
+
+    // Register all active stream sinks
+    {
+        std::scoped_lock sinkLock(sinksMutex_);
+        for (auto* sink : activeSinks_) {
+            pipeline_->addOutputSink(sink);
+        }
+    }
+
+    // Generate session ID
+    auto now = std::chrono::system_clock::now();
+    auto epoch = now.time_since_epoch();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(epoch).count();
+    sessionId_ = std::format("session-{}", ms);
+    currentInterface_ = iface;
+
+    // Wire raw packets into pipeline
+    capture_.setRawPacketCallback(
+        [this](const std::uint8_t* data, std::size_t length,
+               std::int64_t timestampUs) {
+            pipeline_->feedPacket(data, length, timestampUs);
+        });
+
+    // Start pipeline
+    pipeline_->start();
 }
 
 void NidsServiceImpl::registerSink(GrpcStreamSink* sink) {

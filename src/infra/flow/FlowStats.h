@@ -11,6 +11,7 @@
 /// (behavior).
 
 #include "core/math/WelfordAccumulator.h"
+#include "core/model/FlowConstants.h"
 #include "core/model/FlowInfo.h"
 #include "infra/flow/FlowKey.h"
 
@@ -21,10 +22,10 @@
 namespace nids::infra {
 
 /// Import WelfordAccumulator from core/ for convenience.
-using nids::core::WelfordAccumulator;
+using core::WelfordAccumulator;
 
-/// Number of flow features produced by toFeatureVector().
-inline constexpr int kFlowFeatureCount = 77;
+/// Re-export core constant for backward compatibility within infra/ layer.
+using core::kFlowFeatureCount;
 
 /** Accumulated per-flow statistics used to compute the 77-feature vector. */
 struct FlowStats { // NOSONAR - 45 fields required by CIC-IDS2017 feature vector
@@ -131,7 +132,7 @@ struct FlowStats { // NOSONAR - 45 fields required by CIC-IDS2017 feature vector
 [[nodiscard]] const std::vector<std::string>& flowFeatureNames();
 
 /// Build a FlowInfo metadata record from a flow key and accumulated stats.
-[[nodiscard]] nids::core::FlowInfo buildFlowInfo(const FlowKey& key,
+[[nodiscard]] core::FlowInfo buildFlowInfo(const FlowKey& key,
                                                   const FlowStats& stats);
 
 } // namespace nids::infra

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "infra/capture/PcapCaptureWorker.h"
 #include "core/services/IPacketCapture.h"
 
 #include <atomic>
@@ -11,13 +10,15 @@
 
 namespace nids::infra {
 
+class PcapCaptureWorker;
+
 /** Pcap-based packet capture implementing IPacketCapture via a worker thread.
  *
  *  Pure C++23 — no Qt dependency.  Uses std::jthread for the capture thread.
  */
-class PcapCapture : public nids::core::IPacketCapture {
+class PcapCapture : public core::IPacketCapture {
 public:
-  PcapCapture() = default;
+  PcapCapture();
   ~PcapCapture() override;
 
   PcapCapture(const PcapCapture &) = delete;
@@ -34,7 +35,7 @@ public:
   void setPacketCallback(PacketCallback callback) override;
   void setErrorCallback(ErrorCallback callback) override;
   void setRawPacketCallback(RawPacketCallback callback) override;
-  [[nodiscard]] std::vector<std::string> listInterfaces() override;
+  [[nodiscard]] std::vector<std::string> listInterfaces() const override;
 
 private:
   std::unique_ptr<PcapCaptureWorker> worker_;

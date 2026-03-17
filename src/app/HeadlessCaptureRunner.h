@@ -37,14 +37,14 @@ struct HeadlessRunnerConfig {
     std::string interfaceName;
 
     /// Injected dependencies (non-owning).
-    nids::core::IPacketCapture* capture = nullptr;
-    nids::core::IFlowExtractor* flowExtractor = nullptr;
-    nids::core::IPacketAnalyzer* analyzer = nullptr;
-    nids::core::IFeatureNormalizer* normalizer = nullptr;
+    core::IPacketCapture* capture = nullptr;
+    core::IFlowExtractor* flowExtractor = nullptr;
+    core::IPacketAnalyzer* analyzer = nullptr;
+    core::IFeatureNormalizer* normalizer = nullptr;
     HybridDetectionService* hybridService = nullptr;
 
     /// Optional output sinks (non-owning).  Added to the pipeline.
-    std::vector<nids::core::IOutputSink*> sinks;
+    std::vector<core::IOutputSink*> sinks;
 
     /// Predicate polled to determine when to stop.
     /// Returns true when shutdown has been requested.

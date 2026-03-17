@@ -26,7 +26,7 @@
 #endif // NIDS_HAS_ONNX
 
 using nids::core::AttackType;
-using nids::infra::kFlowFeatureCount;
+using nids::core::kFlowFeatureCount;
 using nids::test::ScopedTimer;
 using nids::test::StubAnalyzer;
 

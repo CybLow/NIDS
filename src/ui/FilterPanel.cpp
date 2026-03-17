@@ -8,7 +8,15 @@
 
 namespace nids::ui {
 
-FilterPanel::FilterPanel(const nids::core::ServiceRegistry &registry,
+namespace {
+/// Standard application names shown in the Application combo box.
+/// Shared between populateApplications() and updateApplicationFromPort()
+/// to avoid duplicated string lists (DRY).
+constexpr std::array kStandardApps = {
+    "ALL", "HTTP", "FTP", "SSH", "HTTPS", "SMTP", "DNS", "Telnet", "Unknown"};
+} // anonymous namespace
+
+FilterPanel::FilterPanel(const core::ServiceRegistry &registry,
                          QWidget *parent)
     : QWidget(parent), serviceRegistry_(registry) {
   setupLayout();
@@ -99,8 +107,10 @@ void FilterPanel::populateProtocols() {
 void FilterPanel::populateApplications() {
   applicationCombo_->blockSignals(true);
   applicationCombo_->clear();
-  applicationCombo_->addItems({"ALL", "HTTP", "FTP", "SSH", "HTTPS", "SMTP",
-                               "DNS", "Telnet", "Unknown", "Other..."});
+  for (const auto* app : kStandardApps) {
+    applicationCombo_->addItem(app);
+  }
+  applicationCombo_->addItem("Other...");
   applicationCombo_->blockSignals(false);
 }
 
@@ -111,8 +121,8 @@ void FilterPanel::setInterfaces(const std::vector<std::string> &interfaces) {
   }
 }
 
-nids::core::PacketFilter FilterPanel::gatherFilter() const {
-  nids::core::PacketFilter filter;
+core::PacketFilter FilterPanel::gatherFilter() const {
+  core::PacketFilter filter;
   filter.networkCard = networkCardCombo_->currentText().toStdString();
   filter.protocol = protocolCombo_->currentText().toStdString();
   filter.application = applicationCombo_->currentText().toStdString();
@@ -192,15 +202,18 @@ void FilterPanel::onApplicationChanged(int index) {
 }
 
 void FilterPanel::updateApplicationFromPort() {
-  QStringList majorApps = {"ALL",  "HTTP", "FTP",    "SSH",    "HTTPS",
-                           "SMTP", "DNS",  "Telnet", "Unknown"};
+  QStringList majorApps;
+  majorApps.reserve(static_cast<int>(kStandardApps.size()));
+  for (const auto* app : kStandardApps) {
+    majorApps.append(app);
+  }
 
   bool srcOk = false;
   bool dstOk = false;
-  int srcPort = sourcePortEdit_->text().toInt(&srcOk);
-  int dstPort = destPortEdit_->text().toInt(&dstOk);
+  auto srcPort = static_cast<std::uint16_t>(sourcePortEdit_->text().toUShort(&srcOk));
+  auto dstPort = static_cast<std::uint16_t>(destPortEdit_->text().toUShort(&dstOk));
 
-  auto update = [&](int port) {
+  auto update = [&](std::uint16_t port) {
     auto name = QString::fromStdString(serviceRegistry_.getServiceByPort(port));
     if (majorApps.contains(name)) {
       populateApplications();

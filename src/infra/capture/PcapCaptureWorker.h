@@ -27,9 +27,9 @@ namespace nids::infra {
 class PcapCaptureWorker {
 public:
   /** Callback types matching IPacketCapture conventions. */
-  using PacketCallback = nids::core::IPacketCapture::PacketCallback;
-  using ErrorCallback = nids::core::IPacketCapture::ErrorCallback;
-  using RawPacketCallback = nids::core::IPacketCapture::RawPacketCallback;
+  using PacketCallback = core::IPacketCapture::PacketCallback;
+  using ErrorCallback = core::IPacketCapture::ErrorCallback;
+  using RawPacketCallback = core::IPacketCapture::RawPacketCallback;
 
   PcapCaptureWorker() = default;
 

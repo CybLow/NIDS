@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app/FlowAnalysisWorker.h"
+#include "core/concurrent/BoundedQueue.h"
 #include "core/model/CaptureSession.h"
 #include "core/model/AttackType.h"
 #include "core/services/IPacketAnalyzer.h"
@@ -13,7 +15,7 @@
 
 namespace nids::app {
 
-class HybridDetectionService;  // forward declaration
+class HybridDetectionService;
 
 /** Service that orchestrates ML-based packet/flow analysis.
  *
@@ -29,9 +31,9 @@ public:
     using ErrorCallback    = std::function<void(const std::string& message)>;
 
     /** Construct with injected analyzer, flow extractor, and feature normalizer. */
-    explicit AnalysisService(std::unique_ptr<nids::core::IPacketAnalyzer> analyzer,
-                             std::unique_ptr<nids::core::IFlowExtractor> extractor,
-                             std::unique_ptr<nids::core::IFeatureNormalizer> normalizer);
+    explicit AnalysisService(std::unique_ptr<core::IPacketAnalyzer> analyzer,
+                             std::unique_ptr<core::IFlowExtractor> extractor,
+                             std::unique_ptr<core::IFeatureNormalizer> normalizer);
 
     /** Load the ONNX model from the given path. Returns error string on failure. */
     [[nodiscard]] std::expected<void, std::string> loadModel(const std::string& modelPath);
@@ -52,11 +54,11 @@ public:
      * @param session   Capture session to populate with results.
      */
     void analyzeCapture(const std::string& pcapPath,
-                        nids::core::CaptureSession& session);
+                        core::CaptureSession& session);
 
     /// Returns per-flow metadata from the most recent analyzeCapture() call.
     /// Indexed in the same order as detection results in the CaptureSession.
-    [[nodiscard]] const std::vector<nids::core::FlowInfo>& lastFlowMetadata() const noexcept;
+    [[nodiscard]] const std::vector<core::FlowInfo>& lastFlowMetadata() const noexcept;
 
     // ── Callback setters ───────────────────────────────────────────
     void setStartedCallback(StartedCallback cb)   { onStarted_  = std::move(cb); }
@@ -65,9 +67,9 @@ public:
     void setErrorCallback(ErrorCallback cb)        { onError_    = std::move(cb); }
 
 private:
-    std::unique_ptr<nids::core::IPacketAnalyzer> analyzer_;
-    std::unique_ptr<nids::core::IFlowExtractor> extractor_;
-    std::unique_ptr<nids::core::IFeatureNormalizer> normalizer_;
+    std::unique_ptr<core::IPacketAnalyzer> analyzer_;
+    std::unique_ptr<core::IFlowExtractor> extractor_;
+    std::unique_ptr<core::IFeatureNormalizer> normalizer_;
     HybridDetectionService* hybridService_ = nullptr;  // non-owning
 
     // Callbacks (fired on the calling thread — the consumer is responsible
@@ -76,6 +78,17 @@ private:
     ProgressCallback onProgress_;
     FinishedCallback onFinished_;
     ErrorCallback    onError_;
+
+    /// Push batch results through the worker pipeline when the streaming
+    /// callback was not invoked (e.g. mock extractors).
+    void pushBatchFallback(FlowAnalysisWorker& worker,
+                           core::BoundedQueue<FlowWorkItem>& queue,
+                           std::vector<std::vector<float>>& allFeatures);
+
+    /// Log results and fire final callbacks.
+    void reportResults(const std::string& pcapPath,
+                       std::size_t processedCount,
+                       bool noFeatures);
 };
 
 } // namespace nids::app

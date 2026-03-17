@@ -116,17 +116,17 @@ void cmdCaptureStop(nids::client::NidsClient& client,
 
 void cmdStream(nids::client::NidsClient& client,
                const std::vector<std::string>& args) {
-    ::nids::DetectionFilter filter = ::nids::FILTER_ALL;
+    nids::DetectionFilter filter = nids::FILTER_ALL;
 
     for (std::size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--filter" && i + 1 < args.size()) {
             const auto& val = args[++i];
             if (val == "flagged") {
-                filter = ::nids::FILTER_FLAGGED;
+                filter = nids::FILTER_FLAGGED;
             } else if (val == "clean") {
-                filter = ::nids::FILTER_CLEAN;
+                filter = nids::FILTER_CLEAN;
             } else if (val == "all") {
-                filter = ::nids::FILTER_ALL;
+                filter = nids::FILTER_ALL;
             } else {
                 std::cerr << "Unknown filter: " << val << "\n";
                 return;
@@ -140,10 +140,10 @@ void cmdStream(nids::client::NidsClient& client,
     std::cout << "Streaming detections (Ctrl+C to stop)...\n\n";
 
     client.streamDetections("", filter,
-        [](const ::nids::DetectionEvent& event) {
+        [](const nids::DetectionEvent& event) {
             const char* verdict =
-                event.verdict() == ::nids::VERDICT_ATTACK ? "ATTACK" :
-                event.verdict() == ::nids::VERDICT_BENIGN ? "BENIGN" :
+                event.verdict() == nids::VERDICT_ATTACK ? "ATTACK" :
+                event.verdict() == nids::VERDICT_BENIGN ? "BENIGN" :
                 "UNKNOWN";
 
             std::cout << std::setw(6) << event.flow_index() << " | "

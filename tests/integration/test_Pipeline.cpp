@@ -1,15 +1,17 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "helpers/MockAnalyzer.h"
+#include "helpers/MockFlowExtractor.h"
+#include "helpers/MockNormalizer.h"
+#include "helpers/MockPacketCapture.h"
+
 #include "app/AnalysisService.h"
 #include "app/CaptureController.h"
 #include "core/model/AttackType.h"
 #include "core/model/CaptureSession.h"
-#include "core/services/IFeatureNormalizer.h"
-#include "core/services/IFlowExtractor.h"
-#include "core/services/IPacketAnalyzer.h"
-#include "core/services/IPacketCapture.h"
-#include "infra/flow/NativeFlowExtractor.h" // kFlowFeatureCount
+#include "core/model/ProtocolConstants.h"
+#include "core/model/FlowConstants.h"
 
 #include <expected>
 #include <format>
@@ -19,86 +21,20 @@
 
 using namespace nids::core;
 using namespace nids::app;
-using nids::infra::kFlowFeatureCount;
+using nids::core::kFlowFeatureCount;
+using nids::testing::MockAnalyzer;
+using nids::testing::MockFlowExtractor;
+using nids::testing::MockNormalizer;
+using nids::testing::MockPacketCapture;
 using ::testing::_;
 using ::testing::Invoke;
 using ::testing::Return;
 
-// ── Mocks ────────────────────────────────────────────────────────────
-
-class MockCapture : public IPacketCapture {
-public:
-  MOCK_METHOD((std::expected<void, std::string>), initialize,
-              (const std::string &, const std::string &), (override));
-  MOCK_METHOD(void, startCapture, (const std::string &), (override));
-  MOCK_METHOD(void, stopCapture, (), (override));
-  MOCK_METHOD(bool, isCapturing, (), (const, override));
-  MOCK_METHOD(void, setPacketCallback, (PacketCallback), (override));
-  MOCK_METHOD(void, setErrorCallback, (ErrorCallback), (override));
-  void setRawPacketCallback(RawPacketCallback /*cb*/) override {}
-  MOCK_METHOD(std::vector<std::string>, listInterfaces, (), (override));
-};
-
-class MockAnalyzer : public IPacketAnalyzer {
-public:
-  MOCK_METHOD((std::expected<void, std::string>), loadModel,
-              (const std::string &), (override));
-  MOCK_METHOD(AttackType, predict, (std::span<const float>), (override));
-};
-
-class MockExtractor : public IFlowExtractor {
-public:
-  MockExtractor() {
-    ON_CALL(*this, flowMetadata())
-        .WillByDefault(::testing::ReturnRef(emptyMetadata_));
-  }
-
-  void setFlowCompletionCallback(FlowCompletionCallback /*cb*/) override {}
-  void processPacket(const std::uint8_t* /*data*/, std::size_t /*length*/,
-                     std::int64_t /*timestampUs*/) override {}
-  void finalizeAllFlows() override {}
-  void reset() override {}
-  void setFlowTimeout(std::int64_t /*timeoutUs*/) override {}
-  void setMaxFlowDuration(std::int64_t /*durationUs*/) override {}
-
-  MOCK_METHOD(std::vector<std::vector<float>>, extractFeatures,
-              (const std::string &), (override));
-  MOCK_METHOD(const std::vector<FlowInfo> &, flowMetadata, (),
-              (const, noexcept, override));
-
-  std::vector<FlowInfo> emptyMetadata_;
-};
-
-/// Pass-through normalizer mock: returns features unchanged.
-class MockNormalizer : public IFeatureNormalizer {
-public:
-  MOCK_METHOD((std::expected<void, std::string>), loadMetadata,
-              (const std::string &), (override));
-  MOCK_METHOD(std::vector<float>, normalize, (std::span<const float>),
-              (const, override));
-  MOCK_METHOD(bool, isLoaded, (), (const, noexcept, override));
-  MOCK_METHOD(std::size_t, featureCount, (), (const, noexcept, override));
-
-  static std::unique_ptr<MockNormalizer> createPassThrough() {
-    auto mock = std::make_unique<MockNormalizer>();
-    ON_CALL(*mock, normalize(_)).WillByDefault([](std::span<const float> f) {
-      return std::vector<float>(f.begin(), f.end());
-    });
-    return mock;
-  }
-};
-
-// ── Fixture ──────────────────────────────────────────────────────────
-
-class PipelineTest : public ::testing::Test {
-protected: // NOSONAR
-};
-
 // ── Integration: Capture -> Analysis Pipeline ────────────────────────
 
-TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
+TEST(Pipeline, captureAndAnalyze_endToEnd) {
   // Set up capture mock
-  auto capture = std::make_unique<MockCapture>();
+  auto capture = std::make_unique<MockPacketCapture>();
   auto *capturePtr = capture.get();
   IPacketCapture::PacketCallback packetCb;
 
@@ -126,7 +62,7 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
   // Simulate packets arriving
   for (int i = 0; i < 5; ++i) {
     PacketInfo pkt;
-    pkt.protocol = "TCP";
+    pkt.protocol = kIpProtoTcp;
     pkt.ipSource = std::format("192.168.1.{}", i + 1);
     pkt.ipDestination = "10.0.0.1";
     pkt.portSource = static_cast<std::uint16_t>(10000 + i);
@@ -141,7 +77,7 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
 
   // Set up analysis mocks
   auto analyzer = std::make_unique<MockAnalyzer>();
-  auto extractor = std::make_unique<MockExtractor>();
+  auto extractor = std::make_unique<MockFlowExtractor>();
 
   std::vector<std::vector<float>> flows = {
       std::vector<float>(kFlowFeatureCount, 0.1f),
@@ -174,8 +110,8 @@ TEST_F(PipelineTest, captureAndAnalyze_endToEnd) {
             AttackType::SynFlood);
 }
 
-TEST_F(PipelineTest, captureFailure_doesNotProceedToAnalysis) {
-  auto capture = std::make_unique<MockCapture>();
+TEST(Pipeline, captureFailure_doesNotProceedToAnalysis) {
+  auto capture = std::make_unique<MockPacketCapture>();
   auto *capturePtr = capture.get();
 
   EXPECT_CALL(*capturePtr, setPacketCallback(_));
@@ -199,9 +135,9 @@ TEST_F(PipelineTest, captureFailure_doesNotProceedToAnalysis) {
   EXPECT_EQ(controller.session().packetCount(), 0u);
 }
 
-TEST_F(PipelineTest, analysisWithAllAttackTypes) {
+TEST(Pipeline, analysisWithAllAttackTypes) {
   auto analyzer = std::make_unique<MockAnalyzer>();
-  auto extractor = std::make_unique<MockExtractor>();
+  auto extractor = std::make_unique<MockFlowExtractor>();
 
   // Create one flow per attack type
   std::vector<std::vector<float>> flows;

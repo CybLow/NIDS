@@ -24,7 +24,7 @@ void applyIfPresent(const nlohmann::json &obj, const std::string &key,
 
 std::expected<void, std::string> loadConfigFromFile(
     const std::filesystem::path &configPath,
-    nids::core::Configuration &config) {
+    core::Configuration &config) {
   namespace fs = std::filesystem;
 
   if (!fs::exists(configPath)) {
@@ -115,7 +115,7 @@ std::expected<void, std::string> loadConfigFromFile(
     std::string msg = fmt::format("ConfigLoader: failed to parse '{}': {}",
                                   configPath.string(), e.what());
     spdlog::error(msg);
-    return std::unexpected<std::string>(std::move(msg));
+    return std::unexpected(std::move(msg));
   }
 }
 

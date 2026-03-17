@@ -37,10 +37,6 @@ constexpr std::array<int, 5> kRightAlignedColumns = {{
     std::to_underlying(FlowTableModel::Column::CombinedScore),
 }};
 
-// Use shared helpers from QtStringConversions.h
-using nids::ui::attackTypeQString;
-using nids::ui::detectionSourceQString;
-
 /// Per-column display formatter.  Signature: (row index, FlowRow) -> QVariant.
 using FlowRow = FlowTableModel::FlowRow;
 using DisplayFn = QVariant (*)(int, const FlowRow &);
@@ -60,7 +56,7 @@ QVariant fmtDstPort(int /*row*/, const FlowRow &r) {
 }
 
 QVariant fmtProtocol(int /*row*/, const FlowRow &r) {
-  return nids::ui::protocolQString(r.metadata.protocol);
+  return protocolQString(r.metadata.protocol);
 }
 QVariant fmtVerdict(int /*row*/, const FlowRow &r) {
   return attackTypeQString(r.result.finalVerdict);
@@ -153,8 +149,8 @@ QVariant FlowTableModel::headerData(int section, Qt::Orientation orientation,
 }
 
 void FlowTableModel::setFlowResults(
-    const std::vector<nids::core::DetectionResult> &results,
-    const std::vector<nids::core::FlowInfo> &metadata) {
+    const std::vector<core::DetectionResult> &results,
+    const std::vector<core::FlowInfo> &metadata) {
 
   beginResetModel();
   rows_.clear();
@@ -163,14 +159,14 @@ void FlowTableModel::setFlowResults(
   for (std::size_t i = 0; i < results.size(); ++i) {
     FlowRow row;
     row.result = results[i];
-    row.metadata = (i < metadata.size()) ? metadata[i] : nids::core::FlowInfo{};
+    row.metadata = (i < metadata.size()) ? metadata[i] : core::FlowInfo{};
     rows_.push_back(std::move(row));
   }
   endResetModel();
 }
 
-void FlowTableModel::addFlowResult(const nids::core::DetectionResult &result,
-                                   const nids::core::FlowInfo &metadata) {
+void FlowTableModel::addFlowResult(const core::DetectionResult &result,
+                                   const core::FlowInfo &metadata) {
   auto row = static_cast<int>(rows_.size());
   beginInsertRows(QModelIndex(), row, row);
   rows_.emplace_back(result, metadata);
@@ -185,13 +181,13 @@ void FlowTableModel::clear() {
   endResetModel();
 }
 
-const nids::core::DetectionResult *FlowTableModel::resultAt(int row) const {
+const core::DetectionResult *FlowTableModel::resultAt(int row) const {
   if (row < 0 || row >= static_cast<int>(rows_.size()))
     return nullptr;
   return &rows_[static_cast<std::size_t>(row)].result;
 }
 
-const nids::core::FlowInfo *FlowTableModel::metadataAt(int row) const {
+const core::FlowInfo *FlowTableModel::metadataAt(int row) const {
   if (row < 0 || row >= static_cast<int>(rows_.size()))
     return nullptr;
   return &rows_[static_cast<std::size_t>(row)].metadata;
@@ -213,10 +209,6 @@ QColor FlowTableModel::severityColor(float combinedScore,
   }
   // High risk — red
   return {244, 67, 54, kAlphaBackground};
-}
-
-QString FlowTableModel::protocolToString(std::uint8_t protocol) noexcept {
-  return nids::ui::protocolQString(protocol);
 }
 
 } // namespace nids::ui

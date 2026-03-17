@@ -3,16 +3,23 @@
 #include "core/services/Configuration.h"
 #include "ui/WeightTuningDialog.h"
 
+#include <QAction>
 #include <QCursor>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMetaObject>
+#include <QProgressBar>
+#include <QScrollArea>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStringList>
+#include <QSystemTrayIcon>
+#include <QTabWidget>
+#include <QTableView>
 #include <QVBoxLayout>
 
 namespace nids::ui {
@@ -29,11 +36,11 @@ constexpr int kFlowTableStretchFactor = 2;
 } // namespace
 
 MainWindow::MainWindow(
-    std::unique_ptr<nids::app::CaptureController> controller,
-    std::unique_ptr<nids::app::AnalysisService> analysisService,
-    nids::app::HybridDetectionService *hybridService,
-    nids::core::IThreatIntelligence *threatIntel,
-    nids::core::IRuleEngine *ruleEngine, QWidget *parent)
+    std::unique_ptr<app::CaptureController> controller,
+    std::unique_ptr<app::AnalysisService> analysisService,
+    app::HybridDetectionService *hybridService,
+    core::IThreatIntelligence *threatIntel,
+    core::IRuleEngine *ruleEngine, QWidget *parent)
     : QMainWindow(parent), controller_(std::move(controller)),
       analysisService_(std::move(analysisService)), threatIntel_(threatIntel),
       ruleEngine_(ruleEngine), hybridService_(hybridService) {
@@ -56,7 +63,7 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::setupUi() {
-  const auto &config = nids::core::Configuration::instance();
+  const auto &config = core::Configuration::instance();
 
   filterPanel_ = new FilterPanel(serviceRegistry_, this); // NOSONAR
   filterPanel_->setInterfaces(controller_->listInterfaces());
@@ -171,15 +178,15 @@ void MainWindow::wireControllerCallbacks() {
   // marshal all UI updates to the main thread via QMetaObject::invokeMethod.
 
   controller_->setPacketReceivedCallback(
-      [this](const nids::core::PacketInfo &info) {
+      [this](const core::PacketInfo &info) {
         QMetaObject::invokeMethod(this, [this, info]() {
           onPacketReceived(info);
         }, Qt::QueuedConnection);
       });
 
   controller_->setLiveFlowCallback(
-      [this](nids::core::DetectionResult result,
-             nids::core::FlowInfo metadata) {
+      [this](core::DetectionResult result,
+             core::FlowInfo metadata) {
         QMetaObject::invokeMethod(this, [this, r = std::move(result),
                                          m = std::move(metadata)]() {
           flowModel_->addFlowResult(r, m);
@@ -264,7 +271,7 @@ void MainWindow::runAnalysis() {
   if (analysisThread_.joinable()) {
     analysisThread_.join();
   }
-  auto dumpFile = nids::core::Configuration::instance().defaultDumpFile();
+  auto dumpFile = core::Configuration::instance().defaultDumpFile();
   // Run analysis on a stored std::jthread.  AnalysisService callbacks
   // are already wired to marshal results back to the main thread via
   // QMetaObject::invokeMethod (see wireAnalysisCallbacks()).
@@ -275,7 +282,7 @@ void MainWindow::runAnalysis() {
   });
 }
 
-void MainWindow::onPacketReceived(const nids::core::PacketInfo &info) {
+void MainWindow::onPacketReceived(const core::PacketInfo &info) {
   tableModel_->addPacket(info, filterPanel_->selectedInterface());
 }
 
@@ -319,7 +326,7 @@ void MainWindow::populateFlowResults() {
     return;
 
   // Collect all detection results from the session
-  std::vector<nids::core::DetectionResult> results;
+  std::vector<core::DetectionResult> results;
   results.reserve(resultCount);
   for (std::size_t i = 0; i < resultCount; ++i) {
     results.push_back(session.getDetectionResult(i));
@@ -333,8 +340,6 @@ void MainWindow::populateFlowResults() {
   // Switch to Flows tab to show results.
   tabWidget_->setCurrentIndex(kFlowsTabIndex);
 }
-
-
 
 void MainWindow::updateTiStatus() {
   QString status;
@@ -382,7 +387,5 @@ void MainWindow::notificationSettings() {
   menu->addAction(desktopAction);
   menu->popup(QCursor::pos());
 }
-
-
 
 } // namespace nids::ui

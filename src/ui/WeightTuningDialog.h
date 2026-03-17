@@ -32,7 +32,7 @@ public:
     /// @param hybridService  Non-owning pointer to the hybrid detection service.
     ///                       If nullptr, Apply is disabled (view-only mode).
     /// @param parent         Parent widget.
-    explicit WeightTuningDialog(nids::app::HybridDetectionService* hybridService,
+    explicit WeightTuningDialog(app::HybridDetectionService* hybridService,
                                 QWidget* parent = nullptr);
 
 private slots:
@@ -54,7 +54,7 @@ private:
     /// when one slider is moved.  Prevents infinite signal recursion via guard.
     void redistributeWeights(const QSlider* changed, QSlider* other1, QSlider* other2);
 
-    nids::app::HybridDetectionService* hybridService_ = nullptr;  // non-owning
+    app::HybridDetectionService* hybridService_ = nullptr;  // non-owning
 
     // Slider range: 0–100, representing 0.00–1.00 in increments of 0.01.
     QSlider* mlSlider_ = nullptr;

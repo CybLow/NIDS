@@ -67,7 +67,7 @@ public:
   virtual void setRawPacketCallback(RawPacketCallback callback) = 0;
 
   /** Enumerate available network interfaces. */
-  [[nodiscard]] virtual std::vector<std::string> listInterfaces() = 0;
+  [[nodiscard]] virtual std::vector<std::string> listInterfaces() const = 0;
 };
 
 } // namespace nids::core

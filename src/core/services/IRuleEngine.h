@@ -10,17 +10,13 @@
 /// without pulling in infrastructure details (Clean Architecture).
 
 #include "core/model/RuleMatch.h"
-#include "core/services/IFlowExtractor.h"
+#include "core/model/FlowInfo.h"
 
 #include <string_view>
 #include <vector>
 #include <cstdint>
 
 namespace nids::core {
-
-/// Backward-compatible alias.  IRuleEngine returns RuleMatch directly;
-/// the old "HeuristicRuleResult" name is kept for existing consumers.
-using HeuristicRuleResult = RuleMatch;
 
 /** Abstract interface for heuristic rule-based detection. */
 class IRuleEngine {
@@ -29,13 +25,13 @@ public:
 
     /// Evaluate all rules against a single flow's metadata.
     /// Returns a (possibly empty) vector of rule matches.
-    [[nodiscard]] virtual std::vector<HeuristicRuleResult> evaluate(
+    [[nodiscard]] virtual std::vector<RuleMatch> evaluate(
         const FlowInfo& flow) const = 0;
 
     /// Evaluate port-scan heuristic across multiple flows from the same source.
     /// Takes a source IP and the set of distinct destination ports observed.
     /// Returns a rule match if the port count exceeds the scan threshold.
-    [[nodiscard]] virtual std::vector<HeuristicRuleResult> evaluatePortScan(
+    [[nodiscard]] virtual std::vector<RuleMatch> evaluatePortScan(
         std::string_view srcIp,
         const std::vector<std::uint16_t>& distinctDstPorts) const = 0;
 

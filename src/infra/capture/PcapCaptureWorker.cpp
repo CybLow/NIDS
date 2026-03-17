@@ -6,8 +6,6 @@
 #include <pcapplusplus/PcapLiveDeviceList.h>
 #include <pcapplusplus/RawPacket.h>
 
-#include <string>
-
 namespace nids::infra {
 
 void PcapCaptureWorker::configure(std::string_view iface,
@@ -133,25 +131,17 @@ void PcapCaptureWorker::processPacket(pcpp::RawPacket *rawPacket) {
     return;
   }
 
-  nids::core::PacketInfo info;
+  core::PacketInfo info;
   info.ipSource = fields.srcIp;
   info.ipDestination = fields.dstIp;
 
-  if (fields.protocol == nids::core::kIpProtoTcp) {
-    info.protocol = "TCP";
+  info.protocol = fields.protocol;
+  if (fields.protocol == core::kIpProtoTcp ||
+      fields.protocol == core::kIpProtoUdp) {
     info.portSource = fields.srcPort;
     info.portDestination = fields.dstPort;
-  } else if (fields.protocol == nids::core::kIpProtoUdp) {
-    info.protocol = "UDP";
-    info.portSource = fields.srcPort;
-    info.portDestination = fields.dstPort;
-  } else if (fields.protocol == nids::core::kIpProtoIcmp) {
-    info.protocol = "ICMP";
-    // portSource/portDestination default to 0 (no port for ICMP)
-  } else {
-    info.protocol = "Other";
-    // portSource/portDestination default to 0 (no port for this protocol)
   }
+  // ICMP and other protocols: portSource/portDestination default to 0.
   // Note: application/service resolution is NOT done here — that's the
   // UI layer's responsibility (ServiceRegistry is a UI/display concern).
 

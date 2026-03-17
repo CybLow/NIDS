@@ -19,29 +19,41 @@
 
 namespace nids::server {
 
-class GrpcStreamSink : public nids::core::IOutputSink {
+class GrpcStreamSink : public core::IOutputSink {
 public:
-    using EventQueue = nids::core::BoundedQueue<::nids::DetectionEvent>;
+    using EventQueue = core::BoundedQueue<DetectionEvent>;
 
     explicit GrpcStreamSink(std::shared_ptr<EventQueue> queue,
-                            ::nids::DetectionFilter filter);
+                            DetectionFilter filter);
 
     [[nodiscard]] std::string_view name() const noexcept override {
         return "GrpcStreamSink";
     }
 
     void onFlowResult(std::size_t flowIndex,
-                      const nids::core::DetectionResult& result,
-                      const nids::core::FlowInfo& flow) override;
+                      const core::DetectionResult& result,
+                      const core::FlowInfo& flow) override;
 
 private:
     std::shared_ptr<EventQueue> queue_;
-    ::nids::DetectionFilter filter_;
+    DetectionFilter filter_;
 
-    static void populateDetectionEvent(::nids::DetectionEvent& event,
+    static void populateDetectionEvent(DetectionEvent& event,
                                        std::size_t flowIndex,
-                                       const nids::core::DetectionResult& result,
-                                       const nids::core::FlowInfo& flow);
+                                       const core::DetectionResult& result,
+                                       const core::FlowInfo& flow);
+
+    /// Populate the flow metadata section of a DetectionEvent.
+    static void populateFlowMetadata(DetectionEvent& event,
+                                     const core::FlowInfo& flow);
+
+    /// Populate the ML classification + probabilities section.
+    static void populateMlClassification(DetectionEvent& event,
+                                         const core::DetectionResult& result);
+
+    /// Populate TI/rule matches and the combined verdict.
+    static void populateMatchesAndVerdict(DetectionEvent& event,
+                                          const core::DetectionResult& result);
 };
 
 } // namespace nids::server

@@ -12,12 +12,12 @@
 namespace nids::app {
 
 DetectionServices PipelineFactory::createDetectionServices(
-    const nids::core::Configuration& config) {
+    const core::Configuration& config) {
 
     DetectionServices services;
 
     // -- Threat Intelligence --
-    auto threatIntel = std::make_unique<nids::infra::ThreatIntelProvider>();
+    auto threatIntel = std::make_unique<infra::ThreatIntelProvider>();
     if (auto tiDir = config.threatIntelDirectory().string();
         std::filesystem::is_directory(tiDir)) {
         auto loaded = threatIntel->loadFeeds(tiDir);
@@ -27,7 +27,7 @@ DetectionServices PipelineFactory::createDetectionServices(
     services.threatIntel = std::move(threatIntel);
 
     // -- Heuristic Rule Engine --
-    auto ruleEngine = std::make_unique<nids::infra::HeuristicRuleEngine>();
+    auto ruleEngine = std::make_unique<infra::HeuristicRuleEngine>();
     spdlog::info("Heuristic rule engine initialized with {} rules",
                  ruleEngine->ruleCount());
     services.ruleEngine = std::move(ruleEngine);
@@ -45,12 +45,12 @@ DetectionServices PipelineFactory::createDetectionServices(
 }
 
 MlServices PipelineFactory::createMlServices(
-    const nids::core::Configuration& config) {
+    const core::Configuration& config) {
 
     MlServices services;
 
     // -- ML Analyzer --
-    services.analyzer = nids::infra::createAnalyzer();
+    services.analyzer = infra::createAnalyzer();
     if (auto result = services.analyzer->loadModel(config.modelPath().string());
         !result) {
         spdlog::warn("ML model not loaded from '{}': {}",
@@ -58,7 +58,7 @@ MlServices PipelineFactory::createMlServices(
     }
 
     // -- Feature Normalizer --
-    auto normalizer = std::make_unique<nids::infra::FeatureNormalizer>();
+    auto normalizer = std::make_unique<infra::FeatureNormalizer>();
     if (auto result = normalizer->loadMetadata(config.modelMetadataPath().string());
         !result) {
         spdlog::warn("Feature normalization metadata not loaded: {}",
@@ -67,13 +67,13 @@ MlServices PipelineFactory::createMlServices(
     services.normalizer = std::move(normalizer);
 
     // -- Flow Extractor (batch mode — no timeout overrides) --
-    services.flowExtractor = std::make_unique<nids::infra::NativeFlowExtractor>();
+    services.flowExtractor = std::make_unique<infra::NativeFlowExtractor>();
 
     return services;
 }
 
 MlServices PipelineFactory::createLiveMlServices(
-    const nids::core::Configuration& config) {
+    const core::Configuration& config) {
 
     auto services = createMlServices(config);
 

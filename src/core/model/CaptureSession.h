@@ -43,7 +43,7 @@ public:
     void addPacket(const PacketInfo& packet);
 
     /// Store a detection result for a flow.
-    void setDetectionResult(std::size_t index, const DetectionResult& result);
+    void setDetectionResult(std::size_t index, const DetectionResult& result) const;
 
     /**
      * Retrieve a copy of the packet at the given index.
@@ -66,6 +66,8 @@ public:
     [[nodiscard]] std::size_t packetCount() const;
     /** Return the number of stored detection results. */
     [[nodiscard]] std::size_t detectionResultCount() const;
+    /** Return the number of stored detection results that are flagged (attacks). */
+    [[nodiscard]] std::size_t flaggedResultCount() const;
 
     /** Remove all packets and detection results from the session. */
     void clear();

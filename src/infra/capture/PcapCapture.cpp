@@ -1,4 +1,5 @@
 #include "infra/capture/PcapCapture.h"
+#include "infra/capture/PcapCaptureWorker.h"
 
 #include <pcapplusplus/PcapLiveDeviceList.h>
 
@@ -8,6 +9,8 @@
 #include <string>
 
 namespace nids::infra {
+
+PcapCapture::PcapCapture() = default;
 
 PcapCapture::~PcapCapture() {
   PcapCapture::stopCapture();
@@ -70,7 +73,7 @@ void PcapCapture::setRawPacketCallback(RawPacketCallback callback) {
   }
 }
 
-std::vector<std::string> PcapCapture::listInterfaces() {
+std::vector<std::string> PcapCapture::listInterfaces() const {
   const auto &devList =
       pcpp::PcapLiveDeviceList::getInstance().getPcapLiveDevicesList();
   std::vector<std::string> result;

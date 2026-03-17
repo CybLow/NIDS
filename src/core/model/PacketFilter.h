@@ -10,7 +10,9 @@ struct PacketFilter {
     std::string networkCard;
     /** Protocol filter (e.g., "tcp", "udp", "icmp"); empty for all. */
     std::string protocol;
-    /** Application-layer service filter (e.g., "HTTP"); empty for all. */
+    /** Application-layer service filter (e.g., "HTTP"); empty for all.
+     *  UI-only: not used in BPF generation (BPF cannot filter by app layer).
+     *  Retained for UI state management (FilterPanel combo box selection). */
     std::string application;
     /** Source IP address filter; empty for all. */
     std::string sourceIP;

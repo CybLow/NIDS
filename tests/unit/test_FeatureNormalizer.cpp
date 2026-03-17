@@ -1,5 +1,5 @@
 #include "infra/analysis/FeatureNormalizer.h"
-#include "infra/flow/NativeFlowExtractor.h" // kFlowFeatureCount
+#include "core/model/FlowConstants.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -10,7 +10,7 @@
 #include <vector>
 
 using nids::infra::FeatureNormalizer;
-using nids::infra::kFlowFeatureCount;
+using nids::core::kFlowFeatureCount;
 
 namespace fs = std::filesystem;
 

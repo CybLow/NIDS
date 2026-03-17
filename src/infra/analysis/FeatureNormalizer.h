@@ -24,7 +24,7 @@
 namespace nids::infra {
 
 /** StandardScaler feature normalizer backed by model metadata JSON. */
-class FeatureNormalizer : public nids::core::IFeatureNormalizer {
+class FeatureNormalizer : public core::IFeatureNormalizer {
 public:
     FeatureNormalizer() = default;
 

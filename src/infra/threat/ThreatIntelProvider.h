@@ -24,13 +24,13 @@
 namespace nids::infra {
 
 /** Threat intelligence provider backed by plain-text IP blocklist feeds. */
-class ThreatIntelProvider : public nids::core::IThreatIntelligence {
+class ThreatIntelProvider : public core::IThreatIntelligence {
 public:
     ThreatIntelProvider() = default;
 
     [[nodiscard]] std::size_t loadFeeds(const std::string& feedDirectory) override;
-    [[nodiscard]] nids::core::ThreatIntelLookup lookup(std::string_view ip) const override;
-    [[nodiscard]] nids::core::ThreatIntelLookup lookup(std::uint32_t ip) const override;
+    [[nodiscard]] core::ThreatIntelLookup lookup(std::string_view ip) const override;
+    [[nodiscard]] core::ThreatIntelLookup lookup(std::uint32_t ip) const override;
     [[nodiscard]] std::size_t entryCount() const noexcept override;
     [[nodiscard]] std::size_t feedCount() const noexcept override;
     [[nodiscard]] std::vector<std::string> feedNames() const override;
@@ -58,7 +58,7 @@ private:
                                         std::uint32_t& mask) noexcept;
 
     /// Check if an IP matches any loaded CIDR range.
-    [[nodiscard]] nids::core::ThreatIntelLookup lookupCidr(std::uint32_t ip) const;
+    [[nodiscard]] core::ThreatIntelLookup lookupCidr(std::uint32_t ip) const;
 
     /// Parse a single feed entry (IP or CIDR) and store it. Returns 1 on success, 0 on failure.
     std::size_t parseAndStoreEntry(const std::string& entry, const std::string& feedName);

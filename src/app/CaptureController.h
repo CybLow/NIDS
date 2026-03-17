@@ -28,15 +28,15 @@ class LiveDetectionPipeline;
 class CaptureController {
 public:
     // ── Callback types ─────────────────────────────────────────────
-    using PacketReceivedCallback = std::function<void(const nids::core::PacketInfo&)>;
+    using PacketReceivedCallback = std::function<void(const core::PacketInfo&)>;
     using CaptureStartedCallback = std::function<void()>;
     using CaptureStoppedCallback = std::function<void()>;
     using CaptureErrorCallback   = std::function<void(const std::string& message)>;
-    using LiveFlowCallback       = std::function<void(nids::core::DetectionResult result,
-                                                      nids::core::FlowInfo metadata)>;
+    using LiveFlowCallback       = std::function<void(core::DetectionResult result,
+                                                      core::FlowInfo metadata)>;
 
     /** Construct with an injected packet capture backend. */
-    explicit CaptureController(std::unique_ptr<nids::core::IPacketCapture> capture);
+    explicit CaptureController(std::unique_ptr<core::IPacketCapture> capture);
     ~CaptureController();
 
     CaptureController(const CaptureController&) = delete;
@@ -61,7 +61,7 @@ public:
      * @param filter    BPF filter to apply.
      * @param dumpFile  Optional path to write a pcap dump file.
      */
-    void startCapture(const nids::core::PacketFilter& filter,
+    void startCapture(const core::PacketFilter& filter,
                       const std::string& dumpFile = "");
     /** Stop the current capture session. */
     void stopCapture();
@@ -69,11 +69,11 @@ public:
     /** Return true if a capture is currently running. */
     [[nodiscard]] bool isCapturing() const;
     /** Access the current capture session (mutable). */
-    [[nodiscard]] nids::core::CaptureSession& session();
+    [[nodiscard]] core::CaptureSession& session();
     /** Access the current capture session (const). */
-    [[nodiscard]] const nids::core::CaptureSession& session() const;
+    [[nodiscard]] const core::CaptureSession& session() const;
     /** Query available network interfaces from the capture backend. */
-    [[nodiscard]] std::vector<std::string> listInterfaces();
+    [[nodiscard]] std::vector<std::string> listInterfaces() const;
 
     /** Return true if live detection is enabled and currently running. */
     [[nodiscard]] bool isLiveDetectionActive() const noexcept;
@@ -86,8 +86,8 @@ public:
     void setLiveFlowCallback(LiveFlowCallback cb)             { onLiveFlow_       = std::move(cb); }
 
 private:
-    std::unique_ptr<nids::core::IPacketCapture> capture_;
-    nids::core::CaptureSession session_;
+    std::unique_ptr<core::IPacketCapture> capture_;
+    core::CaptureSession session_;
     LiveDetectionPipeline* pipeline_ = nullptr;  // non-owning
 
     // Callbacks (fired on the calling thread — the consumer is responsible

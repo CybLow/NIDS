@@ -20,7 +20,7 @@
 namespace nids::infra {
 
 /** ONNX Runtime-based packet analyzer for ML inference. */
-class OnnxAnalyzer : public nids::core::IPacketAnalyzer {
+class OnnxAnalyzer : public core::IPacketAnalyzer {
 public:
     /** Construct analyzer and initialize the ONNX Runtime environment. */
     OnnxAnalyzer();
@@ -33,12 +33,12 @@ public:
 
     [[nodiscard]] std::expected<void, std::string> loadModel(
         const std::string& modelPath) override;
-    [[nodiscard]] nids::core::AttackType predict(std::span<const float> features) override;
-    [[nodiscard]] nids::core::PredictionResult predictWithConfidence(
+    [[nodiscard]] core::AttackType predict(std::span<const float> features) override;
+    [[nodiscard]] core::PredictionResult predictWithConfidence(
         std::span<const float> features) override;
 
     /// Native batched inference — runs N flows in a single session.Run() call.
-    [[nodiscard]] std::vector<nids::core::PredictionResult> predictBatch(
+    [[nodiscard]] std::vector<core::PredictionResult> predictBatch(
         std::span<const float> batch, std::size_t featureCount) override;
 
 private:

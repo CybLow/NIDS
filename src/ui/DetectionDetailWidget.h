@@ -9,7 +9,7 @@
  */
 
 #include "core/model/DetectionResult.h"
-#include "core/services/IFlowExtractor.h"
+#include "core/model/FlowInfo.h"
 
 #include <QWidget>
 #include <QLabel>
@@ -28,14 +28,19 @@ public:
     explicit DetectionDetailWidget(QWidget* parent = nullptr);
 
     /// Populate the panel with a detection result and optional flow metadata.
-    void setResult(const nids::core::DetectionResult& result,
-                   const nids::core::FlowInfo* metadata = nullptr);
+    void setResult(const core::DetectionResult& result,
+                   const core::FlowInfo* metadata = nullptr);
 
     /// Clear all fields to blank state.
     void clearResult();
 
 private:
     void setupUi();
+    void populateFlowSection(const core::FlowInfo* metadata);
+    void populateVerdictSection(const core::DetectionResult& result);
+    void populateMlSection(const core::DetectionResult& result);
+    void populateTiSection(const core::DetectionResult& result);
+    void populateRulesSection(const core::DetectionResult& result);
 
     // -- Flow metadata section --
     QGroupBox* flowGroup_ = nullptr;

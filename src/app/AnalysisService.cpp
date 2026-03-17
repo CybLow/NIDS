@@ -18,9 +18,9 @@ constexpr std::size_t kFlowQueueCapacity = 256;
 } // anonymous namespace
 
 AnalysisService::AnalysisService(
-    std::unique_ptr<nids::core::IPacketAnalyzer> analyzer,
-    std::unique_ptr<nids::core::IFlowExtractor> extractor,
-    std::unique_ptr<nids::core::IFeatureNormalizer> normalizer)
+    std::unique_ptr<core::IPacketAnalyzer> analyzer,
+    std::unique_ptr<core::IFlowExtractor> extractor,
+    std::unique_ptr<core::IFeatureNormalizer> normalizer)
     : analyzer_(std::move(analyzer))
     , extractor_(std::move(extractor))
     , normalizer_(std::move(normalizer)) {}
@@ -40,7 +40,7 @@ void AnalysisService::setHybridDetection(HybridDetectionService* service) noexce
 }
 
 void AnalysisService::analyzeCapture(const std::string& pcapPath,
-                                       nids::core::CaptureSession& session) {
+                                       core::CaptureSession& session) {
     if (onStarted_) onStarted_();
 
     spdlog::info("Extracting and analyzing flow features from '{}' (pipelined mode)",
@@ -76,72 +76,60 @@ void AnalysisService::analyzeCapture(const std::string& pcapPath,
     // a fallback for extractors that don't invoke the callback (mocks).
     auto allFeatures = extractor_->extractFeatures(pcapPath);
 
+    // If the streaming callback was not invoked (e.g. mock extractors),
+    // push the batch results through the same worker pipeline.
+    // This eliminates duplicated normalize→predict→evaluate→store logic.
+    pushBatchFallback(worker, queue, allFeatures);
+
     // Signal end-of-stream and wait for the worker to drain the queue.
     queue.close();
     extractor_->setFlowCompletionCallback(nullptr);
     worker.stop();
 
-    auto streamedCount = worker.processedCount();
+    reportResults(pcapPath, worker.processedCount(), allFeatures.empty());
+}
 
-    if (allFeatures.empty() && streamedCount == 0) {
-        spdlog::warn("No flows extracted from '{}' (empty capture or extraction failure)",
+const std::vector<core::FlowInfo>& AnalysisService::lastFlowMetadata() const noexcept {
+    return extractor_->flowMetadata();
+}
+
+void AnalysisService::pushBatchFallback(
+    FlowAnalysisWorker& worker,
+    core::BoundedQueue<FlowWorkItem>& queue,
+    std::vector<std::vector<float>>& allFeatures) {
+
+    auto streamedBeforeClose = worker.processedCount();
+    if (streamedBeforeClose == 0 && !allFeatures.empty()) {
+        spdlog::debug("Streaming callback was not invoked — feeding batch "
+                      "results through pipeline");
+        const auto& metadata = extractor_->flowMetadata();
+        for (std::size_t i = 0; i < allFeatures.size(); ++i) {
+            core::FlowInfo info;
+            if (i < metadata.size()) {
+                info = metadata[i];
+            }
+            std::ignore = queue.push(
+                FlowWorkItem{std::move(allFeatures[i]), std::move(info)});
+        }
+    }
+}
+
+void AnalysisService::reportResults(const std::string& pcapPath,
+                                    std::size_t processedCount,
+                                    bool noFeatures) {
+    if (noFeatures && processedCount == 0) {
+        spdlog::warn("No flows extracted from '{}' (empty capture or "
+                     "extraction failure)",
                      pcapPath);
     }
 
-    // ── Batch fallback ──────────────────────────────────────────────
-    // If the extractor did not invoke the callback (streamedCount == 0),
-    // process all flows from the batch result (backward-compatible path
-    // for mocks and alternative extractor implementations).
-    bool usedBatchFallback = false;
-    if (streamedCount == 0 && !allFeatures.empty()) {
-        usedBatchFallback = true;
-        spdlog::debug("Streaming callback was not invoked — falling back to batch analysis");
-        const auto& metadata = extractor_->flowMetadata();
-        auto total = static_cast<int>(allFeatures.size());
-
-        for (int i = 0; i < total; ++i) {
-            auto idx = static_cast<std::size_t>(i);
-            auto normalized = normalizer_->normalize(allFeatures[idx]);
-
-            if (hybridService_ != nullptr) {
-                auto mlResult = analyzer_->predictWithConfidence(normalized);
-                if (idx < metadata.size()) {
-                    auto detection = hybridService_->evaluate(
-                        mlResult, metadata[idx].srcIp, metadata[idx].dstIp, metadata[idx]);
-                    session.setDetectionResult(idx, detection);
-                } else {
-                    auto detection = hybridService_->evaluate(mlResult, "", "");
-                    session.setDetectionResult(idx, detection);
-                }
-            } else {
-                auto attackType = analyzer_->predict(normalized);
-                core::DetectionResult mlOnlyResult;
-                mlOnlyResult.finalVerdict = attackType;
-                mlOnlyResult.detectionSource = core::DetectionSource::MlOnly;
-                session.setDetectionResult(idx, mlOnlyResult);
-            }
-
-            if (onProgress_) onProgress_(i + 1, total);
-        }
-
-        streamedCount = allFeatures.size();
-    }
-
-    auto total = static_cast<int>(streamedCount);
-
-    // For the streaming path, fire a final progress callback with the correct total
-    // now that all flows have been processed.  The batch fallback already fires
-    // correct (current, total) pairs, so skip the extra callback to avoid duplicates.
-    if (!usedBatchFallback && total > 0) {
+    auto total = static_cast<int>(processedCount);
+    if (total > 0) {
         if (onProgress_) onProgress_(total, total);
     }
 
     spdlog::info("Analysis complete: {} flows processed", total);
     if (onFinished_) onFinished_();
-}
-
-const std::vector<nids::core::FlowInfo>& AnalysisService::lastFlowMetadata() const noexcept {
-    return extractor_->flowMetadata();
 }
 
 } // namespace nids::app

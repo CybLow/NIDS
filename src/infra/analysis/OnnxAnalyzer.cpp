@@ -10,6 +10,26 @@
 
 namespace nids::infra {
 
+namespace {
+
+/// Map raw model output probabilities to a PredictionResult.
+/// Shared by single-flow and batched inference paths (DRY).
+core::PredictionResult interpretOutput(std::span<const float> outputs) {
+    core::PredictionResult result;
+    auto copyCount = std::min(
+        outputs.size(), static_cast<std::size_t>(core::kAttackTypeCount));
+    for (std::size_t i = 0; i < copyCount; ++i) {
+        result.probabilities[i] = outputs[i];
+    }
+    auto maxIt = std::ranges::max_element(outputs);
+    result.classification = core::attackTypeFromIndex(
+        static_cast<int>(std::distance(outputs.begin(), maxIt)));
+    result.confidence = *maxIt;
+    return result;
+}
+
+} // anonymous namespace
+
 struct OnnxAnalyzer::Impl {
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "NIDS"};
   std::unique_ptr<Ort::Session> session{};
@@ -31,7 +51,7 @@ std::expected<void, std::string> OnnxAnalyzer::loadModel(
   try {
     Ort::SessionOptions sessionOptions;
     const auto threads =
-        nids::core::Configuration::instance().onnxIntraOpThreads();
+        core::Configuration::instance().onnxIntraOpThreads();
     sessionOptions.SetIntraOpNumThreads(threads);
     sessionOptions.SetGraphOptimizationLevel(
         GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -83,15 +103,15 @@ std::expected<void, std::string> OnnxAnalyzer::loadModel(
   }
 }
 
-nids::core::AttackType
+core::AttackType
 OnnxAnalyzer::predict(std::span<const float> features) {
   auto result = predictWithConfidence(features);
   return result.classification;
 }
 
-nids::core::PredictionResult
+core::PredictionResult
 OnnxAnalyzer::predictWithConfidence(std::span<const float> features) {
-  nids::core::PredictionResult result;
+  core::PredictionResult result;
 
   if (!impl_->loaded || !impl_->session) [[unlikely]] {
     return result; // Unknown, 0 confidence
@@ -115,31 +135,17 @@ OnnxAnalyzer::predictWithConfidence(std::span<const float> features) {
     auto outputSize = outputInfo.GetElementCount();
 
     std::span<const float> outputs(output, outputSize);
-
-    // Copy probabilities (model output already has softmax applied)
-    auto copyCount = std::min(
-        outputSize, static_cast<std::size_t>(nids::core::kAttackTypeCount));
-    for (std::size_t i = 0; i < copyCount; ++i) {
-      result.probabilities[i] = outputs[i];
-    }
-
-    auto maxIt = std::ranges::max_element(outputs);
-    auto maxIndex = static_cast<int>(std::distance(outputs.begin(), maxIt));
-
-    result.classification = nids::core::attackTypeFromIndex(maxIndex);
-    result.confidence = *maxIt;
-
-    return result;
+    return interpretOutput(outputs);
   } catch (const Ort::Exception &e) {
     spdlog::error("ONNX prediction failed: {}", e.what());
     return result; // Unknown, 0 confidence
   }
 }
 
-std::vector<nids::core::PredictionResult>
+std::vector<core::PredictionResult>
 OnnxAnalyzer::predictBatch(std::span<const float> batch,
                            std::size_t featureCount) {
-  std::vector<nids::core::PredictionResult> results;
+  std::vector<core::PredictionResult> results;
 
   if (!impl_->loaded || !impl_->session || featureCount == 0 ||
       batch.empty()) [[unlikely]] {
@@ -179,23 +185,11 @@ OnnxAnalyzer::predictBatch(std::span<const float> batch,
                           : outputInfo.GetElementCount() /
                                 static_cast<std::size_t>(flowCount);
 
-    results.resize(static_cast<std::size_t>(flowCount));
+    results.reserve(static_cast<std::size_t>(flowCount));
 
     for (std::size_t i = 0; i < static_cast<std::size_t>(flowCount); ++i) {
       std::span<const float> flowOut(output + i * numClasses, numClasses);
-
-      auto& r = results[i];
-      auto copyCount =
-          std::min(numClasses,
-                   static_cast<std::size_t>(nids::core::kAttackTypeCount));
-      for (std::size_t j = 0; j < copyCount; ++j) {
-        r.probabilities[j] = flowOut[j];
-      }
-
-      auto maxIt = std::ranges::max_element(flowOut);
-      auto maxIndex = static_cast<int>(std::distance(flowOut.begin(), maxIt));
-      r.classification = nids::core::attackTypeFromIndex(maxIndex);
-      r.confidence = *maxIt;
+      results.push_back(interpretOutput(flowOut));
     }
 
     return results;

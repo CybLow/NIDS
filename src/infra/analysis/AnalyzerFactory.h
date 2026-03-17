@@ -20,7 +20,7 @@ enum class AnalyzerBackend {
 /// Create an analyzer for the given backend.
 /// Currently only ONNX is supported; additional backends (e.g., TensorRT,
 /// OpenVINO) can be added without modifying calling code.
-[[nodiscard]] std::unique_ptr<nids::core::IPacketAnalyzer>
+[[nodiscard]] std::unique_ptr<core::IPacketAnalyzer>
 createAnalyzer(AnalyzerBackend backend = AnalyzerBackend::Onnx);
 
 } // namespace nids::infra

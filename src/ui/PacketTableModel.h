@@ -43,7 +43,7 @@ public:
    *                  Lifetime must exceed the model.
    * @param parent    Qt parent object.
    */
-  explicit PacketTableModel(const nids::core::ServiceRegistry *registry = nullptr,
+  explicit PacketTableModel(const core::ServiceRegistry *registry = nullptr,
                             QObject *parent = nullptr);
 
   [[nodiscard]] int
@@ -56,17 +56,17 @@ public:
                                     int role = Qt::DisplayRole) const override;
 
   /** Append a captured packet to the model and notify the view. */
-  void addPacket(const nids::core::PacketInfo &info,
+  void addPacket(const core::PacketInfo &info,
                  const std::string &interfaceName);
   /** Remove all rows from the model. */
   void clear();
 
   /** Retrieve the packet at the given row, or nullptr if out of range. */
-  [[nodiscard]] const nids::core::PacketInfo *packetAt(int row) const;
+  [[nodiscard]] const core::PacketInfo *packetAt(int row) const;
 
 private:
   struct Row {
-    nids::core::PacketInfo packet;
+    core::PacketInfo packet;
     std::string interfaceName;
   };
 
@@ -75,7 +75,7 @@ private:
                                      const Row &row) const;
 
   std::vector<Row> rows_;
-  const nids::core::ServiceRegistry *serviceRegistry_ = nullptr;
+  const core::ServiceRegistry *serviceRegistry_ = nullptr;
 };
 
 } // namespace nids::ui

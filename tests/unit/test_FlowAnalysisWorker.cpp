@@ -1,14 +1,16 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "helpers/MockAnalyzer.h"
+#include "helpers/MockNormalizer.h"
+#include "helpers/TestHelpers.h"
+
 #include "app/FlowAnalysisWorker.h"
 #include "app/HybridDetectionService.h"
 #include "core/model/CaptureSession.h"
 #include "core/model/DetectionResult.h"
 #include "core/model/PredictionResult.h"
 #include "core/concurrent/BoundedQueue.h"
-#include "core/services/IFeatureNormalizer.h"
-#include "core/services/IPacketAnalyzer.h"
 
 #include <atomic>
 #include <chrono>
@@ -19,39 +21,12 @@
 
 using namespace nids::core;
 using namespace nids::app;
+using nids::testing::MockAnalyzerFull;
+using nids::testing::MockNormalizer;
+using nids::testing::makePrediction;
+using nids::testing::waitFor;
 using ::testing::_;
 using ::testing::Return;
-
-// ── Mocks ────────────────────────────────────────────────────────────
-
-class MockAnalyzerWorker : public IPacketAnalyzer {
-public:
-    MOCK_METHOD((std::expected<void, std::string>), loadModel,
-                (const std::string&), (override));
-    MOCK_METHOD(AttackType, predict, (std::span<const float>), (override));
-    MOCK_METHOD(PredictionResult, predictWithConfidence,
-                (std::span<const float>), (override));
-    MOCK_METHOD(std::vector<PredictionResult>, predictBatch,
-                (std::span<const float>, std::size_t), (override));
-};
-
-class MockNormalizerWorker : public IFeatureNormalizer {
-public:
-    MOCK_METHOD((std::expected<void, std::string>), loadMetadata,
-                (const std::string&), (override));
-    MOCK_METHOD(std::vector<float>, normalize, (std::span<const float>),
-                (const, override));
-    MOCK_METHOD(bool, isLoaded, (), (const, noexcept, override));
-    MOCK_METHOD(std::size_t, featureCount, (), (const, noexcept, override));
-
-    /// Create a pass-through normalizer that returns features unchanged.
-    static std::unique_ptr<MockNormalizerWorker> createPassThrough() {
-        auto mock = std::make_unique<MockNormalizerWorker>();
-        ON_CALL(*mock, normalize(_)).WillByDefault(
-            [](std::span<const float> f) { return std::vector<float>(f.begin(), f.end()); });
-        return mock;
-    }
-};
 
 // ── Helper ───────────────────────────────────────────────────────────
 
@@ -59,14 +34,6 @@ namespace {
 
 constexpr std::size_t kQueueCapacity = 64;
 constexpr int kFeatureCount = 77;
-
-/// Create a PredictionResult with the given attack type and confidence.
-PredictionResult makePrediction(AttackType type, float confidence = 0.9f) {
-    PredictionResult pr;
-    pr.classification = type;
-    pr.confidence = confidence;
-    return pr;
-}
 
 FlowWorkItem makeItem(float fillValue = 0.5f,
                       const std::string& srcIp = "10.0.0.1",
@@ -81,26 +48,14 @@ FlowWorkItem makeItem(float fillValue = 0.5f,
     return item;
 }
 
-/// Wait for a condition with a timeout.  Returns true if condition was met.
-template <typename Pred>
-bool waitFor(Pred pred, std::chrono::milliseconds timeout = std::chrono::milliseconds(2000)) {
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (!pred()) {
-        if (std::chrono::steady_clock::now() > deadline)
-            return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-    return true;
-}
-
 } // anonymous namespace
 
 // ── Tests ────────────────────────────────────────────────────────────
 
 TEST(FlowAnalysisWorker, processedCountStartsAtZero) {
     BoundedQueue<FlowWorkItem> queue(kQueueCapacity);
-    MockAnalyzerWorker analyzer;
-    auto normalizer = MockNormalizerWorker::createPassThrough();
+    MockAnalyzerFull analyzer;
+    auto normalizer = MockNormalizer::createPassThrough();
     CaptureSession session;
 
     FlowAnalysisWorker worker(queue, analyzer, *normalizer, session);
@@ -110,8 +65,8 @@ TEST(FlowAnalysisWorker, processedCountStartsAtZero) {
 
 TEST(FlowAnalysisWorker, startAndStopLifecycle) {
     BoundedQueue<FlowWorkItem> queue(kQueueCapacity);
-    MockAnalyzerWorker analyzer;
-    auto normalizer = MockNormalizerWorker::createPassThrough();
+    MockAnalyzerFull analyzer;
+    auto normalizer = MockNormalizer::createPassThrough();
     CaptureSession session;
 
     // predictBatch is the entry point for the batched worker.
@@ -140,8 +95,8 @@ TEST(FlowAnalysisWorker, startAndStopLifecycle) {
 
 TEST(FlowAnalysisWorker, processSingleItem_mlOnly) {
     BoundedQueue<FlowWorkItem> queue(kQueueCapacity);
-    MockAnalyzerWorker analyzer;
-    auto normalizer = MockNormalizerWorker::createPassThrough();
+    MockAnalyzerFull analyzer;
+    auto normalizer = MockNormalizer::createPassThrough();
     CaptureSession session;
 
     // Batched worker calls predictBatch() which returns PredictionResults.
@@ -166,8 +121,8 @@ TEST(FlowAnalysisWorker, processSingleItem_mlOnly) {
 
 TEST(FlowAnalysisWorker, processMultipleItems_mlOnly) {
     BoundedQueue<FlowWorkItem> queue(kQueueCapacity);
-    MockAnalyzerWorker analyzer;
-    auto normalizer = MockNormalizerWorker::createPassThrough();
+    MockAnalyzerFull analyzer;
+    auto normalizer = MockNormalizer::createPassThrough();
     CaptureSession session;
 
     // predictBatch may be called once (all 3 in one batch) or multiple times
@@ -210,8 +165,8 @@ TEST(FlowAnalysisWorker, processMultipleItems_mlOnly) {
 
 TEST(FlowAnalysisWorker, hybridDetection_usesHybridService) {
     BoundedQueue<FlowWorkItem> queue(kQueueCapacity);
-    MockAnalyzerWorker analyzer;
-    auto normalizer = MockNormalizerWorker::createPassThrough();
+    MockAnalyzerFull analyzer;
+    auto normalizer = MockNormalizer::createPassThrough();
     CaptureSession session;
 
     PredictionResult mlResult;
@@ -243,8 +198,8 @@ TEST(FlowAnalysisWorker, hybridDetection_usesHybridService) {
 
 TEST(FlowAnalysisWorker, resultCallback_invokedForEachFlow) {
     BoundedQueue<FlowWorkItem> queue(kQueueCapacity);
-    MockAnalyzerWorker analyzer;
-    auto normalizer = MockNormalizerWorker::createPassThrough();
+    MockAnalyzerFull analyzer;
+    auto normalizer = MockNormalizer::createPassThrough();
     CaptureSession session;
 
     std::atomic<std::size_t> batchFlowOffset{0};
@@ -294,8 +249,8 @@ TEST(FlowAnalysisWorker, resultCallback_invokedForEachFlow) {
 
 TEST(FlowAnalysisWorker, normalizationIsApplied) {
     BoundedQueue<FlowWorkItem> queue(kQueueCapacity);
-    MockAnalyzerWorker analyzer;
-    MockNormalizerWorker normalizer;
+    MockAnalyzerFull analyzer;
+    MockNormalizer normalizer;
     CaptureSession session;
 
     // Normalizer transforms features: multiply each by 2
@@ -335,8 +290,8 @@ TEST(FlowAnalysisWorker, normalizationIsApplied) {
 
 TEST(FlowAnalysisWorker, emptyQueue_closedImmediately) {
     BoundedQueue<FlowWorkItem> queue(kQueueCapacity);
-    MockAnalyzerWorker analyzer;
-    auto normalizer = MockNormalizerWorker::createPassThrough();
+    MockAnalyzerFull analyzer;
+    auto normalizer = MockNormalizer::createPassThrough();
     CaptureSession session;
 
     // No inference calls expected when queue is empty
@@ -356,8 +311,8 @@ TEST(FlowAnalysisWorker, emptyQueue_closedImmediately) {
 
 TEST(FlowAnalysisWorker, destructorJoinsThread) {
     BoundedQueue<FlowWorkItem> queue(kQueueCapacity);
-    MockAnalyzerWorker analyzer;
-    auto normalizer = MockNormalizerWorker::createPassThrough();
+    MockAnalyzerFull analyzer;
+    auto normalizer = MockNormalizer::createPassThrough();
     CaptureSession session;
 
     ON_CALL(analyzer, predictBatch(_, _)).WillByDefault(
@@ -385,8 +340,8 @@ TEST(FlowAnalysisWorker, destructorJoinsThread) {
 TEST(FlowAnalysisWorker, concurrentProducer_manyItems) {
     constexpr std::size_t kItemCount = 100;
     BoundedQueue<FlowWorkItem> queue(16); // Small queue to test backpressure
-    MockAnalyzerWorker analyzer;
-    auto normalizer = MockNormalizerWorker::createPassThrough();
+    MockAnalyzerFull analyzer;
+    auto normalizer = MockNormalizer::createPassThrough();
     CaptureSession session;
 
     ON_CALL(analyzer, predictBatch(_, _)).WillByDefault(
@@ -422,8 +377,8 @@ TEST(FlowAnalysisWorker, concurrentProducer_manyItems) {
 
 TEST(FlowAnalysisWorker, hybridDetection_protocolMapping) {
     BoundedQueue<FlowWorkItem> queue(kQueueCapacity);
-    MockAnalyzerWorker analyzer;
-    auto normalizer = MockNormalizerWorker::createPassThrough();
+    MockAnalyzerFull analyzer;
+    auto normalizer = MockNormalizer::createPassThrough();
     CaptureSession session;
 
     PredictionResult mlResult;

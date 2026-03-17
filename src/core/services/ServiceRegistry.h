@@ -18,7 +18,7 @@ public:
      * @param port TCP/UDP port number.
      * @return Service name, or "Unknown" if the port is not registered.
      */
-    [[nodiscard]] std::string getServiceByPort(int port) const;
+    [[nodiscard]] std::string getServiceByPort(std::uint16_t port) const;
     /** Return the set of all distinct service names in the registry. */
     [[nodiscard]] std::unordered_set<std::string> getUniqueServices() const;
 
@@ -40,7 +40,7 @@ public:
     ) const;
 
 private:
-    std::unordered_map<int, std::string> portToService_;
+    std::unordered_map<std::uint16_t, std::string> portToService_;
 };
 
 } // namespace nids::core

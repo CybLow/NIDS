@@ -40,9 +40,9 @@ bool parsePacketHeaders(const pcpp::Packet& packet, ParsedFields& out) {
     out.protocol = ipLayer->getIPv4Header()->protocol;
     out.totalPacketLen = pcpp::netToHost16(ipLayer->getIPv4Header()->totalLength);
 
-    using nids::core::kIpProtoTcp;
-    using nids::core::kIpProtoUdp;
-    using nids::core::kIpProtoIcmp;
+    using core::kIpProtoTcp;
+    using core::kIpProtoUdp;
+    using core::kIpProtoIcmp;
 
     if (out.protocol == kIpProtoTcp) [[likely]] {
         const auto* tcpLayer = packet.getLayerOfType<pcpp::TcpLayer>();

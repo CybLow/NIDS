@@ -18,9 +18,9 @@ TEST_F(ServiceRegistryTest, knownPortReturnsService) {
 }
 
 TEST_F(ServiceRegistryTest, unknownPortReturnsUnknown) {
-  EXPECT_EQ(registry.getServiceByPort(99999), "Unknown");
   EXPECT_EQ(registry.getServiceByPort(0), "Unknown");
-  EXPECT_EQ(registry.getServiceByPort(-1), "Unknown");
+  EXPECT_EQ(registry.getServiceByPort(65535), "Unknown");
+  EXPECT_EQ(registry.getServiceByPort(60000), "Unknown");
 }
 
 TEST_F(ServiceRegistryTest, uniqueServicesNotEmpty) {

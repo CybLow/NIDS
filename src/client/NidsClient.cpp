@@ -29,8 +29,7 @@ bool NidsClient::connect() {
         return false;
     }
 
-    stub_ = ::nids::NidsService::NewStub(channel_);
-    connected_ = true;
+    stub_ = NidsService::NewStub(channel_);
     spdlog::info("Connected to NIDS server at {}", config_.serverAddress);
     return true;
 }
@@ -38,7 +37,6 @@ bool NidsClient::connect() {
 void NidsClient::disconnect() {
     stub_.reset();
     channel_.reset();
-    connected_ = false;
 }
 
 std::vector<std::string> NidsClient::listInterfaces() const {
@@ -47,8 +45,8 @@ std::vector<std::string> NidsClient::listInterfaces() const {
     }
 
     grpc::ClientContext context;
-    ::nids::ListInterfacesRequest request;
-    ::nids::ListInterfacesResponse response;
+    ListInterfacesRequest request;
+    ListInterfacesResponse response;
 
     auto status = stub_->ListInterfaces(&context, request, &response);
     if (!status.ok()) {
@@ -72,7 +70,7 @@ std::string NidsClient::startCapture(const std::string& interface,
     }
 
     grpc::ClientContext context;
-    ::nids::StartCaptureRequest request;
+    StartCaptureRequest request;
     request.set_interface(interface);
     request.set_enable_live_detection(true);
     if (!bpfFilter.empty()) {
@@ -82,7 +80,7 @@ std::string NidsClient::startCapture(const std::string& interface,
         request.set_dump_file(dumpFile);
     }
 
-    ::nids::StartCaptureResponse response;
+    StartCaptureResponse response;
     auto status = stub_->StartCapture(&context, request, &response);
     if (!status.ok()) {
         spdlog::error("StartCapture RPC failed: {}", status.error_message());
@@ -104,10 +102,10 @@ std::string NidsClient::stopCapture(const std::string& sessionId) const {
     }
 
     grpc::ClientContext context;
-    ::nids::StopCaptureRequest request;
+    StopCaptureRequest request;
     request.set_session_id(sessionId);
 
-    ::nids::StopCaptureResponse response;
+    StopCaptureResponse response;
     auto status = stub_->StopCapture(&context, request, &response);
     if (!status.ok()) {
         spdlog::error("StopCapture RPC failed: {}", status.error_message());
@@ -130,8 +128,8 @@ NidsClient::StatusInfo NidsClient::getStatus() const {
     }
 
     grpc::ClientContext context;
-    ::nids::GetStatusRequest request;
-    ::nids::GetStatusResponse response;
+    GetStatusRequest request;
+    GetStatusResponse response;
 
     auto status = stub_->GetStatus(&context, request, &response);
     if (!status.ok()) {
@@ -151,7 +149,7 @@ NidsClient::StatusInfo NidsClient::getStatus() const {
 
 void NidsClient::streamDetections(
     const std::string& sessionId,
-    ::nids::DetectionFilter filter,
+    DetectionFilter filter,
     const DetectionCallback& callback,
     const std::atomic<bool>& stopFlag) const {
 
@@ -160,12 +158,12 @@ void NidsClient::streamDetections(
     }
 
     grpc::ClientContext context;
-    ::nids::StreamDetectionsRequest request;
+    StreamDetectionsRequest request;
     request.set_session_id(sessionId);
     request.set_filter(filter);
 
     auto reader = stub_->StreamDetections(&context, request);
-    ::nids::DetectionEvent event;
+    DetectionEvent event;
 
     while (!stopFlag.load() && reader->Read(&event)) {
         callback(event);

@@ -17,8 +17,8 @@ bool ConsoleAlertSink::start() {
 
 void ConsoleAlertSink::onFlowResult(
     std::size_t flowIndex,
-    const nids::core::DetectionResult& result,
-    const nids::core::FlowInfo& flow) {
+    const core::DetectionResult& result,
+    const core::FlowInfo& flow) {
 
     totalFlows_.fetch_add(1, std::memory_order_relaxed);
 

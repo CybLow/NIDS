@@ -17,7 +17,7 @@ constexpr auto kShutdownPollInterval = std::chrono::milliseconds(200);
 
 int runHeadlessCapture(const HeadlessRunnerConfig& config) {
     // -- Session + pipeline --
-    nids::core::CaptureSession session;
+    core::CaptureSession session;
     auto pipeline = std::make_unique<LiveDetectionPipeline>(
         *config.flowExtractor, *config.analyzer, *config.normalizer, session);
     pipeline->setHybridDetection(config.hybridService);

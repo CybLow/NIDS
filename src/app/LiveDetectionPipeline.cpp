@@ -2,15 +2,16 @@
 
 #include <spdlog/spdlog.h>
 
+#include <cassert>
 #include <utility>
 
 namespace nids::app {
 
 LiveDetectionPipeline::LiveDetectionPipeline(
-    nids::core::IFlowExtractor& extractor,
-    nids::core::IPacketAnalyzer& analyzer,
-    nids::core::IFeatureNormalizer& normalizer,
-    nids::core::CaptureSession& session)
+    core::IFlowExtractor& extractor,
+    core::IPacketAnalyzer& analyzer,
+    core::IFeatureNormalizer& normalizer,
+    core::CaptureSession& session)
     : extractor_(extractor)
     , analyzer_(analyzer)
     , normalizer_(normalizer)
@@ -33,7 +34,7 @@ void LiveDetectionPipeline::setResultCallback(ResultCallback cb) noexcept {
     resultCallback_ = std::move(cb);
 }
 
-void LiveDetectionPipeline::addOutputSink(nids::core::IOutputSink* sink) {
+void LiveDetectionPipeline::addOutputSink(core::IOutputSink* sink) {
     assert(!running_.load(std::memory_order_relaxed) &&
            "addOutputSink() must be called before start()");
     if (sink) {
@@ -55,7 +56,7 @@ void LiveDetectionPipeline::start() {
     queuePushCount_.store(0, std::memory_order_relaxed);
 
     // Create the bounded queue and worker.
-    queue_ = std::make_unique<nids::core::BoundedQueue<FlowWorkItem>>(kQueueCapacity);
+    queue_ = std::make_unique<core::BoundedQueue<FlowWorkItem>>(kQueueCapacity);
     worker_ = std::make_unique<FlowAnalysisWorker>(
         *queue_, analyzer_, normalizer_, session_);
     worker_->setHybridDetection(hybridService_);
@@ -67,26 +68,7 @@ void LiveDetectionPipeline::start() {
         }
     }
 
-    // If output sinks are registered, wrap the result callback to also
-    // dispatch to all sinks.
-    if (!sinks_.empty()) {
-        auto userCallback = resultCallback_;
-        worker_->setResultCallback(
-            [this, userCallback = std::move(userCallback)](
-                std::size_t idx, nids::core::DetectionResult result,
-                nids::core::FlowInfo info) {
-                // Dispatch to all registered output sinks.
-                for (auto* sink : sinks_) {
-                    sink->onFlowResult(idx, result, info);
-                }
-                // Then fire the user callback (if any).
-                if (userCallback) {
-                    userCallback(idx, std::move(result), std::move(info));
-                }
-            });
-    } else if (resultCallback_) {
-        worker_->setResultCallback(resultCallback_);
-    }
+    configureResultCallback();
 
     worker_->start();
 
@@ -94,7 +76,7 @@ void LiveDetectionPipeline::start() {
     // tryPush() is non-blocking — if the queue is full, the flow is dropped
     // rather than stalling the PcapPlusPlus capture thread.
     extractor_.setFlowCompletionCallback(
-        [this](std::vector<float>&& features, nids::core::FlowInfo&& info) {
+        [this](std::vector<float>&& features, core::FlowInfo&& info) {
             if (queue_->tryPush(
                     FlowWorkItem{std::move(features), std::move(info)})) {
                 queuePushCount_.fetch_add(1, std::memory_order_relaxed);
@@ -136,23 +118,7 @@ void LiveDetectionPipeline::stop() {
         worker_->stop();
     }
 
-    auto detected = flowsDetected();
-    auto dropped = droppedFlows_.load(std::memory_order_relaxed);
-    auto fed = feedPacketCount_.load(std::memory_order_relaxed);
-    auto pushed = queuePushCount_.load(std::memory_order_relaxed);
-    spdlog::info("=== LiveDetectionPipeline Diagnostics ===");
-    spdlog::info("  feedPacket() calls:   {}", fed);
-    spdlog::info("  Queue pushes (ok):    {}", pushed);
-    spdlog::info("  Queue drops (full):   {}", dropped);
-    spdlog::info("  Flows detected:       {}", detected);
-    spdlog::info("=========================================");
-
-    if (dropped > 0) {
-        spdlog::warn("LiveDetectionPipeline dropped {} flows due to queue "
-                     "backpressure — consider increasing queue capacity or "
-                     "reducing capture throughput",
-                     dropped);
-    }
+    logDiagnostics();
 
     // Stop all output sinks (flush buffers, print summaries).
     for (auto* sink : sinks_) {
@@ -174,6 +140,49 @@ bool LiveDetectionPipeline::isRunning() const noexcept {
 
 std::size_t LiveDetectionPipeline::droppedFlows() const noexcept {
     return droppedFlows_.load(std::memory_order_relaxed);
+}
+
+void LiveDetectionPipeline::configureResultCallback() {
+    // If output sinks are registered, wrap the result callback to also
+    // dispatch to all sinks.
+    if (!sinks_.empty()) {
+        auto userCallback = resultCallback_;
+        worker_->setResultCallback(
+            [this, userCallback = std::move(userCallback)](
+                std::size_t idx, core::DetectionResult result,
+                core::FlowInfo info) {
+                // Dispatch to all registered output sinks.
+                for (auto* sink : sinks_) {
+                    sink->onFlowResult(idx, result, info);
+                }
+                // Then fire the user callback (if any).
+                if (userCallback) {
+                    userCallback(idx, std::move(result), std::move(info));
+                }
+            });
+    } else if (resultCallback_) {
+        worker_->setResultCallback(resultCallback_);
+    }
+}
+
+void LiveDetectionPipeline::logDiagnostics() const {
+    auto detected = flowsDetected();
+    auto dropped = droppedFlows_.load(std::memory_order_relaxed);
+    auto fed = feedPacketCount_.load(std::memory_order_relaxed);
+    auto pushed = queuePushCount_.load(std::memory_order_relaxed);
+    spdlog::info("=== LiveDetectionPipeline Diagnostics ===");
+    spdlog::info("  feedPacket() calls:   {}", fed);
+    spdlog::info("  Queue pushes (ok):    {}", pushed);
+    spdlog::info("  Queue drops (full):   {}", dropped);
+    spdlog::info("  Flows detected:       {}", detected);
+    spdlog::info("=========================================");
+
+    if (dropped > 0) {
+        spdlog::warn("LiveDetectionPipeline dropped {} flows due to queue "
+                     "backpressure — consider increasing queue capacity or "
+                     "reducing capture throughput",
+                     dropped);
+    }
 }
 
 } // namespace nids::app

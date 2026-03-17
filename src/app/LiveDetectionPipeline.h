@@ -26,7 +26,6 @@
 #include "core/services/IPacketAnalyzer.h"
 
 #include <atomic>
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -52,8 +51,8 @@ public:
     /// Callback invoked on the worker thread for each detected flow.
     /// Parameters: (flow index, detection result, flow metadata).
     using ResultCallback =
-        std::function<void(std::size_t, nids::core::DetectionResult,
-                           nids::core::FlowInfo)>;
+        std::function<void(std::size_t, core::DetectionResult,
+                           core::FlowInfo)>;
 
     /**
      * Construct the pipeline with required dependencies.
@@ -65,10 +64,10 @@ public:
      * @param normalizer  Feature normalizer.
      * @param session     Thread-safe result storage.
      */
-    LiveDetectionPipeline(nids::core::IFlowExtractor& extractor,
-                          nids::core::IPacketAnalyzer& analyzer,
-                          nids::core::IFeatureNormalizer& normalizer,
-                          nids::core::CaptureSession& session);
+    LiveDetectionPipeline(core::IFlowExtractor& extractor,
+                          core::IPacketAnalyzer& analyzer,
+                          core::IFeatureNormalizer& normalizer,
+                          core::CaptureSession& session);
 
     ~LiveDetectionPipeline();
 
@@ -92,7 +91,7 @@ public:
     /// The pipeline does NOT take ownership — the caller must keep the sink
     /// alive until after stop() returns.
     /// @pre !isRunning()
-    void addOutputSink(nids::core::IOutputSink* sink);
+    void addOutputSink(core::IOutputSink* sink);
 
     /// Start the pipeline: resets the flow extractor, creates the queue
     /// and worker thread.  No-op if already running.
@@ -123,20 +122,27 @@ private:
     /// Queue capacity for the live detection pipeline.
     static constexpr std::size_t kQueueCapacity = 512;
 
-    nids::core::IFlowExtractor& extractor_;
-    nids::core::IPacketAnalyzer& analyzer_;
-    nids::core::IFeatureNormalizer& normalizer_;
-    nids::core::CaptureSession& session_;
+    core::IFlowExtractor& extractor_;
+    core::IPacketAnalyzer& analyzer_;
+    core::IFeatureNormalizer& normalizer_;
+    core::CaptureSession& session_;
     HybridDetectionService* hybridService_ = nullptr;
     ResultCallback resultCallback_;
 
-    std::vector<nids::core::IOutputSink*> sinks_;
-    std::unique_ptr<nids::core::BoundedQueue<FlowWorkItem>> queue_;
+    std::vector<core::IOutputSink*> sinks_;
+    std::unique_ptr<core::BoundedQueue<FlowWorkItem>> queue_;
     std::unique_ptr<FlowAnalysisWorker> worker_;
     std::atomic<bool> running_{false};
     std::atomic<std::size_t> droppedFlows_{0};
     std::atomic<std::size_t> feedPacketCount_{0}; ///< Total feedPacket() calls.
     std::atomic<std::size_t> queuePushCount_{0};  ///< Successful queue pushes.
+
+    /// Configure the worker's result callback, wrapping with output sink
+    /// dispatch if sinks are registered.
+    void configureResultCallback();
+
+    /// Log diagnostics summary at pipeline stop.
+    void logDiagnostics() const;
 };
 
 } // namespace nids::app

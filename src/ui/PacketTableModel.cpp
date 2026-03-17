@@ -1,4 +1,5 @@
 #include "ui/PacketTableModel.h"
+#include "ui/QtStringConversions.h"
 
 #include <array>
 
@@ -21,7 +22,7 @@ constexpr std::array<const char *, PacketTableModel::kColumnCount>
 
 } // namespace
 
-PacketTableModel::PacketTableModel(const nids::core::ServiceRegistry *registry,
+PacketTableModel::PacketTableModel(const core::ServiceRegistry *registry,
                                    QObject *parent)
     : QAbstractTableModel(parent), serviceRegistry_(registry) {}
 
@@ -58,14 +59,11 @@ QVariant PacketTableModel::displayData(const QModelIndex &index,
   case Interface:
     return QString::fromStdString(row.interfaceName);
   case Protocol:
-    return QString::fromStdString(pkt.protocol);
+    return protocolQString(pkt.protocol);
   case Application:
     // Resolve application from ServiceRegistry at display time.
-    // The capture layer no longer populates this field — it's a
-    // UI/display concern (service name from well-known port).
-    if (!pkt.application.empty()) {
-      return QString::fromStdString(pkt.application);
-    }
+    // Application resolution is a UI/display concern (service name from
+    // well-known port), not part of the capture layer.
     if (serviceRegistry_) {
       return QString::fromStdString(
           serviceRegistry_->resolveApplication(0, 0, pkt.portDestination));
@@ -96,7 +94,7 @@ QVariant PacketTableModel::headerData(int section, Qt::Orientation orientation,
   return kPacketColumnHeaders[static_cast<std::size_t>(section)];
 }
 
-void PacketTableModel::addPacket(const nids::core::PacketInfo &info,
+void PacketTableModel::addPacket(const core::PacketInfo &info,
                                  const std::string &interfaceName) {
   auto row = static_cast<int>(rows_.size());
   beginInsertRows(QModelIndex(), row, row);
@@ -112,7 +110,7 @@ void PacketTableModel::clear() {
   endResetModel();
 }
 
-const nids::core::PacketInfo *PacketTableModel::packetAt(int row) const {
+const core::PacketInfo *PacketTableModel::packetAt(int row) const {
   if (row < 0 || row >= static_cast<int>(rows_.size()))
     return nullptr;
   return &rows_[static_cast<std::size_t>(row)].packet;

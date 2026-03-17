@@ -15,7 +15,7 @@
 /// flows with `!result.isFlagged()`.
 
 #include "core/model/DetectionResult.h"
-#include "core/services/IFlowExtractor.h"
+#include "core/model/FlowInfo.h"
 
 #include <cstddef>
 #include <string_view>

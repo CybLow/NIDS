@@ -18,7 +18,7 @@ class CaptureController;
 
 /// Command that starts a capture session.
 /// Undo stops the capture.
-class StartCaptureCommand : public nids::core::ICommand {
+class StartCaptureCommand : public core::ICommand {
 public:
     /**
      * Construct the command.
@@ -27,7 +27,7 @@ public:
      * @param dumpFile    Optional pcap dump file path.
      */
     StartCaptureCommand(CaptureController& controller,
-                        nids::core::PacketFilter filter,
+                        core::PacketFilter filter,
                         std::string dumpFile = "")
         : controller_(controller),
           filter_(std::move(filter)),
@@ -42,13 +42,13 @@ public:
 
 private:
     CaptureController& controller_;
-    nids::core::PacketFilter filter_;
+    core::PacketFilter filter_;
     std::string dumpFile_;
 };
 
 /// Command that stops the current capture session.
 /// Undo restarts capture with the previously used filter.
-class StopCaptureCommand : public nids::core::ICommand {
+class StopCaptureCommand : public core::ICommand {
 public:
     /**
      * Construct the command.
@@ -58,7 +58,7 @@ public:
      * @param dumpFile    The dump file that was used (needed for undo).
      */
     StopCaptureCommand(CaptureController& controller,
-                       nids::core::PacketFilter filter = {},
+                       core::PacketFilter filter = {},
                        std::string dumpFile = "")
         : controller_(controller),
           filter_(std::move(filter)),
@@ -73,7 +73,7 @@ public:
 
 private:
     CaptureController& controller_;
-    nids::core::PacketFilter filter_;
+    core::PacketFilter filter_;
     std::string dumpFile_;
 };
 

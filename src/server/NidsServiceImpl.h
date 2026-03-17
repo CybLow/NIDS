@@ -33,66 +33,66 @@
 namespace nids::server {
 
 /** gRPC service implementation for NidsService. */
-class NidsServiceImpl final : public ::nids::NidsService::Service {
+class NidsServiceImpl final : public NidsService::Service {
 public:
     /**
      * Construct with injected dependencies.
      * All references are non-owning and must outlive the service.
      */
-    NidsServiceImpl(nids::core::IPacketCapture& capture,
-                    nids::core::IFlowExtractor& extractor,
-                    nids::core::IPacketAnalyzer& analyzer,
-                    nids::core::IFeatureNormalizer& normalizer,
-                    nids::app::HybridDetectionService& hybridService);
+    NidsServiceImpl(core::IPacketCapture& capture,
+                    core::IFlowExtractor& extractor,
+                    core::IPacketAnalyzer& analyzer,
+                    core::IFeatureNormalizer& normalizer,
+                    app::HybridDetectionService& hybridService);
 
     ~NidsServiceImpl() override = default;
 
     grpc::Status ListInterfaces(
         grpc::ServerContext* context,
-        const ::nids::ListInterfacesRequest* request,
-        ::nids::ListInterfacesResponse* response) override;
+        const ListInterfacesRequest* request,
+        ListInterfacesResponse* response) override;
 
     grpc::Status StartCapture(
         grpc::ServerContext* context,
-        const ::nids::StartCaptureRequest* request,
-        ::nids::StartCaptureResponse* response) override;
+        const StartCaptureRequest* request,
+        StartCaptureResponse* response) override;
 
     grpc::Status StopCapture(
         grpc::ServerContext* context,
-        const ::nids::StopCaptureRequest* request,
-        ::nids::StopCaptureResponse* response) override;
+        const StopCaptureRequest* request,
+        StopCaptureResponse* response) override;
 
     grpc::Status StreamDetections(
         grpc::ServerContext* context,
-        const ::nids::StreamDetectionsRequest* request,
-        grpc::ServerWriter<::nids::DetectionEvent>* writer) override;
+        const StreamDetectionsRequest* request,
+        grpc::ServerWriter<DetectionEvent>* writer) override;
 
     grpc::Status StreamPackets(
         grpc::ServerContext* context,
-        const ::nids::StreamPacketsRequest* request,
-        grpc::ServerWriter<::nids::PacketEvent>* writer) override;
+        const StreamPacketsRequest* request,
+        grpc::ServerWriter<PacketEvent>* writer) override;
 
     grpc::Status AnalyzeCapture(
         grpc::ServerContext* context,
-        const ::nids::AnalyzeCaptureRequest* request,
-        ::nids::AnalyzeCaptureResponse* response) override;
+        const AnalyzeCaptureRequest* request,
+        AnalyzeCaptureResponse* response) override;
 
     grpc::Status GetStatus(
         grpc::ServerContext* context,
-        const ::nids::GetStatusRequest* request,
-        ::nids::GetStatusResponse* response) override;
+        const GetStatusRequest* request,
+        GetStatusResponse* response) override;
 
 private:
-    nids::core::IPacketCapture& capture_;
-    nids::core::IFlowExtractor& extractor_;
-    nids::core::IPacketAnalyzer& analyzer_;
-    nids::core::IFeatureNormalizer& normalizer_;
-    nids::app::HybridDetectionService& hybridService_;
+    core::IPacketCapture& capture_;
+    core::IFlowExtractor& extractor_;
+    core::IPacketAnalyzer& analyzer_;
+    core::IFeatureNormalizer& normalizer_;
+    app::HybridDetectionService& hybridService_;
 
     // Session state
     mutable std::mutex sessionMutex_;
-    std::unique_ptr<nids::core::CaptureSession> session_;
-    std::unique_ptr<nids::app::LiveDetectionPipeline> pipeline_;
+    std::unique_ptr<core::CaptureSession> session_;
+    std::unique_ptr<app::LiveDetectionPipeline> pipeline_;
     std::string sessionId_;
     std::string currentInterface_;
     std::atomic<bool> capturing_{false};
@@ -103,6 +103,10 @@ private:
 
     void registerSink(GrpcStreamSink* sink);
     void unregisterSink(GrpcStreamSink* sink);
+
+    /// Create session, pipeline, wire callbacks and generate session ID.
+    /// Called from StartCapture with sessionMutex_ held.
+    void createSessionPipeline(const std::string& iface);
 };
 
 } // namespace nids::server

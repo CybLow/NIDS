@@ -12,8 +12,6 @@
 #include "core/model/RuleMatch.h"
 #include "core/model/ThreatIntelMatch.h"
 
-#include <algorithm>
-#include <ranges>
 #include <vector>
 
 namespace nids::core {
@@ -47,11 +45,12 @@ struct DetectionResult {
 
     /// Maximum severity across all matched heuristic rules, or 0.0 if none.
     [[nodiscard]] float maxRuleSeverity() const noexcept {
-        if (ruleMatches.empty())
-            return 0.0f;
-        auto it = std::ranges::max_element(ruleMatches, {},
-            [](const RuleMatch& r) { return r.severity; });
-        return it->severity;
+        float maxSev = 0.0f;
+        for (const auto& r : ruleMatches) {
+            if (r.severity > maxSev)
+                maxSev = r.severity;
+        }
+        return maxSev;
     }
 
     /// True if any detection layer flagged this flow as suspicious.

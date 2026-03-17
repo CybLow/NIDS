@@ -7,10 +7,10 @@
 namespace nids::app {
 
 CaptureController::CaptureController(
-    std::unique_ptr<nids::core::IPacketCapture> capture)
+    std::unique_ptr<core::IPacketCapture> capture)
     : capture_(std::move(capture)) {
 
-    capture_->setPacketCallback([this](const nids::core::PacketInfo& info) {
+    capture_->setPacketCallback([this](const core::PacketInfo& info) {
         session_.addPacket(info);
         if (onPacketReceived_) onPacketReceived_(info);
     });
@@ -39,7 +39,7 @@ void CaptureController::disableLiveDetection() noexcept {
     pipeline_ = nullptr;
 }
 
-void CaptureController::startCapture(const nids::core::PacketFilter& filter,
+void CaptureController::startCapture(const core::PacketFilter& filter,
                                        const std::string& dumpFile) {
     if (isCapturing())
         return;
@@ -59,8 +59,8 @@ void CaptureController::startCapture(const nids::core::PacketFilter& filter,
     // Start live detection if a pipeline is configured.
     if (pipeline_) {
         pipeline_->setResultCallback(
-            [this](std::size_t /*idx*/, nids::core::DetectionResult result,
-                   nids::core::FlowInfo metadata) {
+            [this](std::size_t /*idx*/, core::DetectionResult result,
+                   core::FlowInfo metadata) {
                 // Fire callback directly — consumer is responsible for
                 // thread marshaling if needed.
                 if (onLiveFlow_) onLiveFlow_(std::move(result), std::move(metadata));
@@ -78,7 +78,7 @@ void CaptureController::startCapture(const nids::core::PacketFilter& filter,
     }
 
     const auto& actualDumpFile = dumpFile.empty()
-        ? nids::core::Configuration::instance().defaultDumpFile()
+        ? core::Configuration::instance().defaultDumpFile()
         : dumpFile;
 
     capture_->startCapture(actualDumpFile);
@@ -108,15 +108,15 @@ bool CaptureController::isCapturing() const {
     return capture_->isCapturing();
 }
 
-nids::core::CaptureSession& CaptureController::session() {
+core::CaptureSession& CaptureController::session() {
     return session_;
 }
 
-const nids::core::CaptureSession& CaptureController::session() const {
+const core::CaptureSession& CaptureController::session() const {
     return session_;
 }
 
-std::vector<std::string> CaptureController::listInterfaces() {
+std::vector<std::string> CaptureController::listInterfaces() const {
     return capture_->listInterfaces();
 }
 

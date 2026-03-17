@@ -13,8 +13,8 @@ Configuration &Configuration::instance() {
   return instance;
 }
 
-fs::path Configuration::modelPath() const { return modelPath_; }
-fs::path Configuration::modelMetadataPath() const { return metadataPath_; }
+const fs::path& Configuration::modelPath() const { return modelPath_; }
+const fs::path& Configuration::modelMetadataPath() const { return metadataPath_; }
 
 void Configuration::setModelPath(const fs::path &path) { modelPath_ = path; }
 
@@ -25,10 +25,10 @@ void Configuration::setModelMetadataPath(const fs::path &path) {
 const std::string &Configuration::defaultDumpFile() const {
   return defaultDumpFile_;
 }
-int64_t Configuration::flowTimeoutUs() const { return flowTimeoutUs_; }
-int64_t Configuration::liveFlowTimeoutUs() const { return liveFlowTimeoutUs_; }
-int64_t Configuration::maxFlowDurationUs() const { return maxFlowDurationUs_; }
-int64_t Configuration::idleThresholdUs() const { return idleThresholdUs_; }
+int64_t Configuration::flowTimeoutUs() const noexcept { return flowTimeoutUs_; }
+int64_t Configuration::liveFlowTimeoutUs() const noexcept { return liveFlowTimeoutUs_; }
+int64_t Configuration::maxFlowDurationUs() const noexcept { return maxFlowDurationUs_; }
+int64_t Configuration::idleThresholdUs() const noexcept { return idleThresholdUs_; }
 
 void Configuration::setDefaultDumpFile(std::string_view file) {
   defaultDumpFile_ = file;
@@ -52,13 +52,13 @@ void Configuration::setIdleThresholdUs(int64_t thresholdUs) {
 
 fs::path Configuration::tempDirectory() { return fs::temp_directory_path(); }
 
-int Configuration::onnxIntraOpThreads() const { return onnxIntraOpThreads_; }
+int Configuration::onnxIntraOpThreads() const noexcept { return onnxIntraOpThreads_; }
 
 void Configuration::setOnnxIntraOpThreads(int threads) {
   onnxIntraOpThreads_ = threads;
 }
 
-fs::path Configuration::threatIntelDirectory() const { return threatIntelDir_; }
+const fs::path& Configuration::threatIntelDirectory() const { return threatIntelDir_; }
 
 void Configuration::setThreatIntelDirectory(const fs::path &path) {
   threatIntelDir_ = path;

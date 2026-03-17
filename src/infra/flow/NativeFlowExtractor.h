@@ -179,6 +179,11 @@ private:
 
   /// Finalize bulk counters and move flow to completedFlows_.
   void completeFlow(const FlowKey &key, FlowStats &stats);
+
+  /// Complete the current flow for a 5-tuple and restart with fresh stats.
+  /// Used by both max-packet and max-duration splitting paths (DRY).
+  void restartFlow(const FlowKey &key, FlowStats &stats,
+                   std::int64_t timestampUs);
 };
 
 } // namespace nids::infra

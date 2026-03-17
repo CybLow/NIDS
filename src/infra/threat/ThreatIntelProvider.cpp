@@ -142,7 +142,7 @@ std::size_t ThreatIntelProvider::loadFeedFile(const std::string &filePath,
   return count;
 }
 
-nids::core::ThreatIntelLookup
+core::ThreatIntelLookup
 ThreatIntelProvider::lookup(std::string_view ip) const {
   auto ipNum = parseIpv4(ip);
   if (ipNum == 0) {
@@ -151,7 +151,7 @@ ThreatIntelProvider::lookup(std::string_view ip) const {
   return lookup(ipNum);
 }
 
-nids::core::ThreatIntelLookup
+core::ThreatIntelLookup
 ThreatIntelProvider::lookup(std::uint32_t ip) const {
   // Check individual IPs first (O(1))
   if (auto it = ipEntries_.find(ip); it != ipEntries_.end()) {
@@ -163,9 +163,9 @@ ThreatIntelProvider::lookup(std::uint32_t ip) const {
   return lookupCidr(ip);
 }
 
-nids::core::ThreatIntelLookup
+core::ThreatIntelLookup
 ThreatIntelProvider::lookupCidr(std::uint32_t ip) const {
-  if (auto it = std::ranges::find_if(cidrRanges_,
+  if (const auto it = std::ranges::find_if(cidrRanges_,
                                      [ip](const CidrRange &range) {
                                        return (ip & range.mask) ==
                                               range.network;
@@ -204,7 +204,7 @@ std::uint32_t ThreatIntelProvider::parseIpv4(std::string_view ip) noexcept {
     result = (result << 8) | octet;
     ++octets;
 
-    auto consumed = static_cast<std::size_t>(ptr - remaining.data());
+    const auto consumed = static_cast<std::size_t>(ptr - remaining.data());
     remaining = remaining.substr(consumed);
 
     if (!remaining.empty() && remaining[0] == '.') {
@@ -227,10 +227,10 @@ bool ThreatIntelProvider::parseCidr(std::string_view cidr,
     return false;
   }
 
-  auto ipPart = cidr.substr(0, slashPos);
-  auto prefixPart = cidr.substr(slashPos + 1);
+  const auto ipPart = cidr.substr(0, slashPos);
+  const auto prefixPart = cidr.substr(slashPos + 1);
 
-  auto ip = parseIpv4(ipPart);
+  const auto ip = parseIpv4(ipPart);
   if (ip == 0 && ipPart != "0.0.0.0") {
     return false;
   }

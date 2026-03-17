@@ -11,6 +11,7 @@
 #include "app/HybridDetectionService.h"
 #include "core/model/DetectionResult.h"
 #include "core/model/PredictionResult.h"
+#include "helpers/TestHelpers.h"
 #include "stress/StressTestHelpers.h"
 
 #include <atomic>
@@ -28,15 +29,9 @@ using nids::test::ScopedTimer;
 using nids::test::StubAnalyzer;
 using nids::test::StubRuleEngine;
 using nids::test::StubThreatIntel;
+using nids::testing::makePrediction;
 
 namespace {
-
-PredictionResult makePred(AttackType type, float confidence) {
-  PredictionResult pred;
-  pred.classification = type;
-  pred.confidence = confidence;
-  return pred;
-}
 
 FlowInfo makeFlowMeta(std::uint32_t flowId, double pps = 500.0) {
   FlowInfo meta;
@@ -72,7 +67,7 @@ TEST_F(ConcurrentAnalysisTest, singleThread_10kEvaluations) {
     ScopedTimer timer(elapsedMs);
     for (std::size_t i = 0; i < kFlows; ++i) {
       auto pred =
-          (i % 3 == 0) ? makePred(DdosIcmp, 0.9f) : makePred(Benign, 0.95f);
+          (i % 3 == 0) ? makePrediction(DdosIcmp, 0.9f) : makePrediction(Benign, 0.95f);
       auto meta = makeFlowMeta(static_cast<std::uint32_t>(i));
       auto result = service.evaluate(pred, meta.srcIp, meta.dstIp, meta);
       if (result.finalVerdict != AttackType::Benign) {
@@ -110,8 +105,8 @@ TEST_F(ConcurrentAnalysisTest, multiThread_4threads_10kEach) {
       threads.emplace_back([&service, &totalAttacks, &totalErrors, t] {
         for (std::size_t i = 0; i < kFlowsPerThread; ++i) {
           auto flowId = static_cast<std::uint32_t>(t * kFlowsPerThread + i);
-          auto pred = (i % 5 == 0) ? makePred(SynFlood, 0.88f)
-                                   : makePred(Benign, 0.92f);
+          auto pred = (i % 5 == 0) ? makePrediction(SynFlood, 0.88f)
+                                   : makePrediction(Benign, 0.92f);
           auto meta = makeFlowMeta(flowId);
 
           try {
@@ -165,7 +160,7 @@ TEST_F(ConcurrentAnalysisTest, multiThread_8threads_highContention) {
         for (std::size_t i = 0; i < kFlowsPerThread; ++i) {
           // Cycle through IPs including blacklisted ones
           auto flowId = static_cast<std::uint32_t>(i % 10);
-          auto pred = makePred(AttackType::Benign, 0.7f);
+          auto pred = makePrediction(AttackType::Benign, 0.7f);
           auto meta = makeFlowMeta(flowId);
           // Override srcIp to cycle through blacklisted IPs
           meta.srcIp = std::format("10.0.0.{}", flowId);
@@ -213,7 +208,7 @@ TEST_F(ConcurrentAnalysisTest, weightChangeUnderLoad) {
       std::size_t count = 0;
       while (running.load(std::memory_order_relaxed) ||
              count < kFlowsPerThread) {
-        auto pred = makePred(AttackType::PortScanning, 0.75f);
+        auto pred = makePrediction(AttackType::PortScanning, 0.75f);
         auto meta = makeFlowMeta(static_cast<std::uint32_t>(count));
         try {
           auto result = service.evaluate(pred, meta.srcIp, meta.dstIp, meta);

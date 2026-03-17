@@ -73,20 +73,19 @@ public:
     [[nodiscard]] StatusInfo getStatus() const;
 
     /** Callback type for streamed detection events. */
-    using DetectionCallback = std::function<void(const ::nids::DetectionEvent&)>;
+    using DetectionCallback = std::function<void(const DetectionEvent&)>;
 
     /** Stream detection events from the server. Blocks until cancelled or
      *  stream ends. Call from a dedicated thread. */
     void streamDetections(const std::string& sessionId,
-                          ::nids::DetectionFilter filter,
+                          DetectionFilter filter,
                           const DetectionCallback& callback,
                           const std::atomic<bool>& stopFlag) const;
 
 private:
     ClientConfig config_;
     std::shared_ptr<grpc::Channel> channel_;
-    std::unique_ptr<::nids::NidsService::Stub> stub_;
-    bool connected_ = false;
+    std::unique_ptr<NidsService::Stub> stub_;
 };
 
 } // namespace nids::client

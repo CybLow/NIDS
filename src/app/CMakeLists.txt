@@ -16,6 +16,7 @@ target_link_libraries(nids_app
     PUBLIC
         nids_core
     PRIVATE
+        nids_infra
         spdlog::spdlog
 )
 

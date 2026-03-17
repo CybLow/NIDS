@@ -20,19 +20,19 @@ namespace {
 
 // Standard IP protocol numbers
 // Use shared protocol constants from core/model/ProtocolConstants.h
-using nids::core::kIpProtoIcmp;
-using nids::core::kIpProtoTcp;
-using nids::core::kIpProtoUdp;
+using core::kIpProtoIcmp;
+using core::kIpProtoTcp;
+using core::kIpProtoUdp;
 
 // TCP flag bitmasks — use shared constants from infra/parsing/PacketParser.h
-using nids::infra::tcp_flags::kFin;
-using nids::infra::tcp_flags::kSyn;
-using nids::infra::tcp_flags::kRst;
-using nids::infra::tcp_flags::kPsh;
-using nids::infra::tcp_flags::kAck;
-using nids::infra::tcp_flags::kUrg;
-using nids::infra::tcp_flags::kCwr;
-using nids::infra::tcp_flags::kEce;
+using tcp_flags::kFin;
+using tcp_flags::kSyn;
+using tcp_flags::kRst;
+using tcp_flags::kPsh;
+using tcp_flags::kAck;
+using tcp_flags::kUrg;
+using tcp_flags::kCwr;
+using tcp_flags::kEce;
 
 /// Interval between periodic sweeps during batch pcap processing.
 constexpr std::int64_t kBatchSweepIntervalUs = 30'000'000; // 30 seconds
@@ -189,17 +189,11 @@ void NativeFlowExtractor::logDiagnostics() const {
   spdlog::info("=======================================");
 }
 
-// finalizeBulks() removed — replaced by completeFlow() loop in
-// extractFeatures() and finalizeAllFlows().
-
-// Old extractTcpFlags() and parsePacketHeaders() removed — now delegated to
-// the shared nids::infra::parsePacketHeaders() in infra/parsing/PacketParser.cpp.
-
 void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
                                                 std::int64_t timestampUs) {
   pcpp::Packet parsedPacket(&rawPacket);
   ParsedPacket pkt;
-  if (!nids::infra::parsePacketHeaders(parsedPacket, pkt)) [[unlikely]] {
+  if (!parsePacketHeaders(parsedPacket, pkt)) [[unlikely]] {
     ++diag_.packetsSkipped;
     return;
   }
@@ -255,12 +249,7 @@ void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
   auto totalPkts = stats.totalFwdPackets + stats.totalBwdPackets;
   if (totalPkts >= kMaxFlowPackets) {
     ++diag_.flowsCompletedMaxPkts;
-    completeFlow(activeKey, stats);
-    // Restart flow for same 5-tuple.  Seed start/last timestamps so the
-    // new flow isn't immediately expired by the next sweep.
-    auto &fresh = (flows_[activeKey] = FlowStats{});
-    fresh.startTimeUs = timestampUs;
-    fresh.lastTimeUs = timestampUs;
+    restartFlow(activeKey, stats, timestampUs);
     return;
   }
 
@@ -275,11 +264,18 @@ void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
   if (liveMode_ && maxFlowDurationUs_ > 0 &&
       (timestampUs - stats.startTimeUs) >= maxFlowDurationUs_) {
     ++diag_.flowsCompletedDuration;
-    completeFlow(activeKey, stats);
-    auto &fresh = (flows_[activeKey] = FlowStats{});
-    fresh.startTimeUs = timestampUs;
-    fresh.lastTimeUs = timestampUs;
+    restartFlow(activeKey, stats, timestampUs);
   }
+}
+
+void NativeFlowExtractor::restartFlow(const FlowKey &key, FlowStats &stats,
+                                      std::int64_t timestampUs) {
+  completeFlow(key, stats);
+  // Restart flow for same 5-tuple.  Seed start/last timestamps so the
+  // new flow isn't immediately expired by the next sweep.
+  auto &fresh = (flows_[key] = FlowStats{});
+  fresh.startTimeUs = timestampUs;
+  fresh.lastTimeUs = timestampUs;
 }
 
 NativeFlowExtractor::FlowLookupResult
@@ -484,7 +480,7 @@ void NativeFlowExtractor::completeFlow(const FlowKey &key, FlowStats &stats) {
   completedFlows_.emplace_back(key, std::move(stats));
 }
 
-const std::vector<nids::core::FlowInfo> &
+const std::vector<core::FlowInfo> &
 NativeFlowExtractor::flowMetadata() const noexcept {
   return flowMetadata_;
 }

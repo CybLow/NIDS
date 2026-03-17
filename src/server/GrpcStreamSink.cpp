@@ -1,62 +1,99 @@
 #include "server/GrpcStreamSink.h"
 
 #include "core/model/AttackType.h"
+#include "core/model/DetectionSource.h"
 #include "core/model/ProtocolConstants.h"
 
 namespace nids::server {
 
+namespace {
+
+/// Convert a core DetectionSource to the protobuf DetectionSourceType.
+/// Uses an explicit switch instead of static_cast to prevent silent
+/// mismatches if either enum is reordered.
+[[nodiscard]] DetectionSourceType toProtoSource(
+    core::DetectionSource source) {
+    using enum core::DetectionSource;
+    switch (source) {
+    case MlOnly:           return SOURCE_ML_ONLY;
+    case ThreatIntel:      return SOURCE_THREAT_INTEL;
+    case HeuristicRule:    return SOURCE_HEURISTIC_RULE;
+    case MlPlusThreatIntel: return SOURCE_ML_PLUS_TI;
+    case MlPlusHeuristic:  return SOURCE_ML_PLUS_RULE;
+    case Ensemble:         return SOURCE_ENSEMBLE;
+    case None:             return SOURCE_UNKNOWN;
+    }
+    return SOURCE_UNKNOWN;
+}
+
+} // anonymous namespace
+
 GrpcStreamSink::GrpcStreamSink(std::shared_ptr<EventQueue> queue,
-                               ::nids::DetectionFilter filter)
+                               DetectionFilter filter)
     : queue_(std::move(queue)), filter_(filter) {}
 
 void GrpcStreamSink::onFlowResult(
     std::size_t flowIndex,
-    const nids::core::DetectionResult& result,
-    const nids::core::FlowInfo& flow) {
+    const core::DetectionResult& result,
+    const core::FlowInfo& flow) {
 
     // Apply client-requested filter
     const bool isAttack = result.isFlagged();
-    if (filter_ == ::nids::FILTER_FLAGGED && !isAttack) {
+    if (filter_ == FILTER_FLAGGED && !isAttack) {
         return;
     }
-    if (filter_ == ::nids::FILTER_CLEAN && isAttack) {
+    if (filter_ == FILTER_CLEAN && isAttack) {
         return;
     }
 
-    ::nids::DetectionEvent event;
+    DetectionEvent event;
     populateDetectionEvent(event, flowIndex, result, flow);
     std::ignore = queue_->tryPush(std::move(event));
 }
 
 void GrpcStreamSink::populateDetectionEvent(
-    ::nids::DetectionEvent& event,
+    DetectionEvent& event,
     std::size_t flowIndex,
-    const nids::core::DetectionResult& result,
-    const nids::core::FlowInfo& flow) {
+    const core::DetectionResult& result,
+    const core::FlowInfo& flow) {
 
     event.set_flow_index(flowIndex);
+    populateFlowMetadata(event, flow);
+    populateMlClassification(event, result);
+    populateMatchesAndVerdict(event, result);
+}
 
-    // Flow metadata
+void GrpcStreamSink::populateFlowMetadata(
+    DetectionEvent& event,
+    const core::FlowInfo& flow) {
+
     auto* meta = event.mutable_flow();
     meta->set_src_ip(flow.srcIp);
     meta->set_dst_ip(flow.dstIp);
     meta->set_src_port(flow.srcPort);
     meta->set_dst_port(flow.dstPort);
-    // Convert protocol number to human-readable name
-    meta->set_protocol(std::string(nids::core::protocolToName(flow.protocol)));
+    meta->set_protocol(std::string(core::protocolToName(flow.protocol)));
     meta->set_total_fwd_packets(flow.totalFwdPackets);
     meta->set_total_bwd_packets(flow.totalBwdPackets);
     meta->set_flow_duration_us(static_cast<std::uint64_t>(flow.flowDurationUs));
+}
 
-    // ML classification
+void GrpcStreamSink::populateMlClassification(
+    DetectionEvent& event,
+    const core::DetectionResult& result) {
+
     event.set_ml_classification(
-        std::string(nids::core::attackTypeToString(result.mlResult.classification)));
+        std::string(core::attackTypeToString(result.mlResult.classification)));
     event.set_ml_confidence(result.mlResult.confidence);
 
-    // ML probabilities (16 classes)
     for (const auto prob : result.mlResult.probabilities) {
         event.add_ml_probabilities(prob);
     }
+}
+
+void GrpcStreamSink::populateMatchesAndVerdict(
+    DetectionEvent& event,
+    const core::DetectionResult& result) {
 
     // Threat intelligence matches
     for (const auto& ti : result.threatIntelMatches) {
@@ -74,13 +111,12 @@ void GrpcStreamSink::populateDetectionEvent(
         match->set_severity(rule.severity);
     }
 
-    // Combined result
-    event.set_verdict(result.finalVerdict == nids::core::AttackType::Benign
-                          ? ::nids::VERDICT_BENIGN
-                          : ::nids::VERDICT_ATTACK);
+    // Combined verdict
+    event.set_verdict(result.finalVerdict == core::AttackType::Benign
+                          ? VERDICT_BENIGN
+                          : VERDICT_ATTACK);
     event.set_combined_score(result.combinedScore);
-    event.set_source(
-        static_cast<::nids::DetectionSourceType>(result.detectionSource));
+    event.set_source(toProtoSource(result.detectionSource));
 }
 
 } // namespace nids::server

@@ -7,7 +7,7 @@
 
 namespace nids::infra {
 
-std::unique_ptr<nids::core::IPacketAnalyzer>
+std::unique_ptr<core::IPacketAnalyzer>
 createAnalyzer(AnalyzerBackend backend) {
     if (backend == AnalyzerBackend::Onnx) {
         spdlog::debug("Creating ONNX Runtime analyzer");

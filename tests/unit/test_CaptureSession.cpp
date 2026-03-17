@@ -1,10 +1,13 @@
 #include <gtest/gtest.h>
 #include "core/model/CaptureSession.h"
+#include "core/model/ProtocolConstants.h"
 
 using nids::core::CaptureSession;
 using nids::core::PacketInfo;
 using nids::core::AttackType;
 using nids::core::DetectionResult;
+using nids::core::kIpProtoTcp;
+using nids::core::kIpProtoUdp;
 
 /// Helper: create a DetectionResult with the given final verdict.
 static DetectionResult makeResult(AttackType verdict) {
@@ -22,7 +25,7 @@ TEST(CaptureSession, initiallyEmpty) {
 TEST(CaptureSession, addPacketIncreasesCount) {
     CaptureSession session;
     PacketInfo pkt;
-    pkt.protocol = "TCP";
+    pkt.protocol = kIpProtoTcp;
     pkt.ipSource = "192.168.1.1";
     session.addPacket(pkt);
     EXPECT_EQ(session.packetCount(), 1u);
@@ -31,7 +34,7 @@ TEST(CaptureSession, addPacketIncreasesCount) {
 TEST(CaptureSession, getPacketReturnsCorrectData) {
     CaptureSession session;
     PacketInfo pkt;
-    pkt.protocol = "UDP";
+    pkt.protocol = kIpProtoUdp;
     pkt.ipSource = "10.0.0.1";
     pkt.ipDestination = "10.0.0.2";
     pkt.portSource = 53;
@@ -39,7 +42,7 @@ TEST(CaptureSession, getPacketReturnsCorrectData) {
     session.addPacket(pkt);
 
     const auto retrieved = session.getPacket(0);  // Returns by value (safe).
-    EXPECT_EQ(retrieved.protocol, "UDP");
+    EXPECT_EQ(retrieved.protocol, kIpProtoUdp);
     EXPECT_EQ(retrieved.ipSource, "10.0.0.1");
     EXPECT_EQ(retrieved.ipDestination, "10.0.0.2");
     EXPECT_EQ(retrieved.portSource, 53);
@@ -65,7 +68,7 @@ TEST(CaptureSession, getDetectionResultOutOfRangeReturnsUnknown) {
 TEST(CaptureSession, clearResetsEverything) {
     CaptureSession session;
     PacketInfo pkt;
-    pkt.protocol = "TCP";
+    pkt.protocol = kIpProtoTcp;
     session.addPacket(pkt);
     session.setDetectionResult(0, makeResult(AttackType::Benign));
 
@@ -78,7 +81,7 @@ TEST(CaptureSession, multiplePackets) {
     CaptureSession session;
     for (int i = 0; i < 100; ++i) {
         PacketInfo pkt;
-        pkt.protocol = "TCP";
+        pkt.protocol = kIpProtoTcp;
         pkt.portSource = static_cast<std::uint16_t>(i);
         session.addPacket(pkt);
     }
@@ -146,7 +149,7 @@ TEST(CaptureSession, clear_alsoResetsDetectionResults) {
 TEST(CaptureSession, packetsAndResults_independent) {
     CaptureSession session;
     PacketInfo pkt;
-    pkt.protocol = "TCP";
+    pkt.protocol = kIpProtoTcp;
     session.addPacket(pkt);
     // 1 packet but no detection results yet
     EXPECT_EQ(session.packetCount(), 1u);
