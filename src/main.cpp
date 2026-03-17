@@ -35,7 +35,7 @@ struct CliArgs {
 
 CliArgs parseArgs(int argc, char *argv[]) {
   CliArgs args;
-  for (int i = 1; i < argc; ++i) {
+  for (int i = 1; i < argc; i++) { // NOSONAR — manual ++i below is intentional
     auto arg = std::string_view{argv[i]};
     if (arg == "--config" && i + 1 < argc) {
       args.configPath = argv[++i];
@@ -84,7 +84,7 @@ int runHeadless(const CliArgs &args, const nids::core::Configuration &config) {
   // -- Packet Capture --
   auto capture = std::make_unique<nids::infra::PcapCapture>();
   if (auto result = capture->initialize(args.interface, args.bpfFilter);
-      !result) {
+      !result.has_value()) {
     spdlog::critical("Failed to initialize capture on '{}': {}", args.interface,
                      result.error());
     return 1;
@@ -133,7 +133,7 @@ int runGui(int argc, char *argv[], const nids::core::Configuration &config) {
       std::move(batchMl.normalizer));
   if (auto result = analysisService->loadNormalization(
           config.modelMetadataPath().string());
-      !result) {
+      !result.has_value()) {
     spdlog::warn("Feature normalization metadata not loaded from '{}': {}",
                  config.modelMetadataPath().string(), result.error());
   }
@@ -180,7 +180,7 @@ int main(int argc, char *argv[]) {
   auto &config = nids::core::Configuration::instance();
   if (!args.configPath.empty()) {
     if (auto result = nids::infra::loadConfigFromFile(args.configPath, config);
-        !result) {
+        !result.has_value()) {
       spdlog::critical("Failed to parse config file '{}': {}",
                        args.configPath.string(), result.error());
       return 1;

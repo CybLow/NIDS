@@ -16,8 +16,7 @@ constexpr std::array kStandardApps = {
     "ALL", "HTTP", "FTP", "SSH", "HTTPS", "SMTP", "DNS", "Telnet", "Unknown"};
 } // anonymous namespace
 
-FilterPanel::FilterPanel(const core::ServiceRegistry &registry,
-                         QWidget *parent)
+FilterPanel::FilterPanel(const core::ServiceRegistry &registry, QWidget *parent)
     : QWidget(parent), serviceRegistry_(registry) {
   setupLayout();
   populateProtocols();
@@ -76,7 +75,7 @@ void FilterPanel::setupLayout() {
       R"(^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$)");
   portRegex_ = QRegularExpression(
       R"(^([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$)");
-  ipValidator_ = new QRegularExpressionValidator(ipRegex_, this); // NOSONAR
+  ipValidator_ = new QRegularExpressionValidator(ipRegex_, this);     // NOSONAR
   portValidator_ = new QRegularExpressionValidator(portRegex_, this); // NOSONAR
 
   connect(startStopButton_, &QPushButton::clicked, this,
@@ -107,7 +106,7 @@ void FilterPanel::populateProtocols() {
 void FilterPanel::populateApplications() {
   applicationCombo_->blockSignals(true);
   applicationCombo_->clear();
-  for (const auto* app : kStandardApps) {
+  for (const auto *app : kStandardApps) {
     applicationCombo_->addItem(app);
   }
   applicationCombo_->addItem("Other...");
@@ -180,38 +179,42 @@ void FilterPanel::onApplicationChanged(int index) {
   if (index == -1)
     return;
 
-  if (QString selected = applicationCombo_->itemText(index);
-      selected == "Other...") {
-    ServiceDialog dialog(serviceRegistry_.getUniqueServices(), this);
-    if (dialog.exec() == QDialog::Accepted) {
-      const QString &service = dialog.getSelectedService();
-      if (!service.isEmpty()) {
-        if (int existing = applicationCombo_->findText(lastCustomService_);
-            existing != -1) {
-          applicationCombo_->removeItem(existing);
-        }
-        applicationCombo_->blockSignals(true);
-        applicationCombo_->addItem(service);
-        applicationCombo_->setCurrentIndex(
-            applicationCombo_->findText(service));
-        applicationCombo_->blockSignals(false);
-        lastCustomService_ = service;
-      }
-    }
+  if (applicationCombo_->itemText(index) != "Other...") {
+    return;
   }
+
+  ServiceDialog dialog(serviceRegistry_.getUniqueServices(), this);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+
+  const QString &service = dialog.getSelectedService();
+  if (service.isEmpty()) {
+    return;
+  }
+
+  if (int existing = applicationCombo_->findText(lastCustomService_);
+      existing != -1) {
+    applicationCombo_->removeItem(existing);
+  }
+  applicationCombo_->blockSignals(true);
+  applicationCombo_->addItem(service);
+  applicationCombo_->setCurrentIndex(applicationCombo_->findText(service));
+  applicationCombo_->blockSignals(false);
+  lastCustomService_ = service;
 }
 
 void FilterPanel::updateApplicationFromPort() {
   QStringList majorApps;
   majorApps.reserve(static_cast<int>(kStandardApps.size()));
-  for (const auto* app : kStandardApps) {
+  for (const auto *app : kStandardApps) {
     majorApps.append(app);
   }
 
   bool srcOk = false;
   bool dstOk = false;
-  auto srcPort = static_cast<std::uint16_t>(sourcePortEdit_->text().toUShort(&srcOk));
-  auto dstPort = static_cast<std::uint16_t>(destPortEdit_->text().toUShort(&dstOk));
+  auto srcPort = sourcePortEdit_->text().toUShort(&srcOk);
+  auto dstPort = destPortEdit_->text().toUShort(&dstOk);
 
   auto update = [&](std::uint16_t port) {
     auto name = QString::fromStdString(serviceRegistry_.getServiceByPort(port));

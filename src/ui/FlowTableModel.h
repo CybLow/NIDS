@@ -42,8 +42,7 @@ public:
   };
 
   /// Total number of columns (integral constant for use in array sizes).
-  static constexpr int kColumnCount =
-      static_cast<int>(std::to_underlying(Column::ColumnCount));
+  static constexpr int kColumnCount = std::to_underlying(Column::ColumnCount);
 
   /// Per-flow data: detection result + connection metadata.
   struct FlowRow {

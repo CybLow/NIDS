@@ -29,28 +29,29 @@ namespace nids::core {
 /// for every completed flow — keep it fast or enqueue internally.
 class IOutputSink {
 public:
-    virtual ~IOutputSink() = default;
+  virtual ~IOutputSink() = default;
 
-    /// Human-readable name of this sink (for logging and diagnostics).
-    [[nodiscard]] virtual std::string_view name() const noexcept = 0;
+  /// Human-readable name of this sink (for logging and diagnostics).
+  [[nodiscard]] virtual std::string_view name() const noexcept = 0;
 
-    /// Called once when the capture session starts.
-    /// Sinks can open files, connect to remote endpoints, etc.
-    /// @return true if initialization succeeded.
-    [[nodiscard]] virtual bool start() { return true; }
+  /// Called once when the capture session starts.
+  /// Sinks can open files, connect to remote endpoints, etc.
+  /// @return true if initialization succeeded.
+  [[nodiscard]] virtual bool start() { return true; }
 
-    /// Called for every completed flow after detection.
-    ///
-    /// @param flowIndex  Sequential flow number within this session.
-    /// @param result     Full detection result (ML + TI + rules + verdict).
-    /// @param flow       Flow metadata (5-tuple, packet counts, duration).
-    virtual void onFlowResult(std::size_t flowIndex,
-                              const DetectionResult& result,
-                              const FlowInfo& flow) = 0;
+  /// Called for every completed flow after detection.
+  ///
+  /// @param flowIndex  Sequential flow number within this session.
+  /// @param result     Full detection result (ML + TI + rules + verdict).
+  /// @param flow       Flow metadata (5-tuple, packet counts, duration).
+  virtual void onFlowResult(std::size_t flowIndex,
+                            const DetectionResult &result,
+                            const FlowInfo &flow) = 0;
 
-    /// Called when the capture session ends.
-    /// Sinks should flush buffers, close connections, print summaries.
-    virtual void stop() {}
+  /// Called when the capture session ends.
+  /// Sinks should flush buffers, close connections, print summaries.
+  virtual void
+  stop() { /* Default no-op: override to flush buffers or print summaries. */ }
 };
 
 } // namespace nids::core

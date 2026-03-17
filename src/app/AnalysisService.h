@@ -89,11 +89,11 @@ private:
   /// callback was not invoked (e.g. mock extractors).
   void pushBatchFallback(const FlowAnalysisWorker &worker,
                          core::BoundedQueue<FlowWorkItem> &queue,
-                         std::vector<std::vector<float>> &allFeatures);
+                         std::vector<std::vector<float>> &allFeatures) const;
 
   /// Log results and fire final callbacks.
   void reportResults(const std::string &pcapPath, std::size_t processedCount,
-                     bool noFeatures);
+                     bool noFeatures) const;
 };
 
 } // namespace nids::app

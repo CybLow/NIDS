@@ -15,14 +15,12 @@ namespace nids::infra::platform {
 inline std::atomic<bool> gShutdownRequested{false};
 
 /// Signal handler suitable for std::signal().  Sets gShutdownRequested.
-inline void signalHandler(int /*signum*/) {
-    gShutdownRequested.store(true, std::memory_order_relaxed);
-}
+inline void signalHandler(int /*signum*/) { gShutdownRequested.store(true); }
 
 /// Install signalHandler for SIGINT and SIGTERM.
 inline void installSignalHandlers() {
-    std::signal(SIGINT, signalHandler);
-    std::signal(SIGTERM, signalHandler);
+  std::signal(SIGINT, signalHandler);
+  std::signal(SIGTERM, signalHandler);
 }
 
 } // namespace nids::infra::platform

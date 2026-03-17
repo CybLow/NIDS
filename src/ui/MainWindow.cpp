@@ -35,12 +35,11 @@ constexpr int kDetailPanelStretchFactor = 1;
 constexpr int kFlowTableStretchFactor = 2;
 } // namespace
 
-MainWindow::MainWindow(
-    std::unique_ptr<app::CaptureController> controller,
-    std::unique_ptr<app::AnalysisService> analysisService,
-    app::HybridDetectionService *hybridService,
-    core::IThreatIntelligence *threatIntel,
-    core::IRuleEngine *ruleEngine, QWidget *parent)
+MainWindow::MainWindow(std::unique_ptr<app::CaptureController> controller,
+                       std::unique_ptr<app::AnalysisService> analysisService,
+                       app::HybridDetectionService *hybridService,
+                       core::IThreatIntelligence *threatIntel,
+                       core::IRuleEngine *ruleEngine, QWidget *parent)
     : QMainWindow(parent), controller_(std::move(controller)),
       analysisService_(std::move(analysisService)), threatIntel_(threatIntel),
       ruleEngine_(ruleEngine), hybridService_(hybridService) {
@@ -70,7 +69,7 @@ void MainWindow::setupUi() {
 
   // -- Packets tab --
   tableModel_ = new PacketTableModel(&serviceRegistry_, this); // NOSONAR
-  packetTable_ = new QTableView();          // NOSONAR
+  packetTable_ = new QTableView();                             // NOSONAR
   packetTable_->setModel(tableModel_);
   packetTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   packetTable_->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -158,7 +157,7 @@ void MainWindow::setupUi() {
   updateTiStatus();
 }
 
-void MainWindow::connectSignals() {
+void MainWindow::connectSignals() const {
   connect(filterPanel_, &FilterPanel::startStopClicked, this,
           &MainWindow::toggleCapture);
   connect(notificationAction_, &QAction::triggered, this,
@@ -170,35 +169,35 @@ void MainWindow::connectSignals() {
   // Flow table selection -> detail panel
   connect(flowTable_->selectionModel(), &QItemSelectionModel::selectionChanged,
           this, &MainWindow::onFlowSelectionChanged);
-
 }
 
 void MainWindow::wireControllerCallbacks() {
   // CaptureController callbacks may fire on the capture thread —
   // marshal all UI updates to the main thread via QMetaObject::invokeMethod.
 
-  controller_->setPacketReceivedCallback(
-      [this](const core::PacketInfo &info) {
-        QMetaObject::invokeMethod(this, [this, info]() {
-          onPacketReceived(info);
-        }, Qt::QueuedConnection);
-      });
+  controller_->setPacketReceivedCallback([this](const core::PacketInfo &info) {
+    QMetaObject::invokeMethod(
+        this, [this, info]() { onPacketReceived(info); }, Qt::QueuedConnection);
+  });
 
   controller_->setLiveFlowCallback(
-      [this](core::DetectionResult result,
-             core::FlowInfo metadata) {
-        QMetaObject::invokeMethod(this, [this, r = std::move(result),
-                                         m = std::move(metadata)]() {
-          flowModel_->addFlowResult(r, m);
-        }, Qt::QueuedConnection);
+      [this](core::DetectionResult result, core::FlowInfo metadata) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, r = std::move(result), m = std::move(metadata)]() {
+              flowModel_->addFlowResult(r, m);
+            },
+            Qt::QueuedConnection);
       });
 
-  controller_->setCaptureErrorCallback(
-      [this](const std::string &message) {
-        QMetaObject::invokeMethod(this, [this, msg = QString::fromStdString(message)]() {
+  controller_->setCaptureErrorCallback([this](const std::string &message) {
+    QMetaObject::invokeMethod(
+        this,
+        [this, msg = QString::fromStdString(message)]() {
           QMessageBox::warning(this, "Capture Error", msg);
-        }, Qt::QueuedConnection);
-      });
+        },
+        Qt::QueuedConnection);
+  });
 }
 
 void MainWindow::wireAnalysisCallbacks() {
@@ -206,30 +205,42 @@ void MainWindow::wireAnalysisCallbacks() {
   // marshal all UI updates to the main thread.
 
   analysisService_->setStartedCallback([this]() {
-    QMetaObject::invokeMethod(this, [this]() {
-      analysisProgress_->setVisible(true);
-      analysisProgress_->setValue(0);
-    }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+          analysisProgress_->setVisible(true);
+          analysisProgress_->setValue(0);
+        },
+        Qt::QueuedConnection);
   });
 
   analysisService_->setProgressCallback([this](int current, int total) {
-    QMetaObject::invokeMethod(this, [this, current, total]() {
-      analysisProgress_->setMaximum(total);
-      analysisProgress_->setValue(current);
-    }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(
+        this,
+        [this, current, total]() {
+          analysisProgress_->setMaximum(total);
+          analysisProgress_->setValue(current);
+        },
+        Qt::QueuedConnection);
   });
 
   analysisService_->setFinishedCallback([this]() {
-    QMetaObject::invokeMethod(this, [this]() {
-      analysisProgress_->setVisible(false);
-      populateFlowResults();
-    }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+          analysisProgress_->setVisible(false);
+          populateFlowResults();
+        },
+        Qt::QueuedConnection);
   });
 
   analysisService_->setErrorCallback([this](const std::string &message) {
-    QMetaObject::invokeMethod(this, [this, msg = QString::fromStdString(message)]() {
-      QMessageBox::warning(this, "Analysis Error", msg);
-    }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(
+        this,
+        [this, msg = QString::fromStdString(message)]() {
+          QMessageBox::warning(this, "Analysis Error", msg);
+        },
+        Qt::QueuedConnection);
   });
 }
 

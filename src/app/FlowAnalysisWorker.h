@@ -116,7 +116,7 @@ private:
     std::size_t featureCount = 0;
   };
   [[nodiscard]] FlatBatch
-  buildFlatBatch(const std::vector<FlowWorkItem> &items);
+  buildFlatBatch(const std::vector<FlowWorkItem> &items) const;
 
   core::BoundedQueue<FlowWorkItem> &queue_;
   core::IPacketAnalyzer &analyzer_;

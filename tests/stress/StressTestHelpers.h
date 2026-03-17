@@ -183,8 +183,8 @@ inline void generatePcap(const std::string &outPath, std::uint32_t packetCount,
  * Runtime. */
 class StubAnalyzer : public core::IPacketAnalyzer {
 public:
-  [[nodiscard]] std::expected<void, std::string> loadModel(
-      const std::string & /*modelPath*/) override {
+  [[nodiscard]] std::expected<void, std::string>
+  loadModel(const std::string & /*modelPath*/) override {
     return {};
   }
 
@@ -238,7 +238,8 @@ public:
   explicit StubThreatIntel(std::vector<std::string> blacklist = {})
       : blacklist_(std::move(blacklist)) {}
 
-  [[nodiscard]] std::size_t loadFeeds(const std::string & /*dir*/) override {
+  [[nodiscard]] std::size_t
+  loadFeeds(const std::filesystem::path & /*dir*/) override {
     return blacklist_.size();
   }
   [[nodiscard]] core::ThreatIntelLookup

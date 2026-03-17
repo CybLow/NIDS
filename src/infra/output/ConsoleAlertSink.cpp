@@ -5,62 +5,63 @@
 namespace nids::infra {
 
 bool ConsoleAlertSink::start() {
-    totalFlows_.store(0, std::memory_order_relaxed);
-    flaggedFlows_.store(0, std::memory_order_relaxed);
-    cleanFlows_.store(0, std::memory_order_relaxed);
-    spdlog::info("ConsoleAlertSink started (filter={})",
-                 filter_ == ConsoleFilter::All     ? "all"
-                 : filter_ == ConsoleFilter::Flagged ? "flagged"
-                                                     : "clean");
-    return true;
+  totalFlows_.store(0);
+  flaggedFlows_.store(0);
+  cleanFlows_.store(0);
+  auto filterName = [this]() -> std::string_view {
+    switch (filter_) {
+    case ConsoleFilter::All:
+      return "all";
+    case ConsoleFilter::Flagged:
+      return "flagged";
+    case ConsoleFilter::Clean:
+      return "clean";
+    }
+    return "unknown";
+  }();
+  spdlog::info("ConsoleAlertSink started (filter={})", filterName);
+  return true;
 }
 
-void ConsoleAlertSink::onFlowResult(
-    std::size_t flowIndex,
-    const core::DetectionResult& result,
-    const core::FlowInfo& flow) {
+void ConsoleAlertSink::onFlowResult(std::size_t flowIndex,
+                                    const core::DetectionResult &result,
+                                    const core::FlowInfo &flow) {
 
-    totalFlows_.fetch_add(1, std::memory_order_relaxed);
+  totalFlows_.fetch_add(1);
 
-    const bool flagged = result.isFlagged();
-    if (flagged) {
-        flaggedFlows_.fetch_add(1, std::memory_order_relaxed);
-    } else {
-        cleanFlows_.fetch_add(1, std::memory_order_relaxed);
-    }
+  const bool flagged = result.isFlagged();
+  if (flagged) {
+    flaggedFlows_.fetch_add(1);
+  } else {
+    cleanFlows_.fetch_add(1);
+  }
 
-    // Apply filter.
-    if (filter_ == ConsoleFilter::Flagged && !flagged) [[likely]] {
-        return;
-    }
-    if (filter_ == ConsoleFilter::Clean && flagged) {
-        return;
-    }
+  // Apply filter.
+  if (filter_ == ConsoleFilter::Flagged && !flagged) [[likely]] {
+    return;
+  }
+  if (filter_ == ConsoleFilter::Clean && flagged) {
+    return;
+  }
 
-    if (flagged) {
-        spdlog::warn(
-            "ALERT flow #{}: {}:{} -> {}:{} verdict={} "
-            "confidence={:.3f} source={}",
-            flowIndex, flow.srcIp, flow.srcPort,
-            flow.dstIp, flow.dstPort,
-            attackTypeToString(result.finalVerdict),
-            result.mlResult.confidence,
-            detectionSourceToString(result.detectionSource));
-    } else {
-        spdlog::debug(
-            "CLEAN flow #{}: {}:{} -> {}:{} [{}] confidence={:.3f}",
-            flowIndex, flow.srcIp, flow.srcPort,
-            flow.dstIp, flow.dstPort,
-            attackTypeToString(result.finalVerdict),
-            result.mlResult.confidence);
-    }
+  if (flagged) {
+    spdlog::warn("ALERT flow #{}: {}:{} -> {}:{} verdict={} "
+                 "confidence={:.3f} source={}",
+                 flowIndex, flow.srcIp, flow.srcPort, flow.dstIp, flow.dstPort,
+                 attackTypeToString(result.finalVerdict),
+                 result.mlResult.confidence,
+                 detectionSourceToString(result.detectionSource));
+  } else {
+    spdlog::debug("CLEAN flow #{}: {}:{} -> {}:{} [{}] confidence={:.3f}",
+                  flowIndex, flow.srcIp, flow.srcPort, flow.dstIp, flow.dstPort,
+                  attackTypeToString(result.finalVerdict),
+                  result.mlResult.confidence);
+  }
 }
 
 void ConsoleAlertSink::stop() {
-    spdlog::info("ConsoleAlertSink summary: total={} flagged={} clean={}",
-                 totalFlows_.load(std::memory_order_relaxed),
-                 flaggedFlows_.load(std::memory_order_relaxed),
-                 cleanFlows_.load(std::memory_order_relaxed));
+  spdlog::info("ConsoleAlertSink summary: total={} flagged={} clean={}",
+               totalFlows_.load(), flaggedFlows_.load(), cleanFlows_.load());
 }
 
 } // namespace nids::infra

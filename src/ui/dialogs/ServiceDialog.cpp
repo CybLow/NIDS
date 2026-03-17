@@ -5,8 +5,10 @@
 
 namespace nids::ui {
 
-ServiceDialog::ServiceDialog(const std::unordered_set<std::string> &services,
-                             QWidget *parent)
+ServiceDialog::ServiceDialog(
+    const std::unordered_set<std::string, std::hash<std::string>,
+                             std::equal_to<>> &services,
+    QWidget *parent)
     : QDialog(parent), listWidget_(new QListWidget(this)) // NOSONAR
       ,
       okButton_(new QPushButton("OK", this)) // NOSONAR

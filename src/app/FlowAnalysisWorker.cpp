@@ -15,35 +15,41 @@ FlowAnalysisWorker::FlowAnalysisWorker(core::BoundedQueue<FlowWorkItem> &queue,
     : queue_(queue), analyzer_(analyzer), normalizer_(normalizer),
       session_(session) {}
 
-FlowAnalysisWorker::~FlowAnalysisWorker() { stop(); }
+FlowAnalysisWorker::~FlowAnalysisWorker() {
+  try {
+    stop();
+  } catch (...) {
+    // Destructors must not throw.
+  }
+}
 
 void FlowAnalysisWorker::setHybridDetection(
     HybridDetectionService *service) noexcept {
-  assert(!running_.load(std::memory_order_relaxed) &&
+  assert(!running_.load() &&
          "setHybridDetection() must be called before start()");
   hybridService_ = service;
 }
 
 void FlowAnalysisWorker::setResultCallback(ResultCallback cb) noexcept {
-  assert(!running_.load(std::memory_order_relaxed) &&
+  assert(!running_.load() &&
          "setResultCallback() must be called before start()");
   resultCallback_ = std::move(cb);
 }
 
 void FlowAnalysisWorker::start() {
-  if (running_.load(std::memory_order_relaxed)) {
+  if (running_.load()) {
     return;
   }
-  running_.store(true, std::memory_order_relaxed);
-  processedCount_.store(0, std::memory_order_relaxed);
-  batchCount_.store(0, std::memory_order_relaxed);
-  callbacksFired_.store(0, std::memory_order_relaxed);
+  running_.store(true);
+  processedCount_.store(0);
+  batchCount_.store(0);
+  callbacksFired_.store(0);
   thread_ = std::jthread([this](std::stop_token /*st*/) { run(); });
   spdlog::debug("FlowAnalysisWorker started");
 }
 
 void FlowAnalysisWorker::stop() {
-  if (!running_.load(std::memory_order_relaxed)) {
+  if (!running_.load()) {
     return;
   }
   // Close the queue so the consumer loop exits after draining.
@@ -54,24 +60,19 @@ void FlowAnalysisWorker::stop() {
   if (thread_.joinable()) {
     thread_.join();
   }
-  running_.store(false, std::memory_order_relaxed);
+  running_.store(false);
   spdlog::info("=== FlowAnalysisWorker Diagnostics ===");
-  spdlog::info("  Flows processed:    {}",
-               processedCount_.load(std::memory_order_relaxed));
-  spdlog::info("  Batches processed:  {}",
-               batchCount_.load(std::memory_order_relaxed));
-  spdlog::info("  Callbacks fired:    {}",
-               callbacksFired_.load(std::memory_order_relaxed));
+  spdlog::info("  Flows processed:    {}", processedCount_.load());
+  spdlog::info("  Batches processed:  {}", batchCount_.load());
+  spdlog::info("  Callbacks fired:    {}", callbacksFired_.load());
   spdlog::info("======================================");
 }
 
 std::size_t FlowAnalysisWorker::processedCount() const noexcept {
-  return processedCount_.load(std::memory_order_relaxed);
+  return processedCount_.load();
 }
 
-bool FlowAnalysisWorker::isRunning() const noexcept {
-  return running_.load(std::memory_order_relaxed);
-}
+bool FlowAnalysisWorker::isRunning() const noexcept { return running_.load(); }
 
 void FlowAnalysisWorker::run() {
   spdlog::debug(
@@ -84,10 +85,10 @@ void FlowAnalysisWorker::run() {
       break; // Queue closed and drained.
     }
 
-    batchCount_.fetch_add(1, std::memory_order_relaxed);
-    auto startIndex = processedCount_.load(std::memory_order_relaxed);
+    batchCount_.fetch_add(1);
+    auto startIndex = processedCount_.load();
     processBatch(batch, startIndex);
-    processedCount_.fetch_add(batch.size(), std::memory_order_relaxed);
+    processedCount_.fetch_add(batch.size());
   }
 
   spdlog::debug("FlowAnalysisWorker consumer loop exited (queue closed)");
@@ -109,9 +110,10 @@ void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem> &items,
     auto index = startIndex + i;
     core::DetectionResult result;
 
-    const auto &mlResult = (i < mlResults.size())
-                               ? mlResults[i]
-                               : (mlResults.emplace_back(), mlResults.back());
+    if (i >= mlResults.size()) {
+      mlResults.emplace_back();
+    }
+    const auto &mlResult = mlResults[i];
 
     if (hybridService_ != nullptr) [[likely]] {
       result =
@@ -126,14 +128,14 @@ void FlowAnalysisWorker::processBatch(std::vector<FlowWorkItem> &items,
     session_.setDetectionResult(index, result);
 
     if (resultCallback_) {
-      callbacksFired_.fetch_add(1, std::memory_order_relaxed);
+      callbacksFired_.fetch_add(1);
       resultCallback_(index, std::move(result), std::move(items[i].metadata));
     }
   }
 }
 
-FlowAnalysisWorker::FlatBatch
-FlowAnalysisWorker::buildFlatBatch(const std::vector<FlowWorkItem> &items) {
+FlowAnalysisWorker::FlatBatch FlowAnalysisWorker::buildFlatBatch(
+    const std::vector<FlowWorkItem> &items) const {
   FlatBatch result;
   const auto batchSize = items.size();
 

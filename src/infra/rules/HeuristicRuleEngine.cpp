@@ -80,8 +80,7 @@ constexpr std::size_t kPortScanThreshold =
 /// Compute packet rate (packets/sec) from a flow.
 /// Returns std::nullopt if the flow duration is zero or negative, meaning
 /// no meaningful rate can be calculated.
-[[nodiscard]] std::optional<double>
-packetRate(const core::FlowInfo &flow) {
+[[nodiscard]] std::optional<double> packetRate(const core::FlowInfo &flow) {
   double durationSec = flow.flowDurationUs / 1'000'000.0;
   if (durationSec <= 0.0) {
     return std::nullopt;
@@ -98,12 +97,11 @@ HeuristicRuleEngine::evaluate(const core::FlowInfo &flow) const {
   std::vector<core::RuleMatch> results;
   results.reserve(4); // Typically 0-2 rules fire, pre-allocate small
 
-  auto tryAdd =
-      [&results](std::optional<core::RuleMatch> &&result) {
-        if (result.has_value()) {
-          results.push_back(std::move(*result));
-        }
-      };
+  auto tryAdd = [&results](std::optional<core::RuleMatch> &&result) {
+    if (result.has_value()) {
+      results.push_back(std::move(*result));
+    }
+  };
 
   tryAdd(checkSuspiciousPort(flow));
   tryAdd(checkSynFlood(flow));
@@ -115,8 +113,7 @@ HeuristicRuleEngine::evaluate(const core::FlowInfo &flow) const {
   return results;
 }
 
-std::vector<core::RuleMatch>
-HeuristicRuleEngine::evaluatePortScan(
+std::vector<core::RuleMatch> HeuristicRuleEngine::evaluatePortScan(
     std::string_view srcIp,
     const std::vector<std::uint16_t> &distinctDstPorts) const {
 
@@ -170,8 +167,8 @@ HeuristicRuleEngine::checkSuspiciousPort(const core::FlowInfo &flow) {
   float severity = (srcSuspicious && dstSuspicious) ? 0.8f : 0.6f;
 
   return core::RuleMatch{.ruleName = "suspicious_port",
-                                         .description = std::move(desc),
-                                         .severity = severity};
+                         .description = std::move(desc),
+                         .severity = severity};
 }
 
 std::optional<core::RuleMatch>
@@ -222,8 +219,8 @@ HeuristicRuleEngine::checkIcmpFlood(const core::FlowInfo &flow) {
   return core::RuleMatch{
       .ruleName = "icmp_flood",
       .description = std::format("ICMP traffic at {} packets/sec with {} total "
-                                  "packets -- potential ICMP flood",
-                                  *rate, totalPackets),
+                                 "packets -- potential ICMP flood",
+                                 *rate, totalPackets),
       .severity =
           std::min(1.0f, static_cast<float>(*rate / (kIcmpFloodRate * 10)))};
 }
@@ -238,8 +235,8 @@ HeuristicRuleEngine::checkBruteForce(const core::FlowInfo &flow) {
     return std::nullopt;
   }
 
-  auto totalPackets = flow.totalFwdPackets + flow.totalBwdPackets;
-  if (totalPackets < kBruteForceMinPkts) {
+  if (auto totalPackets = flow.totalFwdPackets + flow.totalBwdPackets;
+      totalPackets < kBruteForceMinPkts) {
     return std::nullopt;
   }
 
@@ -275,8 +272,8 @@ HeuristicRuleEngine::checkHighPacketRate(const core::FlowInfo &flow) {
   return core::RuleMatch{
       .ruleName = "high_packet_rate",
       .description = std::format("Extremely high packet rate: {} packets/sec "
-                                  "over {} packets -- potential DoS/DDoS",
-                                  *rate, totalPackets),
+                                 "over {} packets -- potential DoS/DDoS",
+                                 *rate, totalPackets),
       .severity =
           std::min(1.0f, static_cast<float>(*rate / (kHighPacketRate * 5)))};
 }

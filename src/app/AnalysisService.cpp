@@ -61,8 +61,8 @@ void AnalysisService::analyzeCapture(const std::string &pcapPath,
   FlowAnalysisWorker worker(queue, *analyzer_, *normalizer_, session);
   worker.setHybridDetection(hybridService_);
   worker.setResultCallback([this](std::size_t index,
-                                  core::DetectionResult /*result*/,
-                                  core::FlowInfo /*metadata*/) {
+                                  const core::DetectionResult & /*result*/,
+                                  const core::FlowInfo & /*metadata*/) {
     if (onProgress_)
       onProgress_(static_cast<int>(index + 1), 0);
   });
@@ -100,7 +100,7 @@ AnalysisService::lastFlowMetadata() const noexcept {
 
 void AnalysisService::pushBatchFallback(
     const FlowAnalysisWorker &worker, core::BoundedQueue<FlowWorkItem> &queue,
-    std::vector<std::vector<float>> &allFeatures) {
+    std::vector<std::vector<float>> &allFeatures) const {
 
   auto streamedBeforeClose = worker.processedCount();
   if (streamedBeforeClose == 0 && !allFeatures.empty()) {
@@ -120,7 +120,7 @@ void AnalysisService::pushBatchFallback(
 
 void AnalysisService::reportResults(const std::string &pcapPath,
                                     std::size_t processedCount,
-                                    bool noFeatures) {
+                                    bool noFeatures) const {
   if (noFeatures && processedCount == 0) {
     spdlog::warn("No flows extracted from '{}' (empty capture or "
                  "extraction failure)",
@@ -128,9 +128,8 @@ void AnalysisService::reportResults(const std::string &pcapPath,
   }
 
   auto total = static_cast<int>(processedCount);
-  if (total > 0) {
-    if (onProgress_)
-      onProgress_(total, total);
+  if (total > 0 && onProgress_) {
+    onProgress_(total, total);
   }
 
   spdlog::info("Analysis complete: {} flows processed", total);

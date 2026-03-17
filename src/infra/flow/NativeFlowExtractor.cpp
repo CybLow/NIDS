@@ -25,14 +25,14 @@ using core::kIpProtoTcp;
 using core::kIpProtoUdp;
 
 // TCP flag bitmasks — use shared constants from infra/parsing/PacketParser.h
-using tcp_flags::kFin;
-using tcp_flags::kSyn;
-using tcp_flags::kRst;
-using tcp_flags::kPsh;
 using tcp_flags::kAck;
-using tcp_flags::kUrg;
 using tcp_flags::kCwr;
 using tcp_flags::kEce;
+using tcp_flags::kFin;
+using tcp_flags::kPsh;
+using tcp_flags::kRst;
+using tcp_flags::kSyn;
+using tcp_flags::kUrg;
 
 /// Interval between periodic sweeps during batch pcap processing.
 constexpr std::int64_t kBatchSweepIntervalUs = 30'000'000; // 30 seconds
@@ -45,10 +45,12 @@ constexpr std::uint32_t kMinBulkPackets = 2;
 
 } // anonymous namespace
 
-NativeFlowExtractor::NativeFlowExtractor()
-    : flowTimeoutUs_(core::Configuration::instance().flowTimeoutUs()),
-      maxFlowDurationUs_(core::Configuration::instance().maxFlowDurationUs()),
-      idleThresholdUs_(core::Configuration::instance().idleThresholdUs()) {}
+NativeFlowExtractor::NativeFlowExtractor() {
+  const auto &config = core::Configuration::instance();
+  flowTimeoutUs_ = config.flowTimeoutUs();
+  maxFlowDurationUs_ = config.maxFlowDurationUs();
+  idleThresholdUs_ = config.idleThresholdUs();
+}
 
 void NativeFlowExtractor::setFlowCompletionCallback(
     core::IFlowExtractor::FlowCompletionCallback cb) {
@@ -64,17 +66,14 @@ void NativeFlowExtractor::setMaxFlowDuration(std::int64_t durationUs) {
 }
 
 std::size_t NativeFlowExtractor::sweepExpiredFlows(std::int64_t nowUs) {
-  std::size_t swept = 0;
-  for (auto it = flows_.begin(); it != flows_.end();) {
-    if (nowUs - it->second.lastTimeUs > flowTimeoutUs_) {
+  auto swept = std::erase_if(flows_, [&](auto &entry) {
+    if (nowUs - entry.second.lastTimeUs > flowTimeoutUs_) {
       ++diag_.flowsCompletedTimeout;
-      completeFlow(it->first, it->second);
-      it = flows_.erase(it);
-      ++swept;
-    } else {
-      ++it;
+      completeFlow(entry.first, entry.second);
+      return true;
     }
-  }
+    return false;
+  });
   if (swept > 0) {
     spdlog::debug("sweepExpiredFlows: expired {} idle flows ({} active remain)",
                   swept, flows_.size());
@@ -125,16 +124,19 @@ void NativeFlowExtractor::processPacket(const std::uint8_t *data,
 
   // Construct a timeval for PcapPlusPlus RawPacket.
   timespec ts{};
-  ts.tv_sec = static_cast<time_t>(timestampUs / 1'000'000);
-  ts.tv_nsec = static_cast<long>((timestampUs % 1'000'000) * 1'000);
+  ts.tv_sec = timestampUs / 1'000'000;
+  ts.tv_nsec = (timestampUs % 1'000'000) * 1'000;
 
   // RawPacket with deleteRawDataOnDestruct=false: we do not own the data.
   // The const_cast is required because PcapPlusPlus RawPacket stores a
   // non-const pointer internally, but does not modify the data when
   // deleteRawDataOnDestruct is false.
-  pcpp::RawPacket rawPacket(
-      const_cast<std::uint8_t *>(data),  // NOLINT(cppcoreguidelines-pro-type-const-cast)
-      static_cast<int>(length), ts, false);
+  pcpp::RawPacket rawPacket( // NOSONAR — const_cast required:
+      const_cast<std::uint8_t *>(
+          data), // NOLINT(cppcoreguidelines-pro-type-const-cast)
+      static_cast<int>(length), ts,
+      false); // PcapPlusPlus API takes non-const but does not modify with
+              // deleteRawData=false
 
   processPacketInternal(rawPacket, timestampUs);
 
@@ -166,11 +168,10 @@ void NativeFlowExtractor::reset() {
 }
 
 void NativeFlowExtractor::logDiagnostics() const {
-  auto totalCompleted = diag_.flowsCompletedFinRst +
-                        diag_.flowsCompletedMaxPkts +
-                        diag_.flowsCompletedTimeout +
-                        diag_.flowsCompletedDuration +
-                        diag_.flowsCompletedFinalize;
+  auto totalCompleted =
+      diag_.flowsCompletedFinRst + diag_.flowsCompletedMaxPkts +
+      diag_.flowsCompletedTimeout + diag_.flowsCompletedDuration +
+      diag_.flowsCompletedFinalize;
 
   spdlog::info("=== NativeFlowExtractor Diagnostics ===");
   spdlog::info("  Packets received:       {}", diag_.packetsReceived);
@@ -246,8 +247,8 @@ void NativeFlowExtractor::processPacketInternal(pcpp::RawPacket &rawPacket,
 
   // Max-flow-size splitting: prevent mega-flows from collapsing into a single
   // sample.
-  auto totalPkts = stats.totalFwdPackets + stats.totalBwdPackets;
-  if (totalPkts >= kMaxFlowPackets) {
+  if (auto totalPkts = stats.totalFwdPackets + stats.totalBwdPackets;
+      totalPkts >= kMaxFlowPackets) {
     ++diag_.flowsCompletedMaxPkts;
     restartFlow(activeKey, stats, timestampUs);
     return;
@@ -309,9 +310,9 @@ NativeFlowExtractor::resolveFlow(const FlowKey &keyFwd, const FlowKey &keyBwd,
 }
 
 void NativeFlowExtractor::updateDirectionStats(FlowStats &stats,
-                                                const ParsedPacket &pkt,
-                                                std::int64_t timestampUs,
-                                                bool isForward) {
+                                               const ParsedPacket &pkt,
+                                               std::int64_t timestampUs,
+                                               bool isForward) {
   if (isForward) {
     stats.totalFwdPackets++;
     stats.totalFwdBytes += pkt.totalPacketLen;
@@ -404,8 +405,8 @@ void NativeFlowExtractor::updateTcpFlags(FlowStats &stats,
 }
 
 void NativeFlowExtractor::updateBulkTracking(FlowStats &stats,
-                                              std::uint32_t packetLen,
-                                              bool isForward) {
+                                             std::uint32_t packetLen,
+                                             bool isForward) {
   if (isForward) {
     stats.curFwdBulkPkts++;
     stats.curFwdBulkBytes += packetLen;
@@ -434,10 +435,10 @@ void NativeFlowExtractor::updateBulkTracking(FlowStats &stats,
 }
 
 void NativeFlowExtractor::updateActiveIdle(FlowStats &stats,
-                                             std::int64_t timestampUs,
-                                             std::int64_t prevLastTimeUs,
-                                             std::int64_t flowGapUs,
-                                             std::int64_t idleThresholdUs) {
+                                           std::int64_t timestampUs,
+                                           std::int64_t prevLastTimeUs,
+                                           std::int64_t flowGapUs,
+                                           std::int64_t idleThresholdUs) {
   if (flowGapUs > idleThresholdUs && prevLastTimeUs > 0) {
     if (stats.lastActiveTimeUs >= 0) {
       stats.activeAcc.update(

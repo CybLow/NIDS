@@ -14,6 +14,9 @@
 
 #include <QMainWindow>
 
+#include <memory>
+#include <thread>
+
 class QAction;
 class QLabel;
 class QProgressBar;
@@ -21,9 +24,6 @@ class QScrollArea;
 class QSystemTrayIcon;
 class QTabWidget;
 class QTableView;
-
-#include <memory>
-#include <thread>
 
 namespace nids::ui {
 
@@ -42,12 +42,12 @@ public:
    * @param ruleEngine       Optional heuristic rule engine (non-owning).
    * @param parent           Parent widget.
    */
-  explicit MainWindow(
-      std::unique_ptr<app::CaptureController> controller,
-      std::unique_ptr<app::AnalysisService> analysisService,
-      app::HybridDetectionService *hybridService = nullptr,
-      core::IThreatIntelligence *threatIntel = nullptr,
-      core::IRuleEngine *ruleEngine = nullptr, QWidget *parent = nullptr);
+  explicit MainWindow(std::unique_ptr<app::CaptureController> controller,
+                      std::unique_ptr<app::AnalysisService> analysisService,
+                      app::HybridDetectionService *hybridService = nullptr,
+                      core::IThreatIntelligence *threatIntel = nullptr,
+                      core::IRuleEngine *ruleEngine = nullptr,
+                      QWidget *parent = nullptr);
   ~MainWindow() override;
 
 private slots:
@@ -63,7 +63,7 @@ private slots:
 
 private:
   void setupUi();
-  void connectSignals();
+  void connectSignals() const;
 
   void updateTiStatus();
 
@@ -101,7 +101,8 @@ private:
   QAction *notificationAction_ = nullptr;
   bool notificationEnabled_ = true;
 
-  /// Analysis worker thread (stored to avoid detached jthread capturing `this`).
+  /// Analysis worker thread (stored to avoid detached jthread capturing
+  /// `this`).
   std::jthread analysisThread_;
 };
 

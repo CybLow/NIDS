@@ -1,6 +1,6 @@
 #include "infra/capture/PcapCaptureWorker.h"
-#include "infra/parsing/PacketParser.h"
 #include "core/model/ProtocolConstants.h"
+#include "infra/parsing/PacketParser.h"
 
 #include <pcapplusplus/Packet.h>
 #include <pcapplusplus/PcapLiveDeviceList.h>
@@ -55,10 +55,9 @@ void PcapCaptureWorker::doCapture() {
     return;
   }
 
-  if (!bpfFilter_.empty() && !device_->setFilter(bpfFilter_)) {
-    if (errorCallback_) {
-      errorCallback_("Could not apply filter: " + bpfFilter_);
-    }
+  if (!bpfFilter_.empty() && !device_->setFilter(bpfFilter_) &&
+      errorCallback_) {
+    errorCallback_("Could not apply filter: " + bpfFilter_);
   }
 
   if (!dumpFile_.empty()) {
