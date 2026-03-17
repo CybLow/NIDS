@@ -89,6 +89,7 @@ target_link_libraries(nids_tests PRIVATE
     nids_core
     nids_infra
     nids_app
+    nlohmann_json::nlohmann_json
 )
 
 nids_set_target_defaults(nids_tests)

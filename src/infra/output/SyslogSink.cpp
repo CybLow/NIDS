@@ -9,6 +9,9 @@
 #include <spdlog/spdlog.h>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
@@ -26,6 +29,34 @@
 
 namespace nids::infra {
 
+namespace {
+
+/// Close a socket handle in a platform-portable way.
+void closeSocket(SocketHandle s) {
+#ifdef _WIN32
+    ::closesocket(s);
+#else
+    ::close(s);
+#endif
+}
+
+/// Return a human-readable error string for the last socket operation.
+[[nodiscard]] std::string socketErrorString() {
+#ifdef _WIN32
+    const int err = WSAGetLastError();
+    char buf[256]{};
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                   nullptr, static_cast<DWORD>(err),
+                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                   buf, sizeof(buf), nullptr);
+    return std::string(buf);
+#else
+    return std::strerror(errno);
+#endif
+}
+
+} // anonymous namespace
+
 SyslogSink::SyslogSink(SyslogConfig config) : config_(std::move(config)) {}
 
 SyslogSink::~SyslogSink() { stop(); }
@@ -40,8 +71,8 @@ bool SyslogSink::start() {
                          : SOCK_DGRAM;
 
     socket_ = ::socket(AF_INET, type, 0);
-    if (socket_ < 0) {
-        spdlog::error("SyslogSink: socket() failed: {}", std::strerror(errno));
+    if (socket_ == kInvalidSocket) {
+        spdlog::error("SyslogSink: socket() failed: {}", socketErrorString());
         return false;
     }
 
@@ -59,8 +90,8 @@ bool SyslogSink::start() {
             res == nullptr) {
             spdlog::error("SyslogSink: cannot resolve host '{}'",
                           config_.host);
-            ::close(socket_);
-            socket_ = -1;
+            closeSocket(socket_);
+            socket_ = kInvalidSocket;
             return false;
         }
         auto* resolved =
@@ -73,9 +104,9 @@ bool SyslogSink::start() {
         if (::connect(socket_, reinterpret_cast<sockaddr*>(&addr), // NOLINT
                       sizeof(addr)) < 0) {
             spdlog::error("SyslogSink: connect() to {}:{} failed: {}",
-                          config_.host, config_.port, std::strerror(errno));
-            ::close(socket_);
-            socket_ = -1;
+                          config_.host, config_.port, socketErrorString());
+            closeSocket(socket_);
+            socket_ = kInvalidSocket;
             return false;
         }
     } else {
@@ -98,11 +129,11 @@ void SyslogSink::onFlowResult(std::size_t flowIndex,
 }
 
 void SyslogSink::stop() {
-    if (socket_ >= 0) {
+    if (socket_ != kInvalidSocket) {
         spdlog::info("SyslogSink stopped: {} messages sent, {} errors",
                      messagesSent_.load(), sendErrors_.load());
-        ::close(socket_);
-        socket_ = -1;
+        closeSocket(socket_);
+        socket_ = kInvalidSocket;
     }
 }
 
@@ -183,16 +214,21 @@ int SyslogSink::syslogSeverity(float combinedScore) noexcept {
 }
 
 void SyslogSink::sendMessage(std::string_view message) {
-    if (socket_ < 0) return;
+    if (socket_ == kInvalidSocket) return;
 
     std::scoped_lock lock{socketMutex_};
-    auto sent = ::send(socket_, message.data(), message.size(), 0);
+#ifdef _WIN32
+    const auto sent = ::send(socket_, message.data(),
+                             static_cast<int>(message.size()), 0);
+#else
+    const auto sent = ::send(socket_, message.data(), message.size(), 0);
+#endif
     if (sent < 0) {
         sendErrors_.fetch_add(1);
         // Log only periodically to avoid log spam
         if (sendErrors_.load() % 100 == 1) {
             spdlog::warn("SyslogSink: send failed (total errors: {}): {}",
-                         sendErrors_.load(), std::strerror(errno));
+                         sendErrors_.load(), socketErrorString());
         }
     } else {
         messagesSent_.fetch_add(1);
@@ -203,7 +239,11 @@ void SyslogSink::resolveHostname() {
     if (!config_.hostname.empty()) return;
 
     std::array<char, 256> buf{};
+#ifdef _WIN32
+    if (::gethostname(buf.data(), static_cast<int>(buf.size())) == 0) {
+#else
     if (::gethostname(buf.data(), buf.size()) == 0) {
+#endif
         config_.hostname = buf.data();
     } else {
         config_.hostname = "nids-host";

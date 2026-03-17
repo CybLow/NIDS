@@ -12,6 +12,13 @@
 #include "infra/output/CefFormatter.h"
 #include "infra/output/LeefFormatter.h"
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#endif
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +28,14 @@
 #include <string_view>
 
 namespace nids::infra {
+
+#ifdef _WIN32
+using SocketHandle = SOCKET;
+inline constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
+#else
+using SocketHandle = int;
+inline constexpr SocketHandle kInvalidSocket = -1;
+#endif
 
 /// Syslog transport protocol.
 enum class SyslogTransport : std::uint8_t { Udp, Tcp };
@@ -85,7 +100,7 @@ private:
     void resolveHostname();
 
     SyslogConfig config_;
-    int socket_ = -1;
+    SocketHandle socket_ = kInvalidSocket;
     std::mutex socketMutex_;
     std::atomic<std::size_t> messagesSent_{0};
     std::atomic<std::size_t> sendErrors_{0};
