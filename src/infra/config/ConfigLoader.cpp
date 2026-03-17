@@ -100,6 +100,53 @@ std::expected<void, std::string> loadConfigFromFile(
       });
     }
 
+    // -- Output Sinks --
+    if (json.contains("output")) {
+      const auto &output = json["output"];
+
+      // Syslog
+      if (output.contains("syslog")) {
+        const auto &sl = output["syslog"];
+        core::Configuration::SyslogOutputConfig sc;
+        applyIfPresent<bool>(sl, "enabled",
+                             [&sc](bool v) { sc.enabled = v; });
+        applyIfPresent<std::string>(sl, "host",
+                                    [&sc](const std::string &v) { sc.host = v; });
+        applyIfPresent<std::uint16_t>(sl, "port",
+                                      [&sc](std::uint16_t v) { sc.port = v; });
+        applyIfPresent<std::string>(
+            sl, "transport",
+            [&sc](const std::string &v) { sc.transport = v; });
+        applyIfPresent<std::string>(
+            sl, "format",
+            [&sc](const std::string &v) { sc.format = v; });
+        config.setSyslogOutputConfig(sc);
+      }
+
+      // JSON file
+      if (output.contains("json_file")) {
+        const auto &jf = output["json_file"];
+        core::Configuration::JsonFileOutputConfig jc;
+        applyIfPresent<bool>(jf, "enabled",
+                             [&jc](bool v) { jc.enabled = v; });
+        applyIfPresent<std::string>(jf, "path",
+                                    [&jc](const std::string &v) { jc.path = v; });
+        applyIfPresent<std::size_t>(jf, "max_size_mb",
+                                    [&jc](std::size_t v) { jc.maxSizeMb = v; });
+        applyIfPresent<int>(jf, "max_files",
+                            [&jc](int v) { jc.maxFiles = v; });
+        config.setJsonFileOutputConfig(jc);
+      }
+
+      // Console
+      if (output.contains("console")) {
+        const auto &con = output["console"];
+        applyIfPresent<bool>(con, "enabled", [&config](bool v) {
+          config.setConsoleOutputEnabled(v);
+        });
+      }
+    }
+
     // -- UI --
     if (json.contains("ui")) {
       const auto &ui = json["ui"];

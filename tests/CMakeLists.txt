@@ -69,6 +69,11 @@ add_executable(nids_tests
     unit/test_CaptureCommands.cpp
     unit/test_ProtocolConstants.cpp
     unit/test_ConsoleAlertSink.cpp
+    unit/test_CefFormatter.cpp
+    unit/test_LeefFormatter.cpp
+    unit/test_SyslogSink.cpp
+    unit/test_JsonFileSink.cpp
+    unit/test_SinkChain.cpp
     unit/test_HeadlessCaptureRunner.cpp
     unit/test_InterfaceDestructors.cpp
 )

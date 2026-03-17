@@ -9,6 +9,8 @@ add_library(nids_app STATIC
     LiveDetectionPipeline.cpp
     HybridDetectionService.cpp
     PipelineFactory.cpp
+    SinkChain.cpp
+    OutputSinkFactory.cpp
     commands/CaptureCommands.cpp
 )
 

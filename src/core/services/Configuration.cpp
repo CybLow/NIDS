@@ -95,4 +95,30 @@ void Configuration::setWindowTitle(std::string_view title) {
   windowTitle_ = title;
 }
 
+const Configuration::SyslogOutputConfig&
+Configuration::syslogOutputConfig() const noexcept {
+  return syslogOutputConfig_;
+}
+
+const Configuration::JsonFileOutputConfig&
+Configuration::jsonFileOutputConfig() const noexcept {
+  return jsonFileOutputConfig_;
+}
+
+bool Configuration::consoleOutputEnabled() const noexcept {
+  return consoleOutputEnabled_;
+}
+
+void Configuration::setSyslogOutputConfig(const SyslogOutputConfig& config) {
+  syslogOutputConfig_ = config;
+}
+
+void Configuration::setJsonFileOutputConfig(const JsonFileOutputConfig& config) {
+  jsonFileOutputConfig_ = config;
+}
+
+void Configuration::setConsoleOutputEnabled(bool enabled) {
+  consoleOutputEnabled_ = enabled;
+}
+
 } // namespace nids::core

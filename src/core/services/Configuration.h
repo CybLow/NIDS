@@ -17,10 +17,11 @@
 /// after initialization.  If runtime mutation is ever needed, add
 /// internal synchronization (e.g. `std::shared_mutex`).
 
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
-#include <cstdint>
 
 namespace nids::core {
 
@@ -115,6 +116,33 @@ public:
     /** Set the scoring weight for the heuristic rules layer. */
     void setWeightHeuristic(float weight);
 
+    // -- Output Sinks --
+
+    /** Syslog output sink configuration. */
+    struct SyslogOutputConfig {
+        bool enabled = false;
+        std::string host = "127.0.0.1";
+        std::uint16_t port = 514;
+        std::string transport = "udp";   ///< "udp", "tcp"
+        std::string format = "rfc5424";  ///< "rfc5424", "cef", "leef"
+    };
+
+    /** JSON file output sink configuration. */
+    struct JsonFileOutputConfig {
+        bool enabled = false;
+        std::filesystem::path path = "nids_alerts.jsonl";
+        std::size_t maxSizeMb = 100;
+        int maxFiles = 5;
+    };
+
+    [[nodiscard]] const SyslogOutputConfig& syslogOutputConfig() const noexcept;
+    [[nodiscard]] const JsonFileOutputConfig& jsonFileOutputConfig() const noexcept;
+    [[nodiscard]] bool consoleOutputEnabled() const noexcept;
+
+    void setSyslogOutputConfig(const SyslogOutputConfig& config);
+    void setJsonFileOutputConfig(const JsonFileOutputConfig& config);
+    void setConsoleOutputEnabled(bool enabled);
+
     // -- UI --
 
     /** Get the main window title string. */
@@ -139,6 +167,9 @@ private:
     float weightThreatIntel_ = 0.3f;
     float weightHeuristic_ = 0.2f;
     std::string windowTitle_{"NIDS - Network Intrusion Detection System"};
+    SyslogOutputConfig syslogOutputConfig_;
+    JsonFileOutputConfig jsonFileOutputConfig_;
+    bool consoleOutputEnabled_ = true;
 };
 
 } // namespace nids::core
