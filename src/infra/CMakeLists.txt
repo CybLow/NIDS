@@ -19,6 +19,8 @@ add_library(nids_infra STATIC
     output/JsonFileSink.cpp
     parsing/PacketParser.cpp
     platform/SocketInit.cpp
+    storage/PcapRingBuffer.cpp
+    storage/SqliteFlowIndex.cpp
 )
 
 target_link_libraries(nids_infra
@@ -30,6 +32,7 @@ target_link_libraries(nids_infra
         onnxruntime::onnxruntime
         nlohmann_json::nlohmann_json
         spdlog::spdlog
+        SQLite::SQLite3
 )
 
 target_compile_definitions(nids_infra PRIVATE NIDS_HAS_ONNX)
