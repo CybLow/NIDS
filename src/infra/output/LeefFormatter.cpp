@@ -6,6 +6,7 @@
 
 #include <fmt/format.h>
 #include <sstream>
+#include <utility>
 
 namespace nids::infra {
 
@@ -19,7 +20,7 @@ std::string LeefFormatter::format(
     const int severity = leefSeverity(result.combinedScore);
 
     const auto eventId = fmt::format(
-        "NIDS-{}", static_cast<int>(result.finalVerdict));
+        "NIDS-{}", std::to_underlying(result.finalVerdict));
 
     // LEEF:2.0|Vendor|Product|Version|EventID|<delimiter>key=value...
     // Tab is the default LEEF 2.0 delimiter.

@@ -74,6 +74,7 @@ add_executable(nids_tests
     unit/test_SyslogSink.cpp
     unit/test_JsonFileSink.cpp
     unit/test_SinkChain.cpp
+    unit/test_OutputSinkFactory.cpp
     unit/test_HeadlessCaptureRunner.cpp
     unit/test_InterfaceDestructors.cpp
 )

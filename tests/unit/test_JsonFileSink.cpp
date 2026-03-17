@@ -295,3 +295,120 @@ TEST(JsonFileSink, eachLine_isValidJson) {
     }
     EXPECT_EQ(lineNum, 3);
 }
+
+TEST(JsonFileSink, stop_beforeStart_isNoOp) {
+    infra::JsonFileConfig cfg;
+    infra::JsonFileSink sink(std::move(cfg));
+
+    // stop() on a non-started sink should not crash.
+    EXPECT_NO_THROW(sink.stop());
+}
+
+TEST(JsonFileSink, destructor_beforeStart_isNoOp) {
+    EXPECT_NO_THROW({
+        infra::JsonFileConfig cfg;
+        infra::JsonFileSink sink(std::move(cfg));
+    });
+}
+
+TEST(JsonFileSink, start_createsParentDirectory) {
+    auto tmpDir = fs::temp_directory_path() / "nids_test_mkdir_parent";
+    auto tmpPath = tmpDir / "sub" / "alerts.jsonl";
+    // Ensure directory does not exist
+    std::error_code ec;
+    fs::remove_all(tmpDir, ec);
+
+    infra::JsonFileConfig cfg;
+    cfg.outputPath = tmpPath;
+    cfg.appendMode = false;
+
+    infra::JsonFileSink sink(std::move(cfg));
+    ASSERT_TRUE(sink.start());
+    sink.stop();
+
+    EXPECT_TRUE(fs::exists(tmpPath));
+
+    // Cleanup
+    fs::remove_all(tmpDir, ec);
+}
+
+TEST(JsonFileSink, start_truncateMode_overwritesExistingFile) {
+    auto tmpPath = fs::temp_directory_path() / "nids_test_truncate.jsonl";
+    TestFileGuard guard{tmpPath};
+
+    // Write initial data
+    {
+        std::ofstream ofs(tmpPath, std::ios::out | std::ios::trunc);
+        ofs << "{\"old\":1}\n{\"old\":2}\n";
+    }
+    ASSERT_EQ(countLines(tmpPath), 2u);
+
+    infra::JsonFileConfig cfg;
+    cfg.outputPath = tmpPath;
+    cfg.appendMode = false;
+
+    infra::JsonFileSink sink(std::move(cfg));
+    ASSERT_TRUE(sink.start());
+
+    auto result = makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                             core::DetectionSource::None);
+    auto flow = makeFlow("10.0.0.1", "192.168.1.1", 12345, 80, 6);
+
+    sink.onFlowResult(0, result, flow);
+    sink.stop();
+
+    // Should have exactly 1 line (old content truncated)
+    EXPECT_EQ(countLines(tmpPath), 1u);
+}
+
+TEST(JsonFileSink, rotation_createsMultipleBackups) {
+    auto tmpPath = fs::temp_directory_path() / "nids_test_multi_rotate.jsonl";
+    TestFileGuard guard{tmpPath};
+
+    infra::JsonFileConfig cfg;
+    cfg.outputPath = tmpPath;
+    cfg.appendMode = false;
+    cfg.maxFileSizeBytes = 50;   // Tiny threshold
+    cfg.maxFiles = 3;
+
+    infra::JsonFileSink sink(std::move(cfg));
+    ASSERT_TRUE(sink.start());
+
+    auto result = makeResult(core::AttackType::DdosUdp, 0.95f, 0.87f,
+                             core::DetectionSource::Ensemble);
+    auto flow = makeFlow("10.0.0.1", "192.168.1.100", 54321, 80, 17);
+
+    // Write enough to trigger multiple rotations
+    for (int i = 0; i < 20; ++i) {
+        sink.onFlowResult(static_cast<std::size_t>(i), result, flow);
+    }
+    sink.stop();
+
+    // Both .1 and .2 should exist
+    auto rotated1 = tmpPath;
+    rotated1 += ".1";
+    auto rotated2 = tmpPath;
+    rotated2 += ".2";
+    EXPECT_TRUE(fs::exists(rotated1));
+    EXPECT_TRUE(fs::exists(rotated2));
+}
+
+TEST(JsonFileSink, onFlowResult_afterStop_doesNotCrash) {
+    auto tmpPath = fs::temp_directory_path() / "nids_test_afterstop.jsonl";
+    TestFileGuard guard{tmpPath};
+
+    infra::JsonFileConfig cfg;
+    cfg.outputPath = tmpPath;
+    cfg.appendMode = false;
+
+    infra::JsonFileSink sink(std::move(cfg));
+    ASSERT_TRUE(sink.start());
+    sink.stop();
+
+    auto result = makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                             core::DetectionSource::None);
+    auto flow = makeFlow("10.0.0.1", "192.168.1.1", 12345, 80, 6);
+
+    // Writing after stop should increment write errors, not crash
+    EXPECT_NO_THROW(sink.onFlowResult(0, result, flow));
+}

@@ -111,15 +111,15 @@ std::expected<void, std::string> loadConfigFromFile(
         applyIfPresent<bool>(sl, "enabled",
                              [&sc](bool v) { sc.enabled = v; });
         applyIfPresent<std::string>(sl, "host",
-                                    [&sc](const std::string &v) { sc.host = v; });
+                                     [&sc](std::string_view v) { sc.host = v; });
         applyIfPresent<std::uint16_t>(sl, "port",
-                                      [&sc](std::uint16_t v) { sc.port = v; });
+                                       [&sc](std::uint16_t v) { sc.port = v; });
         applyIfPresent<std::string>(
             sl, "transport",
-            [&sc](const std::string &v) { sc.transport = v; });
+            [&sc](std::string_view v) { sc.transport = v; });
         applyIfPresent<std::string>(
             sl, "format",
-            [&sc](const std::string &v) { sc.format = v; });
+            [&sc](std::string_view v) { sc.format = v; });
         config.setSyslogOutputConfig(sc);
       }
 
@@ -130,7 +130,7 @@ std::expected<void, std::string> loadConfigFromFile(
         applyIfPresent<bool>(jf, "enabled",
                              [&jc](bool v) { jc.enabled = v; });
         applyIfPresent<std::string>(jf, "path",
-                                    [&jc](const std::string &v) { jc.path = v; });
+                                     [&jc](std::string_view v) { jc.path = v; });
         applyIfPresent<std::size_t>(jf, "max_size_mb",
                                     [&jc](std::size_t v) { jc.maxSizeMb = v; });
         applyIfPresent<int>(jf, "max_files",

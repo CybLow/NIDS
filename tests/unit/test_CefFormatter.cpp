@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string>
 
 using namespace nids;
@@ -144,14 +145,8 @@ TEST(CefFormatter, format_escapesHeaderPipes) {
 
     auto out = fmt.format(0, result, flow);
 
-    // Just verify the format is well-formed (7 pipe-separated fields)
-    int pipeCount = 0;
-    for (char c : out) {
-        if (c == '|') ++pipeCount;
-    }
-    // CEF header has 7 fields separated by 6 pipes, then extension
-    // But CEF starts with "CEF:0|...|...|...|...|...|...|extension"
-    // That's 7 pipes total
+    // CEF:0|...|...|...|...|...|...|extension → 7 pipes total
+    const auto pipeCount = std::ranges::count(out, '|');
     EXPECT_GE(pipeCount, 7);
 }
 

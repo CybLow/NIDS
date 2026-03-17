@@ -6,6 +6,7 @@
 
 #include <fmt/format.h>
 #include <sstream>
+#include <utility>
 
 namespace nids::infra {
 
@@ -21,8 +22,8 @@ std::string CefFormatter::format(
     // Build signature ID: NIDS-<sourceIndex>-<attackTypeIndex>
     const auto sigId = fmt::format(
         "NIDS-{}-{}",
-        static_cast<int>(result.detectionSource),
-        static_cast<int>(result.finalVerdict));
+        std::to_underlying(result.detectionSource),
+        std::to_underlying(result.finalVerdict));
 
     // Build TI feed list
     std::string tiFeeds;

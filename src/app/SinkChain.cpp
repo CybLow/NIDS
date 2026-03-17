@@ -20,7 +20,7 @@ void SinkChain::addSink(core::IOutputSink* sink) {
 
 bool SinkChain::start() {
     bool allOk = true;
-    for (auto& sink : ownedSinks_) {
+    for (const auto& sink : ownedSinks_) {
         try {
             if (!sink->start()) {
                 spdlog::warn("SinkChain: sink '{}' failed to start",
@@ -54,7 +54,7 @@ void SinkChain::onFlowResult(std::size_t flowIndex,
                               const core::DetectionResult& result,
                               const core::FlowInfo& flow) {
     // Error isolation: each sink gets the result even if a prior sink throws.
-    for (auto& sink : ownedSinks_) {
+    for (const auto& sink : ownedSinks_) {
         try {
             sink->onFlowResult(flowIndex, result, flow);
         } catch (const std::exception& e) {
@@ -73,7 +73,7 @@ void SinkChain::onFlowResult(std::size_t flowIndex,
 }
 
 void SinkChain::stop() {
-    for (auto& sink : ownedSinks_) {
+    for (const auto& sink : ownedSinks_) {
         try {
             sink->stop();
         } catch (const std::exception& e) {

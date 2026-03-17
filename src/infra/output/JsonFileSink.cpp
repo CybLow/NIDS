@@ -10,6 +10,9 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <fmt/format.h>
+#include <iterator>
+#include <ranges>
 
 namespace nids::infra {
 
@@ -18,7 +21,13 @@ namespace fs = std::filesystem;
 JsonFileSink::JsonFileSink(JsonFileConfig config)
     : config_(std::move(config)) {}
 
-JsonFileSink::~JsonFileSink() { stop(); }
+JsonFileSink::~JsonFileSink() {
+    try {
+        stop();
+    } catch (...) {
+        // Destructors must not throw.
+    }
+}
 
 bool JsonFileSink::start() {
     linesWritten_.store(0);
@@ -116,29 +125,24 @@ std::string JsonFileSink::toJson(
 
     // Build TI matches array
     nlohmann::json tiArray = nlohmann::json::array();
-    for (const auto& m : result.threatIntelMatches) {
-        tiArray.push_back({
-            {"ip", m.ip},
-            {"feed", m.feedName},
-            {"direction", m.isSource ? "source" : "destination"}
+    std::ranges::transform(result.threatIntelMatches,
+        std::back_inserter(tiArray),
+        [](const auto& m) -> nlohmann::json {
+            return {{"ip", m.ip}, {"feed", m.feedName},
+                    {"direction", m.isSource ? "source" : "destination"}};
         });
-    }
 
     // Build rule matches array
     nlohmann::json ruleArray = nlohmann::json::array();
-    for (const auto& r : result.ruleMatches) {
-        ruleArray.push_back({
-            {"name", r.ruleName},
-            {"description", r.description},
-            {"severity", r.severity}
+    std::ranges::transform(result.ruleMatches,
+        std::back_inserter(ruleArray),
+        [](const auto& r) -> nlohmann::json {
+            return {{"name", r.ruleName}, {"description", r.description},
+                    {"severity", r.severity}};
         });
-    }
 
     // Build probabilities array
-    nlohmann::json probArray = nlohmann::json::array();
-    for (float p : result.mlResult.probabilities) {
-        probArray.push_back(p);
-    }
+    nlohmann::json probArray(result.mlResult.probabilities);
 
     nlohmann::json j = {
         {"timestamp_ms", millis},
@@ -183,10 +187,10 @@ void JsonFileSink::rotateIfNeeded() {
     // Rotate files: .4 → delete, .3 → .4, .2 → .3, .1 → .2, current → .1
     for (int i = config_.maxFiles - 1; i >= 1; --i) {
         auto src = config_.outputPath;
-        src += "." + std::to_string(i);
+        src += fmt::format(".{}", i);
 
         auto dst = config_.outputPath;
-        dst += "." + std::to_string(i + 1);
+        dst += fmt::format(".{}", i + 1);
 
         std::error_code ec;
         if (fs::exists(src, ec)) {

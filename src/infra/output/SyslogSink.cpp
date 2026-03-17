@@ -59,7 +59,13 @@ void closeSocket(SocketHandle s) {
 
 SyslogSink::SyslogSink(SyslogConfig config) : config_(std::move(config)) {}
 
-SyslogSink::~SyslogSink() { stop(); }
+SyslogSink::~SyslogSink() {
+    try {
+        stop();
+    } catch (...) {
+        // Destructors must not throw.
+    }
+}
 
 bool SyslogSink::start() {
     messagesSent_.store(0);
@@ -94,8 +100,8 @@ bool SyslogSink::start() {
             socket_ = kInvalidSocket;
             return false;
         }
-        auto* resolved =
-            reinterpret_cast<sockaddr_in*>(res->ai_addr); // NOLINT
+        const auto* resolved =
+            reinterpret_cast<const sockaddr_in*>(res->ai_addr); // NOLINT
         addr.sin_addr = resolved->sin_addr;
         ::freeaddrinfo(res);
     }
@@ -142,12 +148,13 @@ std::string SyslogSink::formatMessage(
     const core::DetectionResult& result,
     const core::FlowInfo& flow) const {
 
+    using enum SyslogFormat;
     switch (config_.format) {
-    case SyslogFormat::Cef:
+    case Cef:
         return cefFormatter_.format(flowIndex, result, flow);
-    case SyslogFormat::Leef:
+    case Leef:
         return leefFormatter_.format(flowIndex, result, flow);
-    case SyslogFormat::Rfc5424:
+    case Rfc5424:
     default:
         return formatRfc5424(flowIndex, result, flow);
     }

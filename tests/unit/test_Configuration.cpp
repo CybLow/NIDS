@@ -380,3 +380,129 @@ TEST(ConfigLoader, validJsonOverridesMultipleSections) {
   config.setWindowTitle(origTitle);
   fs::remove(tmpPath);
 }
+
+// ── ConfigLoader: output section overrides ──────────────────────────
+
+TEST(ConfigLoader, validJsonOverridesSyslogOutput) {
+  auto &config = Configuration::instance();
+  auto orig = config.syslogOutputConfig();
+
+  auto tmpPath = fs::temp_directory_path() / "nids_test_config_syslog.json";
+  {
+    std::ofstream out(tmpPath);
+    out << R"({
+            "output": {
+                "syslog": {
+                    "enabled": true,
+                    "host": "siem.example.com",
+                    "port": 1514,
+                    "transport": "tcp",
+                    "format": "cef"
+                }
+            }
+        })";
+  }
+
+  EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+  const auto &sc = config.syslogOutputConfig();
+  EXPECT_TRUE(sc.enabled);
+  EXPECT_EQ(sc.host, "siem.example.com");
+  EXPECT_EQ(sc.port, 1514);
+  EXPECT_EQ(sc.transport, "tcp");
+  EXPECT_EQ(sc.format, "cef");
+
+  config.setSyslogOutputConfig(orig);
+  fs::remove(tmpPath);
+}
+
+TEST(ConfigLoader, validJsonOverridesJsonFileOutput) {
+  auto &config = Configuration::instance();
+  auto orig = config.jsonFileOutputConfig();
+
+  auto tmpPath = fs::temp_directory_path() / "nids_test_config_jsonfile.json";
+  {
+    std::ofstream out(tmpPath);
+    out << R"({
+            "output": {
+                "json_file": {
+                    "enabled": true,
+                    "path": "/var/log/nids/alerts.jsonl",
+                    "max_size_mb": 50,
+                    "max_files": 10
+                }
+            }
+        })";
+  }
+
+  EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+  const auto &jc = config.jsonFileOutputConfig();
+  EXPECT_TRUE(jc.enabled);
+  EXPECT_EQ(jc.path, fs::path("/var/log/nids/alerts.jsonl"));
+  EXPECT_EQ(jc.maxSizeMb, 50u);
+  EXPECT_EQ(jc.maxFiles, 10);
+
+  config.setJsonFileOutputConfig(orig);
+  fs::remove(tmpPath);
+}
+
+TEST(ConfigLoader, validJsonOverridesConsoleOutput) {
+  auto &config = Configuration::instance();
+  auto orig = config.consoleOutputEnabled();
+
+  auto tmpPath = fs::temp_directory_path() / "nids_test_config_console.json";
+  {
+    std::ofstream out(tmpPath);
+    out << R"({
+            "output": {
+                "console": {
+                    "enabled": false
+                }
+            }
+        })";
+  }
+
+  EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+  EXPECT_FALSE(config.consoleOutputEnabled());
+
+  config.setConsoleOutputEnabled(orig);
+  fs::remove(tmpPath);
+}
+
+TEST(ConfigLoader, validJsonOverridesAllOutputSinks) {
+  auto &config = Configuration::instance();
+  auto origSyslog = config.syslogOutputConfig();
+  auto origJson = config.jsonFileOutputConfig();
+  auto origConsole = config.consoleOutputEnabled();
+
+  auto tmpPath = fs::temp_directory_path() / "nids_test_config_alloutput.json";
+  {
+    std::ofstream out(tmpPath);
+    out << R"({
+            "output": {
+                "syslog": {
+                    "enabled": true,
+                    "format": "leef"
+                },
+                "json_file": {
+                    "enabled": true,
+                    "max_files": 7
+                },
+                "console": {
+                    "enabled": true
+                }
+            }
+        })";
+  }
+
+  EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+  EXPECT_TRUE(config.syslogOutputConfig().enabled);
+  EXPECT_EQ(config.syslogOutputConfig().format, "leef");
+  EXPECT_TRUE(config.jsonFileOutputConfig().enabled);
+  EXPECT_EQ(config.jsonFileOutputConfig().maxFiles, 7);
+  EXPECT_TRUE(config.consoleOutputEnabled());
+
+  config.setSyslogOutputConfig(origSyslog);
+  config.setJsonFileOutputConfig(origJson);
+  config.setConsoleOutputEnabled(origConsole);
+  fs::remove(tmpPath);
+}

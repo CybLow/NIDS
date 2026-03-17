@@ -22,8 +22,8 @@ std::unique_ptr<SinkChain> OutputSinkFactory::createFromConfig(
     }
 
     // -- Syslog sink --
-    const auto& syslogCfg = config.syslogOutputConfig();
-    if (syslogCfg.enabled) {
+    if (const auto& syslogCfg = config.syslogOutputConfig();
+        syslogCfg.enabled) {
         infra::SyslogConfig sc;
         sc.host = syslogCfg.host;
         sc.port = syslogCfg.port;
@@ -50,8 +50,8 @@ std::unique_ptr<SinkChain> OutputSinkFactory::createFromConfig(
     }
 
     // -- JSON file sink --
-    const auto& jsonCfg = config.jsonFileOutputConfig();
-    if (jsonCfg.enabled) {
+    if (const auto& jsonCfg = config.jsonFileOutputConfig();
+        jsonCfg.enabled) {
         infra::JsonFileConfig jc;
         jc.outputPath = jsonCfg.path;
         jc.maxFileSizeBytes = jsonCfg.maxSizeMb * 1024 * 1024;

@@ -245,10 +245,148 @@ TEST(SyslogSink, formatMessage_rfc5424_containsDetectionSource) {
     infra::SyslogSink sink(std::move(cfg));
 
     auto result = makeResult(core::AttackType::SshBruteForce, 0.85f, 0.78f,
-                             core::DetectionSource::MlOnly);
+                              core::DetectionSource::MlOnly);
     auto flow = makeFlow("10.0.0.1", "192.168.1.1", 22222, 22, 6);
 
     auto msg = sink.formatMessage(0, result, flow);
 
     EXPECT_NE(msg.find("detectionSource=\"ML Classifier\""), std::string::npos);
+}
+
+TEST(SyslogSink, stop_beforeStart_isNoOp) {
+    infra::SyslogConfig cfg;
+    cfg.hostname = "test-host";
+    infra::SyslogSink sink(std::move(cfg));
+
+    // stop() on a non-started sink should not crash.
+    EXPECT_NO_THROW(sink.stop());
+}
+
+TEST(SyslogSink, destructor_beforeStart_isNoOp) {
+    // Destructor calls stop(), which should be safe on a non-started sink.
+    EXPECT_NO_THROW({
+        infra::SyslogConfig cfg;
+        cfg.hostname = "test-host";
+        infra::SyslogSink sink(std::move(cfg));
+    });
+}
+
+TEST(SyslogSink, onFlowResult_beforeStart_isNoOp) {
+    infra::SyslogConfig cfg;
+    cfg.hostname = "test-host";
+    infra::SyslogSink sink(std::move(cfg));
+
+    auto result = makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                             core::DetectionSource::None);
+    auto flow = makeFlow("10.0.0.1", "192.168.1.1", 12345, 80, 6);
+
+    // onFlowResult formats + tries to send; send returns immediately
+    // when socket is invalid.
+    EXPECT_NO_THROW(sink.onFlowResult(0, result, flow));
+}
+
+TEST(SyslogSink, severity_noticeBand_returnsNotice) {
+    infra::SyslogConfig cfg;
+    cfg.format = infra::SyslogFormat::Rfc5424;
+    cfg.hostname = "test-host";
+
+    infra::SyslogSink sink(std::move(cfg));
+
+    auto result = makeResult(core::AttackType::Dos, 0.5f, 0.4f,
+                             core::DetectionSource::MlOnly);
+    auto flow = makeFlow("10.0.0.1", "192.168.1.1", 12345, 80, 6);
+
+    auto msg = sink.formatMessage(0, result, flow);
+
+    // PRI = 16*8 + 5 (notice) = 133
+    EXPECT_TRUE(msg.starts_with("<133>"));
+}
+
+TEST(SyslogSink, severity_errorBand_returnsError) {
+    infra::SyslogConfig cfg;
+    cfg.format = infra::SyslogFormat::Rfc5424;
+    cfg.hostname = "test-host";
+
+    infra::SyslogSink sink(std::move(cfg));
+
+    auto result = makeResult(core::AttackType::DdosUdp, 0.9f, 0.75f,
+                             core::DetectionSource::MlOnly);
+    auto flow = makeFlow("10.0.0.1", "192.168.1.1", 12345, 80, 17);
+
+    auto msg = sink.formatMessage(0, result, flow);
+
+    // PRI = 16*8 + 3 (error) = 131
+    EXPECT_TRUE(msg.starts_with("<131>"));
+}
+
+TEST(SyslogSink, formatMessage_rfc5424_containsAppName) {
+    infra::SyslogConfig cfg;
+    cfg.format = infra::SyslogFormat::Rfc5424;
+    cfg.hostname = "test-host";
+    cfg.appName = "my-nids-app";
+
+    infra::SyslogSink sink(std::move(cfg));
+
+    auto result = makeResult(core::AttackType::Benign, 0.99f, 0.0f,
+                             core::DetectionSource::None);
+    auto flow = makeFlow("10.0.0.1", "192.168.1.1", 12345, 80, 6);
+
+    auto msg = sink.formatMessage(0, result, flow);
+
+    EXPECT_NE(msg.find("my-nids-app"), std::string::npos);
+}
+
+TEST(SyslogSink, formatMessage_rfc5424_containsConfidence) {
+    infra::SyslogConfig cfg;
+    cfg.format = infra::SyslogFormat::Rfc5424;
+    cfg.hostname = "test-host";
+
+    infra::SyslogSink sink(std::move(cfg));
+
+    auto result = makeResult(core::AttackType::SynFlood, 0.9234f, 0.85f,
+                             core::DetectionSource::MlOnly);
+    auto flow = makeFlow("10.0.0.1", "192.168.1.1", 12345, 80, 6);
+
+    auto msg = sink.formatMessage(0, result, flow);
+
+    EXPECT_NE(msg.find("confidence=\"0.9234\""), std::string::npos);
+    EXPECT_NE(msg.find("combinedScore=\"0.8500\""), std::string::npos);
+}
+
+TEST(SyslogSink, formatMessage_rfc5424_multipleRulesCommaSeparated) {
+    infra::SyslogConfig cfg;
+    cfg.format = infra::SyslogFormat::Rfc5424;
+    cfg.hostname = "test-host";
+
+    infra::SyslogSink sink(std::move(cfg));
+
+    auto result = makeResult(core::AttackType::PortScanning, 0.6f, 0.55f,
+                             core::DetectionSource::MlPlusHeuristic);
+    result.ruleMatches.push_back({"rule_a", "Rule A", 0.3f});
+    result.ruleMatches.push_back({"rule_b", "Rule B", 0.5f});
+
+    auto flow = makeFlow("10.0.0.1", "192.168.1.1", 44444, 4444, 6);
+
+    auto msg = sink.formatMessage(0, result, flow);
+
+    EXPECT_NE(msg.find("ruleMatches=\"rule_a,rule_b\""), std::string::npos);
+}
+
+TEST(SyslogSink, formatMessage_rfc5424_multipleTiMatchesCommaSeparated) {
+    infra::SyslogConfig cfg;
+    cfg.format = infra::SyslogFormat::Rfc5424;
+    cfg.hostname = "test-host";
+
+    infra::SyslogSink sink(std::move(cfg));
+
+    auto result = makeResult(core::AttackType::SshBruteForce, 0.8f, 0.75f,
+                             core::DetectionSource::MlPlusThreatIntel);
+    result.threatIntelMatches.push_back({"10.0.0.1", "feodo", true});
+    result.threatIntelMatches.push_back({"10.0.0.1", "spamhaus", true});
+
+    auto flow = makeFlow("10.0.0.1", "192.168.1.1", 22222, 22, 6);
+
+    auto msg = sink.formatMessage(0, result, flow);
+
+    EXPECT_NE(msg.find("tiMatches=\"feodo,spamhaus\""), std::string::npos);
 }

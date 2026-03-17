@@ -105,8 +105,8 @@ private:
     std::atomic<std::size_t> messagesSent_{0};
     std::atomic<std::size_t> sendErrors_{0};
 
-    CefFormatter cefFormatter_;
-    LeefFormatter leefFormatter_;
+    [[no_unique_address]] CefFormatter cefFormatter_;
+    [[no_unique_address]] LeefFormatter leefFormatter_;
 };
 
 } // namespace nids::infra
