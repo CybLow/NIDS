@@ -1,6 +1,6 @@
 # NIDS Roadmap
 
-> Last updated: 2026-03-16
+> Last updated: 2026-03-17
 
 This document consolidates **all** planned work — features, cleanup, tests, docs, and
 operational tasks — into a single prioritized roadmap. Items are organized into phases
@@ -54,6 +54,24 @@ Cross-references: [ADR-004](adr/004-model-benchmark-analysis.md),
   `WelfordAccumulator` extraction, `evaluate()` 2-arg rewrite,
   protocol-to-string deduplication, magic number cleanup,
   `BoundedQueue` → `core/concurrent/`, `PacketFilter` → `core/model/`)
+- [x] 5-layer deep audit cleanup (128 files, 19,616 lines audited across
+  core/infra/app/ui+server+client/tests):
+  - Method extraction: 10 long methods decomposed (SRP) across OnnxAnalyzer,
+    NativeFlowExtractor, LiveDetectionPipeline, FlowAnalysisWorker,
+    AnalysisService, NidsServiceImpl, GrpcStreamSink, DetectionDetailWidget
+  - DRY fixes: OnnxAnalyzer `interpretOutput()`, FilterPanel `kStandardApps`,
+    WeightTuningDialog `sliderToWeight()`, NativeFlowExtractor `restartFlow()`
+  - Bug fixes: StopCapture flagged count, GetStatus inline loop
+  - Dead code removal: `PacketInfo::application`, `FlowTableModel::protocolToString()`
+  - Type safety: `ServiceRegistry::getServiceByPort()` int→uint16_t
+  - Const-correctness: `IPacketCapture::listInterfaces()` const,
+    Configuration getters return `const&` + `noexcept`
+  - Architecture: PipelineFactory explicit `nids_infra` CMake dependency
+  - Test split: `test_NativeFlowExtractor.cpp` (2,114 lines) → 6 focused files
+    + `PcapTestHelpers.h` shared helpers
+  - Redundant qualifier removal across ~55 files
+  - WelfordAccumulator: struct→class with private members
+  - Final grade: A- across all layers (430 tests, zero architecture violations)
 
 ---
 
