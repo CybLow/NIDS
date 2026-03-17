@@ -570,3 +570,31 @@ PRAGMA synchronous=NORMAL;
 
 Deliver weeks 1–4 + week 7 (gRPC): PCAP storage, flow indexing, retroactive analysis,
 IOC search, CLI interface. Defer correlation, timeline, and baseline to a follow-up.
+
+---
+
+## Implementation Status
+
+### Completed
+
+| Component | Files | Status |
+|-----------|-------|--------|
+| **Core models** | `FlowQuery.h`, `IndexedFlow.h`, `HuntResult.h`, `TimelineEvent.h`, `AnomalyResult.h`, `CorrelationCriteria.h` | Done |
+| **Core interfaces** | `IPcapStore.h`, `IFlowIndex.h`, `IHuntEngine.h` | Done |
+| **Reverse lookup helpers** | `attackTypeFromString()` in `AttackType.h`, `detectionSourceFromString()` in `DetectionSource.h` | Done |
+| **Configuration** | `HuntingConfig`, `PcapStorageConfig` structs in `Configuration.h` | Done |
+| **ConfigLoader** | Hunting section parsing (`hunting.*`, `hunting.pcap_storage.*`) | Done |
+| **PcapRingBuffer** | `infra/storage/PcapRingBuffer.h/.cpp` — rolling PCAP with rotation + eviction | Done |
+| **SqliteFlowIndex** | `infra/storage/SqliteFlowIndex.h/.cpp` — WAL-mode SQLite, parameterized queries | Done (17 tests) |
+| **HuntEngine** | `app/HuntEngine.h/.cpp` — retroactive analysis, IOC search, correlation, timeline, anomalies | Done |
+| **SQLite3 dependency** | `sqlite3/3.47.2` via Conan | Done |
+
+### Test Coverage
+
+| Test file | Tests |
+|-----------|-------|
+| `test_SqliteFlowIndex.cpp` | 17 (CRUD, IP/port/protocol/verdict/score/flagged filters, pagination, aggregation, distinct values, SQL injection prevention) |
+| `test_InterfaceDestructors.cpp` | +3 (IPcapStore, IFlowIndex, IHuntEngine) |
+| `test_Configuration.cpp` | +2 (hunting config parsing, partial override) |
+
+Total new tests: 22

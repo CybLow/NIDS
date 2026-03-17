@@ -147,6 +147,54 @@ std::expected<void, std::string> loadConfigFromFile(
       }
     }
 
+    // -- Threat Hunting --
+    if (json.contains("hunting")) {
+      const auto &hunting = json["hunting"];
+      core::Configuration::HuntingConfig hc;
+      applyIfPresent<bool>(hunting, "enabled",
+                           [&hc](bool v) { hc.enabled = v; });
+      applyIfPresent<std::string>(
+          hunting, "flow_database_path",
+          [&hc](std::string_view v) { hc.flowDatabasePath = v; });
+      applyIfPresent<std::size_t>(
+          hunting, "max_database_size_mb",
+          [&hc](std::size_t v) { hc.maxDatabaseSizeMb = v; });
+      applyIfPresent<bool>(hunting, "index_all_flows",
+                           [&hc](bool v) { hc.indexAllFlows = v; });
+      applyIfPresent<int>(hunting, "baseline_window_hours",
+                          [&hc](int v) { hc.baselineWindowHours = v; });
+      applyIfPresent<double>(
+          hunting, "anomaly_threshold_sigma",
+          [&hc](double v) { hc.anomalyThresholdSigma = v; });
+
+      if (hunting.contains("pcap_storage")) {
+        const auto &ps = hunting["pcap_storage"];
+        applyIfPresent<std::string>(
+            ps, "storage_dir",
+            [&hc](std::string_view v) { hc.pcapStorage.storageDir = v; });
+        applyIfPresent<std::size_t>(
+            ps, "max_total_size_bytes",
+            [&hc](std::size_t v) {
+                hc.pcapStorage.maxTotalSizeBytes = v;
+            });
+        applyIfPresent<int64_t>(
+            ps, "max_retention_hours",
+            [&hc](int64_t v) { hc.pcapStorage.maxRetentionHours = v; });
+        applyIfPresent<std::size_t>(
+            ps, "max_file_size_bytes",
+            [&hc](std::size_t v) {
+                hc.pcapStorage.maxFileSizeBytes = v;
+            });
+        applyIfPresent<std::string>(
+            ps, "file_prefix",
+            [&hc](std::string_view v) {
+                hc.pcapStorage.filePrefix = v;
+            });
+      }
+
+      config.setHuntingConfig(hc);
+    }
+
     // -- UI --
     if (json.contains("ui")) {
       const auto &ui = json["ui"];
