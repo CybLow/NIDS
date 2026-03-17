@@ -1,50 +1,27 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "helpers/MockPacketCapture.h"
+
 #include "app/CaptureController.h"
-#include "core/services/IPacketCapture.h"
-#include "core/services/PacketFilter.h"
+#include "core/model/PacketFilter.h"
+#include "core/model/ProtocolConstants.h"
 
-#include <array>
-
-#include <QCoreApplication>
-#include <QSignalSpy>
+#include <expected>
+#include <string>
+#include <vector>
 
 using namespace nids::core;
 using namespace nids::app;
+using nids::testing::MockPacketCapture;
 using ::testing::_;
 using ::testing::Invoke;
 using ::testing::Return;
-
-// ── Mock ─────────────────────────────────────────────────────────────
-
-class MockPacketCapture : public IPacketCapture {
-public:
-  MOCK_METHOD(bool, initialize, (const std::string &, const std::string &),
-              (override));
-  MOCK_METHOD(void, startCapture, (const std::string &), (override));
-  MOCK_METHOD(void, stopCapture, (), (override));
-  MOCK_METHOD(bool, isCapturing, (), (const, override));
-  MOCK_METHOD(void, setPacketCallback, (PacketCallback), (override));
-  MOCK_METHOD(void, setErrorCallback, (ErrorCallback), (override));
-  MOCK_METHOD(std::vector<std::string>, listInterfaces, (), (override));
-};
 
 // ── Fixture ──────────────────────────────────────────────────────────
 
 class CaptureControllerTest : public ::testing::Test {
 protected: // NOSONAR
-  void SetUp() override {
-    // Ensure QCoreApplication exists for signal/slot processing
-    if (!QCoreApplication::instance()) {
-      static int argc = 1;
-      static std::array<char, 5> appName = {'t', 'e', 's', 't', '\0'};
-      static auto *appNamePtr = appName.data();
-      app_ = std::make_unique<QCoreApplication>(argc, &appNamePtr);
-    }
-  }
-
-  std::unique_ptr<QCoreApplication> app_;
 };
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -64,19 +41,23 @@ TEST_F(CaptureControllerTest, startCapture_initFailure_emitsError) {
   EXPECT_CALL(*mockPtr, setPacketCallback(_));
   EXPECT_CALL(*mockPtr, setErrorCallback(_));
   EXPECT_CALL(*mockPtr, isCapturing()).WillRepeatedly(Return(false));
-  EXPECT_CALL(*mockPtr, initialize(_, _)).WillOnce(Return(false));
+  EXPECT_CALL(*mockPtr, initialize(_, _))
+      .WillOnce(Return(std::unexpected<std::string>("mock init failure")));
   // startCapture should NOT be called when init fails
   EXPECT_CALL(*mockPtr, startCapture(_)).Times(0);
 
   CaptureController controller(std::move(mock));
-  QSignalSpy errorSpy(&controller, &CaptureController::captureError);
+
+  std::vector<std::string> errors;
+  controller.setCaptureErrorCallback(
+      [&](const std::string &msg) { errors.push_back(msg); });
 
   PacketFilter filter;
   filter.networkCard = "eth0";
   controller.startCapture(filter);
 
-  EXPECT_EQ(errorSpy.count(), 1);
-  EXPECT_TRUE(errorSpy.first().at(0).toString().contains("eth0"));
+  EXPECT_EQ(errors.size(), 1u);
+  EXPECT_TRUE(errors[0].find("eth0") != std::string::npos);
 }
 
 TEST_F(CaptureControllerTest, startCapture_initSuccess_emitsStarted) {
@@ -86,17 +67,20 @@ TEST_F(CaptureControllerTest, startCapture_initSuccess_emitsStarted) {
   EXPECT_CALL(*mockPtr, setPacketCallback(_));
   EXPECT_CALL(*mockPtr, setErrorCallback(_));
   EXPECT_CALL(*mockPtr, isCapturing()).WillRepeatedly(Return(false));
-  EXPECT_CALL(*mockPtr, initialize("eth0", _)).WillOnce(Return(true));
+  EXPECT_CALL(*mockPtr, initialize("eth0", _))
+      .WillOnce(Return(std::expected<void, std::string>{}));
   EXPECT_CALL(*mockPtr, startCapture(_)).Times(1);
 
   CaptureController controller(std::move(mock));
-  QSignalSpy startedSpy(&controller, &CaptureController::captureStarted);
+
+  int startedCount = 0;
+  controller.setCaptureStartedCallback([&]() { ++startedCount; });
 
   PacketFilter filter;
   filter.networkCard = "eth0";
   controller.startCapture(filter);
 
-  EXPECT_EQ(startedSpy.count(), 1);
+  EXPECT_EQ(startedCount, 1);
 }
 
 TEST_F(CaptureControllerTest, startCapture_alreadyCapturing_doesNothing) {
@@ -129,11 +113,13 @@ TEST_F(CaptureControllerTest, stopCapture_whenCapturing_emitsStopped) {
   EXPECT_CALL(*mockPtr, stopCapture()).Times(1);
 
   CaptureController controller(std::move(mock));
-  QSignalSpy stoppedSpy(&controller, &CaptureController::captureStopped);
+
+  int stoppedCount = 0;
+  controller.setCaptureStoppedCallback([&]() { ++stoppedCount; });
 
   controller.stopCapture();
 
-  EXPECT_EQ(stoppedSpy.count(), 1);
+  EXPECT_EQ(stoppedCount, 1);
 }
 
 TEST_F(CaptureControllerTest, stopCapture_whenNotCapturing_doesNothing) {
@@ -146,10 +132,12 @@ TEST_F(CaptureControllerTest, stopCapture_whenNotCapturing_doesNothing) {
   EXPECT_CALL(*mockPtr, stopCapture()).Times(0);
 
   CaptureController controller(std::move(mock));
-  QSignalSpy stoppedSpy(&controller, &CaptureController::captureStopped);
+
+  int stoppedCount = 0;
+  controller.setCaptureStoppedCallback([&]() { ++stoppedCount; });
 
   controller.stopCapture();
-  EXPECT_EQ(stoppedSpy.count(), 0);
+  EXPECT_EQ(stoppedCount, 0);
 }
 
 TEST_F(CaptureControllerTest, packetCallback_forwardsToSession) {
@@ -164,17 +152,20 @@ TEST_F(CaptureControllerTest, packetCallback_forwardsToSession) {
   EXPECT_CALL(*mockPtr, setErrorCallback(_));
 
   CaptureController controller(std::move(mock));
-  QSignalSpy packetSpy(&controller, &CaptureController::packetReceived);
+
+  int packetCount = 0;
+  controller.setPacketReceivedCallback(
+      [&](const PacketInfo &) { ++packetCount; });
 
   // Simulate a packet arrival
   PacketInfo pkt;
-  pkt.protocol = "TCP";
+  pkt.protocol = kIpProtoTcp;
   pkt.ipSource = "1.2.3.4";
   storedCallback(pkt);
 
   EXPECT_EQ(controller.session().packetCount(), 1u);
-  EXPECT_EQ(controller.session().getPacket(0).protocol, "TCP");
-  EXPECT_EQ(packetSpy.count(), 1);
+  EXPECT_EQ(controller.session().getPacket(0).protocol, kIpProtoTcp);
+  EXPECT_EQ(packetCount, 1);
 }
 
 TEST_F(CaptureControllerTest, errorCallback_emitsCaptureError) {
@@ -189,12 +180,15 @@ TEST_F(CaptureControllerTest, errorCallback_emitsCaptureError) {
       }));
 
   CaptureController controller(std::move(mock));
-  QSignalSpy errorSpy(&controller, &CaptureController::captureError);
+
+  std::vector<std::string> errors;
+  controller.setCaptureErrorCallback(
+      [&](const std::string &msg) { errors.push_back(msg); });
 
   storedErrorCb("pcap read error");
 
-  EXPECT_EQ(errorSpy.count(), 1);
-  EXPECT_EQ(errorSpy.first().at(0).toString(), QString("pcap read error"));
+  EXPECT_EQ(errors.size(), 1u);
+  EXPECT_EQ(errors[0], "pcap read error");
 }
 
 TEST_F(CaptureControllerTest, listInterfaces_delegatesToCapture) {
@@ -240,4 +234,129 @@ TEST_F(CaptureControllerTest, destructor_stopsCapture) {
     CaptureController controller(std::move(mock));
   }
   // Destructor should have called stopCapture
+}
+
+TEST_F(CaptureControllerTest, enableLiveDetection_setsAndClears) {
+  auto mock = std::make_unique<MockPacketCapture>();
+  EXPECT_CALL(*mock, setPacketCallback(_));
+  EXPECT_CALL(*mock, setErrorCallback(_));
+  EXPECT_CALL(*mock, isCapturing()).WillRepeatedly(Return(false));
+
+  CaptureController controller(std::move(mock));
+
+  // isLiveDetectionActive should be false by default
+  EXPECT_FALSE(controller.isLiveDetectionActive());
+
+  // enableLiveDetection with a non-null pipeline pointer
+  // We can't easily construct a LiveDetectionPipeline here, but we can
+  // test the null case.
+  controller.enableLiveDetection(nullptr);
+  EXPECT_FALSE(controller.isLiveDetectionActive());
+}
+
+TEST_F(CaptureControllerTest, disableLiveDetection_whenNoPipeline_noOp) {
+  auto mock = std::make_unique<MockPacketCapture>();
+  EXPECT_CALL(*mock, setPacketCallback(_));
+  EXPECT_CALL(*mock, setErrorCallback(_));
+
+  CaptureController controller(std::move(mock));
+
+  // disableLiveDetection with no pipeline set — should be a no-op.
+  controller.disableLiveDetection();
+  EXPECT_FALSE(controller.isLiveDetectionActive());
+}
+
+TEST_F(CaptureControllerTest, startCapture_withCustomDumpFile) {
+  auto mock = std::make_unique<MockPacketCapture>();
+  auto *mockPtr = mock.get();
+
+  EXPECT_CALL(*mockPtr, setPacketCallback(_));
+  EXPECT_CALL(*mockPtr, setErrorCallback(_));
+  EXPECT_CALL(*mockPtr, isCapturing()).WillRepeatedly(Return(false));
+  EXPECT_CALL(*mockPtr, initialize("eth0", _))
+      .WillOnce(Return(std::expected<void, std::string>{}));
+  // Should pass the custom dump file, not the config default.
+  EXPECT_CALL(*mockPtr, startCapture("custom_dump.pcap")).Times(1);
+
+  CaptureController controller(std::move(mock));
+
+  PacketFilter filter;
+  filter.networkCard = "eth0";
+  controller.startCapture(filter, "custom_dump.pcap");
+}
+
+TEST_F(CaptureControllerTest, constSession_isAccessible) {
+  auto mock = std::make_unique<MockPacketCapture>();
+  EXPECT_CALL(*mock, setPacketCallback(_));
+  EXPECT_CALL(*mock, setErrorCallback(_));
+
+  CaptureController controller(std::move(mock));
+  const auto &constController = controller;
+  EXPECT_EQ(constController.session().packetCount(), 0u);
+}
+
+TEST_F(CaptureControllerTest, destructor_notCapturing_doesNotCallStop) {
+  auto mock = std::make_unique<MockPacketCapture>();
+  auto *mockPtr = mock.get();
+
+  EXPECT_CALL(*mockPtr, setPacketCallback(_));
+  EXPECT_CALL(*mockPtr, setErrorCallback(_));
+  EXPECT_CALL(*mockPtr, isCapturing()).WillRepeatedly(Return(false));
+  // stopCapture should NOT be called since we're not capturing.
+  EXPECT_CALL(*mockPtr, stopCapture()).Times(0);
+
+  {
+    CaptureController controller(std::move(mock));
+  }
+}
+
+TEST_F(CaptureControllerTest,
+       startCapture_initFailure_noErrorCallback_noThrow) {
+  auto mock = std::make_unique<MockPacketCapture>();
+  auto *mockPtr = mock.get();
+
+  EXPECT_CALL(*mockPtr, setPacketCallback(_));
+  EXPECT_CALL(*mockPtr, setErrorCallback(_));
+  EXPECT_CALL(*mockPtr, isCapturing()).WillRepeatedly(Return(false));
+  EXPECT_CALL(*mockPtr, initialize(_, _))
+      .WillOnce(Return(std::unexpected<std::string>("init fail")));
+
+  CaptureController controller(std::move(mock));
+  // Do NOT set error callback — test that null callback guard works.
+
+  PacketFilter filter;
+  filter.networkCard = "eth0";
+  controller.startCapture(filter);
+  // No crash = success.
+}
+
+TEST_F(CaptureControllerTest, stopCapture_emitsStoppedCallback) {
+  auto mock = std::make_unique<MockPacketCapture>();
+  auto *mockPtr = mock.get();
+
+  EXPECT_CALL(*mockPtr, setPacketCallback(_));
+  EXPECT_CALL(*mockPtr, setErrorCallback(_));
+  EXPECT_CALL(*mockPtr, isCapturing())
+      .WillOnce(Return(false)) // startCapture guard
+      .WillOnce(Return(true))  // stopCapture guard
+      .WillRepeatedly(Return(false));
+  EXPECT_CALL(*mockPtr, initialize(_, _))
+      .WillOnce(Return(std::expected<void, std::string>{}));
+  EXPECT_CALL(*mockPtr, startCapture(_)).Times(1);
+  EXPECT_CALL(*mockPtr, stopCapture()).Times(1);
+
+  CaptureController controller(std::move(mock));
+
+  int startedCount = 0;
+  int stoppedCount = 0;
+  controller.setCaptureStartedCallback([&]() { ++startedCount; });
+  controller.setCaptureStoppedCallback([&]() { ++stoppedCount; });
+
+  PacketFilter filter;
+  filter.networkCard = "eth0";
+  controller.startCapture(filter);
+  EXPECT_EQ(startedCount, 1);
+
+  controller.stopCapture();
+  EXPECT_EQ(stoppedCount, 1);
 }

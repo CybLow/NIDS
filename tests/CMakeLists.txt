@@ -48,8 +48,13 @@ add_executable(nids_tests
     unit/test_ServiceRegistry.cpp
     unit/test_CaptureSession.cpp
     unit/test_AttackType.cpp
-    unit/test_ReportGenerator.cpp
-    unit/test_NativeFlowExtractor.cpp
+
+    unit/test_FlowKey.cpp
+    unit/test_WelfordAccumulator.cpp
+    unit/test_FlowStats.cpp
+    unit/test_FlowExtractorBatch.cpp
+    unit/test_FlowExtractorCallback.cpp
+    unit/test_FlowExtractorLive.cpp
     unit/test_Configuration.cpp
     unit/test_DetectionResult.cpp
     unit/test_PredictionResult.cpp
@@ -57,6 +62,19 @@ add_executable(nids_tests
     unit/test_HeuristicRuleEngine.cpp
     unit/test_HybridDetectionService.cpp
     unit/test_FeatureNormalizer.cpp
+    unit/test_BoundedQueue.cpp
+    unit/test_FlowAnalysisWorker.cpp
+    unit/test_LiveDetectionPipeline.cpp
+    unit/test_PipelineFactory.cpp
+    unit/test_CaptureCommands.cpp
+    unit/test_ProtocolConstants.cpp
+    unit/test_ConsoleAlertSink.cpp
+    unit/test_HeadlessCaptureRunner.cpp
+    unit/test_InterfaceDestructors.cpp
+)
+
+target_include_directories(nids_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(nids_tests PRIVATE
@@ -81,6 +99,10 @@ if(Qt6_FOUND)
         unit/test_CaptureController.cpp
         unit/test_AnalysisService.cpp
         integration/test_Pipeline.cpp
+    )
+
+    target_include_directories(nids_qt_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
     )
 
     target_link_libraries(nids_qt_tests PRIVATE
@@ -115,7 +137,7 @@ add_executable(nids_stress_tests
 )
 
 target_include_directories(nids_stress_tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/tests
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(nids_stress_tests PRIVATE

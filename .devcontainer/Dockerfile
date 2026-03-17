@@ -1,6 +1,6 @@
 # Devcontainer image for NIDS
 #
-# Provides a complete C++20/Qt6 development environment with all dependencies
+# Provides a complete C++23/Qt6 development environment with all dependencies
 # pre-installed. Works with CLion Dev Containers and VS Code Remote Containers.
 
 FROM ubuntu:24.04

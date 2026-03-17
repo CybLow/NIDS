@@ -8,6 +8,7 @@
  */
 
 #include "core/model/AttackType.h"
+#include "core/model/FlowConstants.h"
 #include "core/model/PacketInfo.h"
 #include "core/model/PredictionResult.h"
 #include "core/services/IFeatureNormalizer.h"
@@ -21,9 +22,11 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <expected>
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -180,12 +183,13 @@ inline void generatePcap(const std::string &outPath, std::uint32_t packetCount,
  * Runtime. */
 class StubAnalyzer : public core::IPacketAnalyzer {
 public:
-  [[nodiscard]] bool loadModel(const std::string & /*modelPath*/) override {
-    return true;
+  [[nodiscard]] std::expected<void, std::string>
+  loadModel(const std::string & /*modelPath*/) override {
+    return {};
   }
 
   [[nodiscard]] core::AttackType
-  predict(const std::vector<float> &features) override {
+  predict(std::span<const float> features) override {
     // Deterministic: if first feature (dst port) > 1024, classify as benign
     if (!features.empty() && features[0] <= 1024.0f) {
       return core::AttackType::SynFlood;
@@ -194,7 +198,7 @@ public:
   }
 
   [[nodiscard]] core::PredictionResult
-  predictWithConfidence(const std::vector<float> &features) override {
+  predictWithConfidence(std::span<const float> features) override {
     core::PredictionResult result;
     result.classification = predict(features);
     result.confidence = 0.85f;
@@ -214,17 +218,17 @@ public:
 /** Stub normalizer that returns features unchanged. */
 class StubNormalizer : public core::IFeatureNormalizer {
 public:
-  [[nodiscard]] bool
+  [[nodiscard]] std::expected<void, std::string>
   loadMetadata(const std::string & /*metadataPath*/) override {
-    return true;
+    return {};
   }
   [[nodiscard]] std::vector<float>
-  normalize(const std::vector<float> &features) const override {
-    return features;
+  normalize(std::span<const float> features) const override {
+    return {features.begin(), features.end()};
   }
   [[nodiscard]] bool isLoaded() const noexcept override { return true; }
   [[nodiscard]] std::size_t featureCount() const noexcept override {
-    return static_cast<std::size_t>(infra::kFlowFeatureCount);
+    return static_cast<std::size_t>(core::kFlowFeatureCount);
   }
 };
 
@@ -234,7 +238,8 @@ public:
   explicit StubThreatIntel(std::vector<std::string> blacklist = {})
       : blacklist_(std::move(blacklist)) {}
 
-  [[nodiscard]] std::size_t loadFeeds(const std::string & /*dir*/) override {
+  [[nodiscard]] std::size_t
+  loadFeeds(const std::filesystem::path & /*dir*/) override {
     return blacklist_.size();
   }
   [[nodiscard]] core::ThreatIntelLookup
@@ -263,18 +268,18 @@ private:
 /** Stub rule engine that fires on high packet rates. */
 class StubRuleEngine : public core::IRuleEngine {
 public:
-  [[nodiscard]] std::vector<core::HeuristicRuleResult>
-  evaluate(const core::FlowMetadata &flow) const override {
-    std::vector<core::HeuristicRuleResult> results;
+  [[nodiscard]] std::vector<core::RuleMatch>
+  evaluate(const core::FlowInfo &flow) const override {
+    std::vector<core::RuleMatch> results;
     if (flow.fwdPacketsPerSecond > 10000.0) {
       results.emplace_back("high_rate", "High packet rate", 0.8f);
     }
     return results;
   }
-  [[nodiscard]] std::vector<core::HeuristicRuleResult>
+  [[nodiscard]] std::vector<core::RuleMatch>
   evaluatePortScan(std::string_view /*srcIp*/,
                    const std::vector<std::uint16_t> &ports) const override {
-    std::vector<core::HeuristicRuleResult> results;
+    std::vector<core::RuleMatch> results;
     if (ports.size() > 100) {
       results.emplace_back("port_scan", "Port scan detected", 0.9f);
     }

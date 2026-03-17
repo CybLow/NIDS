@@ -1,5 +1,5 @@
 #include "ui/DetectionDetailWidget.h"
-#include "core/model/AttackType.h"
+#include "ui/QtStringConversions.h"
 
 #include <QFont>
 #include <QHeaderView>
@@ -8,13 +8,22 @@
 namespace nids::ui {
 
 namespace {
-constexpr int kProbabilityTableRows = nids::core::kAttackTypeCount;
+constexpr int kProbabilityTableRows = core::kAttackTypeCount;
 constexpr int kProbabilityTableCols = 2; // Attack Type, Probability
 constexpr int kTiTableCols = 3;          // IP, Feed, Direction
 constexpr int kRulesTableCols = 3;       // Rule, Severity, Description
 constexpr int kPercentMultiplier = 100;
 constexpr int kProbPrecision = 2;
 constexpr int kScorePrecision = 3;
+
+/// Apply read-only display style to a QTableWidget: stretch columns,
+/// hide vertical header, disable editing and selection.
+void makeReadOnlyTable(QTableWidget *table) {
+  table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  table->verticalHeader()->setVisible(false);
+  table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  table->setSelectionMode(QAbstractItemView::NoSelection);
+}
 } // namespace
 
 DetectionDetailWidget::DetectionDetailWidget(QWidget *parent)
@@ -66,11 +75,7 @@ void DetectionDetailWidget::setupUi() {
   probabilityTable_ = new QTableWidget( // NOSONAR
       kProbabilityTableRows, kProbabilityTableCols, mlGroup_);
   probabilityTable_->setHorizontalHeaderLabels({"Attack Type", "Probability"});
-  probabilityTable_->horizontalHeader()->setSectionResizeMode(
-      QHeaderView::Stretch);
-  probabilityTable_->verticalHeader()->setVisible(false);
-  probabilityTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  probabilityTable_->setSelectionMode(QAbstractItemView::NoSelection);
+  makeReadOnlyTable(probabilityTable_);
   mlLayout->addWidget(probabilityTable_);
   mainLayout->addWidget(mlGroup_);
 
@@ -79,10 +84,7 @@ void DetectionDetailWidget::setupUi() {
   auto *tiLayout = new QVBoxLayout(tiGroup_);                    // NOSONAR
   tiTable_ = new QTableWidget(0, kTiTableCols, tiGroup_);        // NOSONAR
   tiTable_->setHorizontalHeaderLabels({"IP Address", "Feed", "Direction"});
-  tiTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-  tiTable_->verticalHeader()->setVisible(false);
-  tiTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  tiTable_->setSelectionMode(QAbstractItemView::NoSelection);
+  makeReadOnlyTable(tiTable_);
   tiLayout->addWidget(tiTable_);
   mainLayout->addWidget(tiGroup_);
 
@@ -91,10 +93,7 @@ void DetectionDetailWidget::setupUi() {
   auto *rulesLayout = new QVBoxLayout(rulesGroup_);                // NOSONAR
   rulesTable_ = new QTableWidget(0, kRulesTableCols, rulesGroup_); // NOSONAR
   rulesTable_->setHorizontalHeaderLabels({"Rule", "Severity", "Description"});
-  rulesTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-  rulesTable_->verticalHeader()->setVisible(false);
-  rulesTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  rulesTable_->setSelectionMode(QAbstractItemView::NoSelection);
+  makeReadOnlyTable(rulesTable_);
   rulesLayout->addWidget(rulesTable_);
   mainLayout->addWidget(rulesGroup_);
 
@@ -102,79 +101,65 @@ void DetectionDetailWidget::setupUi() {
   clearResult();
 }
 
-void DetectionDetailWidget::setResult(const nids::core::DetectionResult &result,
-                                      const nids::core::FlowInfo *metadata) {
-  // -- Flow metadata --
-  if (metadata) {
-    flowGroup_->setVisible(true);
-    flowSrcLabel_->setText(QString("Source: %1:%2")
-                               .arg(QString::fromStdString(metadata->srcIp))
-                               .arg(metadata->srcPort));
-    flowDstLabel_->setText(QString("Destination: %1:%2")
-                               .arg(QString::fromStdString(metadata->dstIp))
-                               .arg(metadata->dstPort));
+void DetectionDetailWidget::setResult(const core::DetectionResult &result,
+                                      const core::FlowInfo *metadata) {
+  populateFlowSection(metadata);
+  populateVerdictSection(result);
+  populateMlSection(result);
+  populateTiSection(result);
+  populateRulesSection(result);
+}
 
-    QString protoStr;
-    switch (metadata->protocol) {
-    case 6:
-      protoStr = "TCP";
-      break;
-    case 17:
-      protoStr = "UDP";
-      break;
-    case 1:
-      protoStr = "ICMP";
-      break;
-    default:
-      protoStr = QString("Other (%1)").arg(metadata->protocol);
-      break;
-    }
-    flowProtocolLabel_->setText(QString("Protocol: %1").arg(protoStr));
-
-    double durationSec = metadata->flowDurationUs / 1'000'000.0;
-    flowDurationLabel_->setText(
-        QString("Duration: %1 s").arg(durationSec, 0, 'f', 3));
-    flowPacketsLabel_->setText(QString("Packets: %1 fwd / %2 bwd")
-                                   .arg(metadata->totalFwdPackets)
-                                   .arg(metadata->totalBwdPackets));
-  } else {
+void DetectionDetailWidget::populateFlowSection(
+    const core::FlowInfo *metadata) {
+  if (!metadata) {
     flowGroup_->setVisible(false);
+    return;
   }
+  flowGroup_->setVisible(true);
+  flowSrcLabel_->setText(QString("Source: %1:%2")
+                             .arg(QString::fromStdString(metadata->srcIp))
+                             .arg(metadata->srcPort));
+  flowDstLabel_->setText(QString("Destination: %1:%2")
+                             .arg(QString::fromStdString(metadata->dstIp))
+                             .arg(metadata->dstPort));
+  flowProtocolLabel_->setText(
+      QString("Protocol: %1").arg(protocolQString(metadata->protocol)));
+  double durationSec = metadata->flowDurationUs / 1'000'000.0;
+  flowDurationLabel_->setText(
+      QString("Duration: %1 s").arg(durationSec, 0, 'f', 3));
+  flowPacketsLabel_->setText(QString("Packets: %1 fwd / %2 bwd")
+                                 .arg(metadata->totalFwdPackets)
+                                 .arg(metadata->totalBwdPackets));
+}
 
-  // -- Combined verdict --
-  auto verdictStr = nids::core::attackTypeToString(result.finalVerdict);
+void DetectionDetailWidget::populateVerdictSection(
+    const core::DetectionResult &result) {
   verdictLabel_->setText(
-      QString("Verdict: %1")
-          .arg(QString::fromUtf8(verdictStr.data(),
-                                 static_cast<int>(verdictStr.size()))));
+      QString("Verdict: %1").arg(attackTypeQString(result.finalVerdict)));
   combinedScoreLabel_->setText(
       QString("Combined Score: %1")
           .arg(static_cast<double>(result.combinedScore), 0, 'f',
                kScorePrecision));
-  auto sourceStr = nids::core::detectionSourceToString(result.detectionSource);
   detectionSourceLabel_->setText(
       QString("Detection Source: %1")
-          .arg(QString::fromUtf8(sourceStr.data(),
-                                 static_cast<int>(sourceStr.size()))));
+          .arg(detectionSourceQString(result.detectionSource)));
+}
 
-  // -- ML classifier --
-  auto mlStr = nids::core::attackTypeToString(result.mlResult.classification);
+void DetectionDetailWidget::populateMlSection(
+    const core::DetectionResult &result) {
   mlClassLabel_->setText(
       QString("Classification: %1")
-          .arg(
-              QString::fromUtf8(mlStr.data(), static_cast<int>(mlStr.size()))));
+          .arg(attackTypeQString(result.mlResult.classification)));
   mlConfidenceLabel_->setText(
       QString("Confidence: %1%")
           .arg(static_cast<double>(result.mlResult.confidence) *
                    kPercentMultiplier,
                0, 'f', 1));
 
-  // Populate probability distribution table
-  for (int i = 0; i < nids::core::kAttackTypeCount; ++i) {
-    auto typeName =
-        nids::core::attackTypeToString(nids::core::attackTypeFromIndex(i));
+  for (int i = 0; i < core::kAttackTypeCount; ++i) {
     auto *nameItem = new QTableWidgetItem( // NOSONAR
-        QString::fromUtf8(typeName.data(), static_cast<int>(typeName.size())));
+        attackTypeQString(core::attackTypeFromIndex(i)));
     probabilityTable_->setItem(i, 0, nameItem);
 
     auto prob = static_cast<double>(
@@ -184,8 +169,10 @@ void DetectionDetailWidget::setResult(const nids::core::DetectionResult &result,
     probItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     probabilityTable_->setItem(i, 1, probItem);
   }
+}
 
-  // -- Threat intelligence matches --
+void DetectionDetailWidget::populateTiSection(
+    const core::DetectionResult &result) {
   auto tiCount = static_cast<int>(result.threatIntelMatches.size());
   tiTable_->setRowCount(tiCount);
   for (int i = 0; i < tiCount; ++i) {
@@ -202,8 +189,10 @@ void DetectionDetailWidget::setResult(const nids::core::DetectionResult &result,
                                                : "Destination"));
   }
   tiGroup_->setVisible(tiCount > 0);
+}
 
-  // -- Heuristic rule matches --
+void DetectionDetailWidget::populateRulesSection(
+    const core::DetectionResult &result) {
   auto rulesCount = static_cast<int>(result.ruleMatches.size());
   rulesTable_->setRowCount(rulesCount);
   for (int i = 0; i < rulesCount; ++i) {
@@ -230,13 +219,11 @@ void DetectionDetailWidget::clearResult() {
   mlClassLabel_->setText("Classification: —");
   mlConfidenceLabel_->setText("Confidence: —");
 
-  for (int i = 0; i < nids::core::kAttackTypeCount; ++i) {
-    auto typeName =
-        nids::core::attackTypeToString(nids::core::attackTypeFromIndex(i));
+  for (int i = 0; i < core::kAttackTypeCount; ++i) {
     probabilityTable_->setItem(
         i, 0,
-        new QTableWidgetItem(QString::fromUtf8( // NOSONAR
-            typeName.data(), static_cast<int>(typeName.size()))));
+        new QTableWidgetItem( // NOSONAR
+            attackTypeQString(core::attackTypeFromIndex(i))));
     auto *probItem = new QTableWidgetItem("—"); // NOSONAR
     probItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     probabilityTable_->setItem(i, 1, probItem);

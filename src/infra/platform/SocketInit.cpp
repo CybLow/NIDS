@@ -7,7 +7,7 @@
     #include <winsock2.h>
 #endif
 
-namespace nids::platform {
+namespace nids::infra::platform {
 
 bool initializeNetworking() {
 #ifdef _WIN32
@@ -34,4 +34,4 @@ NetworkInitGuard::~NetworkInitGuard() {
     }
 }
 
-} // namespace nids::platform
+} // namespace nids::infra::platform

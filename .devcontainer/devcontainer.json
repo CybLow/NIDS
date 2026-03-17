@@ -7,8 +7,8 @@
   "postCreateCommand": "scripts/dev/setup-dev.sh --no-install",
   "remoteUser": "dev",
   "remoteEnv": {
-    "CC": "gcc-13",
-    "CXX": "g++-13"
+    "CC": "gcc-14",
+    "CXX": "g++-14"
   },
   "features": {
     "ghcr.io/devcontainers/features/git:1": {}

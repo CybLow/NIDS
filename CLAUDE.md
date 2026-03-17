@@ -35,7 +35,7 @@ src/
 - **Model**: `PacketTableModel` (`QAbstractTableModel`), domain objects in `core/model/`.
 - **View**: Qt widgets in `ui/` -- layout, rendering, user events only.
 - **Controller / ViewModel**: classes in `app/` (`CaptureController`, `AnalysisService`,
-  `ReportGenerator`) that bridge UI signals to domain logic.
+  `HybridDetectionService`) that bridge UI signals to domain logic.
 
 The View **never** creates or manages domain objects directly.
 
@@ -359,8 +359,8 @@ Headers are included with the `pcapplusplus/` prefix:
 
 ### 8.2 Dependency Management
 
-- Use **vcpkg** in manifest mode (`vcpkg.json` at project root).
-- All third-party dependencies must be declared in `vcpkg.json`.
+- Use **Conan 2** in manifest mode (`conanfile.py` at project root).
+- All third-party dependencies must be declared in `conanfile.py`.
 - Pin dependency versions for reproducible builds.
 
 ### 8.3 Project Structure
@@ -370,7 +370,7 @@ Headers are included with the `pcapplusplus/` prefix:
 cmake_minimum_required(VERSION 3.20)
 project(NIDS VERSION 0.2.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 

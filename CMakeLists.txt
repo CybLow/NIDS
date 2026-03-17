@@ -65,29 +65,74 @@ target_link_libraries(NIDS PRIVATE
 
 nids_set_target_defaults(NIDS)
 
-# ── Server / Client stubs (future gRPC scaffolding) ──────────────
+# ── Server (headless daemon) ──────────────────────────────────────
 if(NIDS_BUILD_SERVER)
-    add_library(nids-server-lib STATIC
-        src/server/NidsServer.cpp
-    )
-    target_link_libraries(nids-server-lib PRIVATE
-        nids_core
-        Threads::Threads
-        spdlog::spdlog
-    )
-    nids_set_target_defaults(nids-server-lib)
+    # ── gRPC / Protobuf code generation ──────────────────────────
+    find_package(gRPC CONFIG REQUIRED)
+    find_package(Protobuf CONFIG REQUIRED)
 
-    add_library(nids-client-lib STATIC
-        src/client/NidsClient.cpp
-    )
-    target_link_libraries(nids-client-lib PRIVATE
-        nids_core
-        Threads::Threads
-        spdlog::spdlog
-    )
-    nids_set_target_defaults(nids-client-lib)
+    # Locate protoc and grpc_cpp_plugin executables.
+    # Conan's gRPC build module defines GRPC_CPP_PLUGIN_PROGRAM and
+    # Protobuf provides Protobuf_PROTOC_EXECUTABLE.  Fall back to
+    # CMAKE_PROGRAM_PATH (set by conan_toolchain.cmake) if unavailable.
+    if(TARGET protobuf::protoc)
+        get_target_property(_PROTOC protobuf::protoc IMPORTED_LOCATION)
+    endif()
+    if(NOT _PROTOC)
+        find_program(_PROTOC protoc REQUIRED)
+    endif()
 
-    install(TARGETS nids-server-lib nids-client-lib
+    if(GRPC_CPP_PLUGIN_PROGRAM)
+        set(_GRPC_CPP_PLUGIN "${GRPC_CPP_PLUGIN_PROGRAM}")
+    else()
+        find_program(_GRPC_CPP_PLUGIN grpc_cpp_plugin REQUIRED)
+    endif()
+
+    message(STATUS "protoc: ${_PROTOC}")
+    message(STATUS "grpc_cpp_plugin: ${_GRPC_CPP_PLUGIN}")
+
+    set(NIDS_PROTO_DIR "${CMAKE_SOURCE_DIR}/proto")
+    set(NIDS_PROTO_FILE "${NIDS_PROTO_DIR}/nids.proto")
+    set(NIDS_PROTO_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/proto_gen")
+    file(MAKE_DIRECTORY "${NIDS_PROTO_GEN_DIR}")
+
+    set(NIDS_PROTO_SRCS "${NIDS_PROTO_GEN_DIR}/nids.pb.cc")
+    set(NIDS_PROTO_HDRS "${NIDS_PROTO_GEN_DIR}/nids.pb.h")
+    set(NIDS_GRPC_SRCS  "${NIDS_PROTO_GEN_DIR}/nids.grpc.pb.cc")
+    set(NIDS_GRPC_HDRS  "${NIDS_PROTO_GEN_DIR}/nids.grpc.pb.h")
+
+    add_custom_command(
+        OUTPUT ${NIDS_PROTO_SRCS} ${NIDS_PROTO_HDRS}
+               ${NIDS_GRPC_SRCS} ${NIDS_GRPC_HDRS}
+        COMMAND ${_PROTOC}
+            --proto_path=${NIDS_PROTO_DIR}
+            --cpp_out=${NIDS_PROTO_GEN_DIR}
+            --grpc_out=${NIDS_PROTO_GEN_DIR}
+            --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN}
+            ${NIDS_PROTO_FILE}
+        DEPENDS ${NIDS_PROTO_FILE}
+        COMMENT "Generating gRPC/Protobuf C++ stubs from nids.proto"
+        VERBATIM
+    )
+
+    # Library for generated proto stubs (shared by server + client)
+    add_library(nids_proto STATIC
+        ${NIDS_PROTO_SRCS}
+        ${NIDS_GRPC_SRCS}
+    )
+    target_include_directories(nids_proto SYSTEM PUBLIC "${NIDS_PROTO_GEN_DIR}")
+    target_link_libraries(nids_proto PUBLIC
+        gRPC::grpc++
+        protobuf::libprotobuf
+    )
+    # Suppress warnings in generated code
+    target_compile_options(nids_proto PRIVATE -w)
+
+    add_subdirectory(src/server)
+    add_subdirectory(src/client)
+
+    install(TARGETS nids-server nids-cli nids-server-lib nids-client-lib
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         ARCHIVE DESTINATION lib
     )
 endif()

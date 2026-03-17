@@ -1,4 +1,5 @@
 #include "ui/PacketTableModel.h"
+#include "ui/QtStringConversions.h"
 
 #include <array>
 
@@ -21,8 +22,9 @@ constexpr std::array<const char *, PacketTableModel::kColumnCount>
 
 } // namespace
 
-PacketTableModel::PacketTableModel(QObject *parent)
-    : QAbstractTableModel(parent) {}
+PacketTableModel::PacketTableModel(const core::ServiceRegistry *registry,
+                                   QObject *parent)
+    : QAbstractTableModel(parent), serviceRegistry_(registry) {}
 
 int PacketTableModel::rowCount(const QModelIndex &parent) const {
   if (parent.isValid())
@@ -47,7 +49,7 @@ QVariant PacketTableModel::data(const QModelIndex &index, int role) const {
 }
 
 QVariant PacketTableModel::displayData(const QModelIndex &index,
-                                       const Row &row) {
+                                       const Row &row) const {
   const auto &pkt = row.packet;
 
   using enum Column;
@@ -57,17 +59,26 @@ QVariant PacketTableModel::displayData(const QModelIndex &index,
   case Interface:
     return QString::fromStdString(row.interfaceName);
   case Protocol:
-    return QString::fromStdString(pkt.protocol);
+    return protocolQString(pkt.protocol);
   case Application:
-    return QString::fromStdString(pkt.application);
+    // Resolve application from ServiceRegistry at display time.
+    // Application resolution is a UI/display concern (service name from
+    // well-known port), not part of the capture layer.
+    if (serviceRegistry_) {
+      return QString::fromStdString(
+          serviceRegistry_->resolveApplication(0, 0, pkt.portDestination));
+    }
+    return QStringLiteral("Unknown");
   case IpSource:
     return QString::fromStdString(pkt.ipSource);
   case PortSource:
-    return QString::fromStdString(pkt.portSource);
+    return pkt.portSource != 0 ? QString::number(pkt.portSource)
+                               : QStringLiteral("-");
   case IpDestination:
     return QString::fromStdString(pkt.ipDestination);
   case PortDestination:
-    return QString::fromStdString(pkt.portDestination);
+    return pkt.portDestination != 0 ? QString::number(pkt.portDestination)
+                                    : QStringLiteral("-");
   case ColumnCount:
     return {};
   }
@@ -83,7 +94,7 @@ QVariant PacketTableModel::headerData(int section, Qt::Orientation orientation,
   return kPacketColumnHeaders[static_cast<std::size_t>(section)];
 }
 
-void PacketTableModel::addPacket(const nids::core::PacketInfo &info,
+void PacketTableModel::addPacket(const core::PacketInfo &info,
                                  const std::string &interfaceName) {
   auto row = static_cast<int>(rows_.size());
   beginInsertRows(QModelIndex(), row, row);
@@ -99,7 +110,7 @@ void PacketTableModel::clear() {
   endResetModel();
 }
 
-const nids::core::PacketInfo *PacketTableModel::packetAt(int row) const {
+const core::PacketInfo *PacketTableModel::packetAt(int row) const {
   if (row < 0 || row >= static_cast<int>(rows_.size()))
     return nullptr;
   return &rows_[static_cast<std::size_t>(row)].packet;

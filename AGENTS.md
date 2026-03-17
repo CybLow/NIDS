@@ -15,7 +15,7 @@ UI -> App -> Core, and Infra -> Core.
 
 ```
 src/
-  core/       # Domain layer -- pure C++20, zero platform / framework deps
+  core/       # Domain layer -- pure C++23, zero platform / framework deps
   infra/      # Infrastructure -- platform-specific implementations (ONNX Runtime, pcap)
   app/        # Application / use-case layer -- orchestration logic
   ui/         # Presentation layer -- Qt6-specific code
@@ -35,7 +35,7 @@ src/
 - **Model**: `PacketTableModel` (`QAbstractTableModel`), domain objects in `core/model/`.
 - **View**: Qt widgets in `ui/` -- layout, rendering, user events only.
 - **Controller / ViewModel**: classes in `app/` (`CaptureController`, `AnalysisService`,
-  `ReportGenerator`) that bridge UI signals to domain logic.
+  `HybridDetectionService`) that bridge UI signals to domain logic.
 
 The View **never** creates or manages domain objects directly.
 
@@ -84,13 +84,13 @@ paths across the codebase.
 
 ### 2.1 Language Version
 
-- **Standard**: C++20 (`-std=c++20`). All code must compile under C++20.
+- **Standard**: C++23 (`-std=c++23`). All code must compile under C++23.
 - Use `std::filesystem`, `std::optional`, `std::variant`, structured bindings,
   `if constexpr`, `[[nodiscard]]`, `[[maybe_unused]]` freely.
 
-### 2.1.1 C++20 Features in Use
+### 2.1.1 C++23 Features in Use
 
-The following C++20 features are actively used in the codebase:
+The following C++23 features are actively used in the codebase:
 
 - **`std::span`**: Use for non-owning views over contiguous data (e.g., feature vectors
   in `IPacketAnalyzer::predict(std::span<const float>)`).
@@ -152,24 +152,12 @@ All code, comments, identifiers, commit messages, and documentation **must** be 
 
 ### 3.2 C Resource Wrappers
 
-Every C resource (pcap handle, file descriptor, socket) **must** be wrapped in an RAII
-type using `std::unique_ptr` with a custom deleter:
+Every C resource (file descriptor, socket) **must** be wrapped in an RAII
+type using `std::unique_ptr` with a custom deleter.
 
-```cpp
-struct PcapDeleter {
-    void operator()(pcap_t* p) const noexcept {
-        if (p) pcap_close(p);
-    }
-};
-using PcapHandle = std::unique_ptr<pcap_t, PcapDeleter>;
-
-struct PcapDumperDeleter {
-    void operator()(pcap_dumper_t* d) const noexcept {
-        if (d) pcap_dump_close(d);
-    }
-};
-using PcapDumper = std::unique_ptr<pcap_dumper_t, PcapDumperDeleter>;
-```
+Packet capture uses PcapPlusPlus, which provides built-in RAII device classes
+(`pcpp::PcapLiveDevice`, `pcpp::PcapFileReaderDevice`, `pcpp::PcapFileWriterDevice`).
+No manual wrappers needed.
 
 ### 3.3 Rule of Five / Zero
 
@@ -188,7 +176,7 @@ using PcapDumper = std::unique_ptr<pcap_dumper_t, PcapDumperDeleter>;
 - Use the **QThread + worker object** pattern: create a `QObject`-derived worker,
   `moveToThread()`, connect signals/slots. Do **not** subclass `QThread` and override
   `run()`.
-- For non-Qt threads, use `std::jthread` (C++20) or `std::thread` + RAII join wrapper.
+- For non-Qt threads, use `std::jthread` (C++23) or `std::thread` + RAII join wrapper.
 
 ### 4.2 Shared State
 
@@ -339,25 +327,15 @@ Use for encapsulating operations that can be undone, queued, or logged.
 
 ### 7.3 Network Headers
 
-All OS-specific network includes are centralized in a single header:
+Network packet parsing uses **PcapPlusPlus** typed layer classes
+(`pcpp::IPv4Layer`, `pcpp::TcpLayer`, `pcpp::UdpLayer`, `pcpp::IcmpLayer`).
+No OS-specific network struct definitions or `reinterpret_cast` are needed.
+
+Headers are included with the `pcapplusplus/` prefix:
 
 ```cpp
-// infra/platform/NetworkHeaders.h
-#pragma once
-#ifdef _WIN32
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #pragma comment(lib, "ws2_32.lib")
-#else
-    #include <netinet/ip.h>
-    #include <netinet/tcp.h>
-    #include <netinet/udp.h>
-    #include <arpa/inet.h>
-    #include <netinet/if_ether.h>
-#endif
+#include <pcapplusplus/IPv4Layer.h>
+#include <pcapplusplus/TcpLayer.h>
 ```
 
 ### 7.4 File Paths
@@ -381,8 +359,8 @@ All OS-specific network includes are centralized in a single header:
 
 ### 8.2 Dependency Management
 
-- Use **vcpkg** in manifest mode (`vcpkg.json` at project root).
-- All third-party dependencies must be declared in `vcpkg.json`.
+- Use **Conan 2** in manifest mode (`conanfile.py` at project root).
+- All third-party dependencies must be declared in `conanfile.py`.
 - Pin dependency versions for reproducible builds.
 
 ### 8.3 Project Structure
@@ -392,7 +370,7 @@ All OS-specific network includes are centralized in a single header:
 cmake_minimum_required(VERSION 3.20)
 project(NIDS VERSION 0.2.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
@@ -505,9 +483,11 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `build`, `ci`, `chore`.
 | Mixed language comments | English only |
 | `Qt5::` prefixed targets | Versionless `Qt::Core`, `Qt::Widgets`, `Qt::Gui` |
 | `std::lock_guard` (single mutex) | `std::scoped_lock` (works with one or more mutexes) |
-| `std::thread` without join guard | `std::jthread` (C++20, RAII-based) |
+| `std::thread` without join guard | `std::jthread` (C++23, RAII-based) |
 | `std::find` / `std::transform` on full containers | `std::ranges::find` / `std::ranges::transform` |
 | `std::string` return for fixed labels | `constexpr std::string_view` |
 | `frugally-deep` / `fdeep` | ONNX Runtime via `OnnxAnalyzer` |
 | Direct `OnnxAnalyzer` construction | `AnalyzerFactory::create()` factory method |
 | Hardcoded model paths / thread counts | `Configuration::instance()` singleton |
+| Raw `libpcap` / `<pcap.h>` | PcapPlusPlus via `pcpp::PcapLiveDevice`, `pcpp::PcapFileReaderDevice` |
+| `reinterpret_cast` for packet headers | PcapPlusPlus typed layers (`pcpp::IPv4Layer`, `pcpp::TcpLayer`) |

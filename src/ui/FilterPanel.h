@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/services/PacketFilter.h"
+#include "core/model/PacketFilter.h"
 #include "core/services/ServiceRegistry.h"
 
 #include <QWidget>
@@ -21,13 +21,13 @@ class FilterPanel : public QWidget {
 
 public:
     /** Construct with a service registry for protocol/application lookups. */
-    explicit FilterPanel(const nids::core::ServiceRegistry& registry,
+    explicit FilterPanel(const core::ServiceRegistry& registry,
                          QWidget* parent = nullptr);
 
     /** Populate the network interface combo box. */
     void setInterfaces(const std::vector<std::string>& interfaces);
     /** Build a PacketFilter from the current UI field values. */
-    [[nodiscard]] nids::core::PacketFilter gatherFilter() const;
+    [[nodiscard]] core::PacketFilter gatherFilter() const;
     /** Return the currently selected network interface name. */
     [[nodiscard]] std::string selectedInterface() const;
 
@@ -54,7 +54,7 @@ private:
     void populateProtocols();
     void populateApplications();
 
-    const nids::core::ServiceRegistry& serviceRegistry_;
+    const core::ServiceRegistry& serviceRegistry_;
 
     QComboBox* networkCardCombo_ = nullptr;
     QComboBox* protocolCombo_ = nullptr;

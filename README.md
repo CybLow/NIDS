@@ -3,39 +3,63 @@
 [![CI](https://github.com/CybLow/NIDS/actions/workflows/ci.yml/badge.svg)](https://github.com/CybLow/NIDS/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/CybLow/NIDS)](LICENSE)
 
-An AI-powered Network Intrusion Detection System that captures packets, extracts
-flow features natively in C++, and classifies traffic using a CNN-BiLSTM model trained
-on the LSNM2024 dataset. Built with C++23, Qt6, and ONNX Runtime.
+A server-first, ML-powered Network Intrusion Detection System that performs real-time
+flow-level statistical analysis using a CNN-BiLSTM model trained on the LSNM2024 dataset.
+Designed to complement Snort/Suricata/Zeek with ML-based detection. Built with C++23,
+ONNX Runtime, and optionally gRPC + Qt6.
 
 ## Features
 
+### Detection Engine
 - **CNN-BiLSTM Attack Detection**: Classifies 15 attack types + benign traffic using
-  a hybrid convolutional/recurrent neural network
-- **LSNM2024 Dataset**: Trained on 6M+ samples covering modern threats (DDoS, brute
-  force, RCE, SQL injection, XSS, port scanning, and more)
-- **ONNX Runtime Inference**: Fast CPU inference with optional GPU acceleration via
-  CUDA/TensorRT
-- **Native Flow Extraction**: 77 bidirectional flow features computed in C++ -- no
-  external tools required
-- **Real-time Packet Capture**: Live capture with BPF filtering via PcapPlusPlus
-- **Application Detection**: Port-to-service mapping for 100+ protocols
-- **Hex/ASCII Inspector**: Raw packet data viewer
-- **Report Generation**: Post-capture analysis reports
-- **Cross-Platform**: Linux and Windows (via Npcap)
+  a hybrid convolutional/recurrent neural network (87.78% accuracy, 97.78% attack recall)
+- **Hybrid Detection**: Combines ML inference with threat intelligence feeds and
+  heuristic rule matching (configurable weights, ensemble scoring)
+- **Real-Time Flow Analysis**: Producer-consumer pipeline with bounded queue
+  backpressure -- flows are classified as they complete, not post-capture
+- **77 Bidirectional Flow Features**: Native C++ flow extraction with Welford online
+  statistics (O(1) memory per flow), timeout sweeps, time-window splitting
+
+### Deployment Modes
+- **gRPC Server Daemon** (`nids-server`): Headless deployment with 7 RPCs
+  (ListInterfaces, StartCapture, StopCapture, GetStatus, StreamDetections,
+  StreamPackets, AnalyzeCapture)
+- **CLI Client** (`nids-cli`): Remote control and monitoring via gRPC
+- **Headless Mode** (`NIDS --headless --interface eth0`): Standalone capture with
+  console output, no Qt dependency at runtime
+- **GUI Mode** (`NIDS`): Qt6 interface with tabbed Packets/Flows view, detection
+  detail panel, weight tuning dialog
+
+### Infrastructure
+- **ONNX Runtime Inference**: Fast CPU inference with batched prediction
+- **PcapPlusPlus**: RAII packet capture and parsing (replaced raw libpcap)
+- **Threat Intelligence**: Loads IP blocklists from CSV/text feeds (CIDR-aware matching)
+- **Heuristic Rules**: 7 built-in rules (port scan, SYN flood, DNS amplification, etc.)
+- **Docker Sandbox**: 3-container test topology (server, attacker, victim) for
+  inline IPS testing on isolated `172.28.0.0/24` bridge network
+- **Cross-Platform**: Linux (primary) and Windows (via Npcap)
 
 ## Architecture
 
-Clean Architecture with four layers:
+Clean Architecture with four layers (dependencies flow inward only):
 
 ```
 src/
   core/       Pure C++23 domain logic (no platform dependencies)
   infra/      Platform-specific implementations (PcapPlusPlus, ONNX Runtime)
-  app/        Application orchestration (controllers, services)
-  ui/         Qt6 presentation layer
-  server/     gRPC headless daemon (planned)
-  client/     CLI client (planned)
+  app/        Application orchestration (Qt-free, pure C++23 with std::function)
+  ui/         Qt6 presentation layer (optional)
+  server/     gRPC headless daemon
+  client/     CLI gRPC client
 ```
+
+Key design decisions:
+- **Server-first**: The primary deployment target is the headless daemon, not the GUI
+- **Flow-level ML**: Purely statistical analysis of 77 bidirectional flow features --
+  no deep packet inspection, no TLS/JA3 fingerprinting, no payload analysis
+- **Complementary**: Designed to run alongside Snort/Suricata/Zeek, not replace them
+- **Dependency inversion**: All cross-layer communication via abstract interfaces
+  (`IPacketCapture`, `IPacketAnalyzer`, `IFlowExtractor`, `IRuleEngine`)
 
 See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation
 and [AGENTS.md](AGENTS.md) for coding standards.
@@ -85,9 +109,10 @@ See [INSTALL.md](INSTALL.md) for detailed per-platform instructions.
 | spdlog          | Conan 2 (`conanfile.py`)                 |
 | nlohmann_json   | Conan 2 (`conanfile.py`)                 |
 | GoogleTest      | Conan 2 (`conanfile.py`)                 |
-| ONNX Runtime    | CMake FetchContent (pre-built binaries)  |
-| Qt6             | System package                           |
 | PcapPlusPlus    | Conan 2 (`conanfile.py`)                 |
+| gRPC + Protobuf | Conan 2 (optional: `conan install . -o with_grpc=True`) |
+| ONNX Runtime    | CMake FetchContent (pre-built binaries)  |
+| Qt6             | System package (optional, GUI only)      |
 
 ## Build Options
 
@@ -105,10 +130,11 @@ cmake --build --preset Debug
 ctest --preset Debug
 ```
 
-Three test executables are built:
-- `nids_tests` -- Core/infra unit tests (no Qt/ONNX dependencies)
-- `nids_qt_tests` -- Qt-dependent tests (CaptureController, AnalysisService, pipeline)
-- `nids_onnx_tests` -- ONNX Runtime tests (OnnxAnalyzer, AnalyzerFactory)
+Four test executables are built (403 tests total):
+- `nids_tests` -- Core/infra unit tests (324 tests, no Qt/ONNX dependencies)
+- `nids_qt_tests` -- Qt-dependent tests (31 tests: CaptureController, AnalysisService, pipeline)
+- `nids_stress_tests` -- Performance and concurrency stress tests (24 tests)
+- `nids_onnx_tests` -- ONNX Runtime tests (24 tests: OnnxAnalyzer, AnalyzerFactory)
 
 ## Model Training
 
@@ -151,59 +177,73 @@ See [docs/model-training.md](docs/model-training.md) for the full training guide
 ```
 NIDS/
   CMakeLists.txt              Root build configuration
-  conanfile.py                Conan 2 dependency recipe
+  conanfile.py                Conan 2 dependency recipe (with_grpc option)
   CMakePresets.json           Developer + CI build presets
   conan/profiles/             In-repo Conan profiles (linux, windows)
   scripts/
     dev/                      Developer environment setup
-    ml/                       ML training pipeline
+    ml/                       ML training pipeline (Colab-compatible)
     ci/                       CI / static analysis tooling
-    ops/                      Runtime operational scripts
-  .devcontainer/              VS Code / CLion devcontainer
+    ops/                      Runtime operational scripts (threat feed updates)
   docker/
-    app/
-      Dockerfile              Multi-stage Docker build
-      compose.yml             Production compose stack
-    ci/
-      Dockerfile              CI builder image
-      compose.yml             Local CI simulation stack
-  AGENTS.md                   Coding standards and architecture guide
-  INSTALL.md                  Detailed installation instructions
+    app/                      Production Docker build + compose
+    ci/                        CI builder image
+    sandbox/                  3-container IPS test environment
   cmake/
     FetchOnnxRuntime.cmake    Downloads pre-built ONNX Runtime binaries
     NidsTargetDefaults.cmake  Shared compiler flags (ASan/UBSan in Debug)
   .github/workflows/          CI/CD (build, test, lint, coverage, release)
+  proto/
+    nids.proto                gRPC service definitions (7 RPCs)
   src/
-    main.cpp                  Application entry point
-    core/                     Domain layer
-      model/                  PacketInfo, AttackType, CaptureSession
+    main.cpp                  GUI/headless entry point
+    core/                     Domain layer (pure C++23, zero deps)
+      model/                  PacketInfo, AttackType, CaptureSession,
+                              PacketFilter, DetectionResult, FlowInfo,
+                              ProtocolConstants
+      concurrent/             BoundedQueue (thread-safe producer-consumer)
+      math/                   WelfordAccumulator (online statistics)
       services/               IPacketCapture, IPacketAnalyzer, IFlowExtractor,
-                              Configuration, PacketFilter, ServiceRegistry
+                              IRuleEngine, IAnalysisRepository, ICommand,
+                              Configuration, ServiceRegistry
     infra/                    Infrastructure
       capture/                PcapCapture (PcapPlusPlus RAII devices)
-      analysis/               OnnxAnalyzer, AnalyzerFactory
-      flow/                   NativeFlowExtractor (77 CIC features)
-      platform/               SocketInit
-    app/                      Application layer
+      analysis/               OnnxAnalyzer, AnalyzerFactory, FeatureNormalizer
+      flow/                   NativeFlowExtractor (77 bidirectional features)
+      rules/                  HeuristicRuleEngine (7 heuristic rules)
+      threat/                 ThreatIntelProvider (IP blocklist feeds)
+      parsing/                PacketParser (protocol layer extraction)
+      config/                 ConfigLoader (JSON config parsing)
+      output/                 ConsoleAlertSink (pluggable output)
+      platform/               SocketInit, SignalHandler, AsanOptions
+    app/                      Application layer (Qt-free, pure C++23)
       CaptureController       Capture lifecycle management
       AnalysisService         ML pipeline orchestration
-      ReportGenerator         Report output
-    ui/                       Qt6 presentation
+      LiveDetectionPipeline   Real-time flow detection pipeline
+      FlowAnalysisWorker      ML inference consumer (std::jthread)
+      HybridDetectionService  ML + TI + heuristic fusion engine
+      PipelineFactory         Service graph construction factory
+      commands/               Command pattern (CaptureCommands)
+    ui/                       Qt6 presentation (optional)
       MainWindow              Main application window
-      PacketTableModel        MVC table model
+      PacketTableModel        Packet MVC table model
+      FlowTableModel          Flow MVC table model
+      DetectionDetailWidget   Detection result inspector
       HexView                 Hex/ASCII display
       FilterPanel             Capture filter controls
-    server/                   gRPC server daemon (scaffold)
-    client/                   gRPC client (scaffold)
-  scripts/                    Setup + Python training pipeline
+      WeightTuningDialog      Hybrid detection weight tuning
+    server/                   gRPC headless daemon (nids-server)
+    client/                   gRPC CLI client (nids-cli)
   tests/
-    unit/                     Unit tests (GoogleTest + GoogleMock)
-    integration/              Integration tests
+    unit/                     324 unit tests (GoogleTest + GoogleMock)
+    integration/              Pipeline integration tests
+    stress/                   24 performance / concurrency stress tests
   docs/
-    architecture.md           System architecture
+    architecture.md           System architecture and detection philosophy
     model-training.md         Model training guide
     deployment.md             Deployment instructions
-    adr/                      Architecture Decision Records
+    roadmap.md                Phased project roadmap
+    adr/                      Architecture Decision Records (6 ADRs)
 ```
 
 ## Documentation
@@ -228,19 +268,22 @@ NIDS/
 - [x] Native C++ flow feature extraction (77 bidirectional flow features)
 - [x] ONNX Runtime for ML inference
 - [x] CNN-BiLSTM model trained on LSNM2024
-- [x] Qt6 + C++20 modernization
+- [x] Qt6 + C++23 modernization
 - [x] GitHub Actions CI/CD
 - [x] CPack packaging (DEB/RPM/TGZ)
 - [x] Hybrid detection (ML + Threat Intelligence + Heuristic Rules)
-- [x] Conan 2 package management (replaced vcpkg)
-- [ ] Cleanup, config JSON loading, and test foundation (Phase 6)
-- [ ] UI for hybrid detection results (Phase 7)
-- [ ] Real-time per-flow detection (Phase 8)
-- [ ] gRPC server and CLI client (Phase 9)
+- [x] Conan 2 package management
+- [x] Cleanup, config JSON loading, and test foundation (Phase 6)
+- [x] UI for hybrid detection results (Phase 7)
+- [x] Real-time per-flow detection with producer-consumer pipeline (Phase 8)
+- [x] gRPC server daemon, CLI client, Docker sandbox (Phase 9)
+- [x] C++23 modernization audit (`std::expected`, `std::span`, `std::ranges`,
+  `FilterBuilder`, `ICommand`, `PacketParser` extraction, `PipelineFactory`)
 - [ ] Model and detection improvements (Phase 10)
+- [ ] Documentation polish and coverage enforcement (Phase 11)
 
 See [docs/roadmap.md](docs/roadmap.md) for the full breakdown.
 
 ## License
 
-See repository for license information.
+This project is licensed under the MIT License -- see [LICENSE](LICENSE) for details.

@@ -10,12 +10,13 @@
  */
 
 #include "core/model/DetectionResult.h"
-#include "core/services/IFlowExtractor.h"
+#include "core/model/FlowInfo.h"
 
 #include <QAbstractTableModel>
 #include <QColor>
 
 #include <array>
+#include <utility>
 #include <vector>
 
 namespace nids::ui {
@@ -41,15 +42,14 @@ public:
   };
 
   /// Total number of columns (integral constant for use in array sizes).
-  static constexpr int kColumnCount =
-      static_cast<int>(Column::ColumnCount); // NOLINT NOSONAR
+  static constexpr int kColumnCount = std::to_underlying(Column::ColumnCount);
 
   /// Per-flow data: detection result + connection metadata.
   struct FlowRow {
     /** Hybrid detection result for this flow. */
-    nids::core::DetectionResult result;
+    core::DetectionResult result;
     /** Connection metadata (IPs, ports, protocol, packet counts). */
-    nids::core::FlowInfo metadata;
+    core::FlowInfo metadata;
   };
 
   /** Construct an empty flow table model. */
@@ -65,24 +65,21 @@ public:
                                     int role = Qt::DisplayRole) const override;
 
   /// Populate the model with flow results from a completed analysis.
-  void setFlowResults(const std::vector<nids::core::DetectionResult> &results,
-                      const std::vector<nids::core::FlowInfo> &metadata);
+  void setFlowResults(const std::vector<core::DetectionResult> &results,
+                      const std::vector<core::FlowInfo> &metadata);
 
   /// Add a single flow result (for incremental updates during live analysis).
-  void addFlowResult(const nids::core::DetectionResult &result,
-                     const nids::core::FlowInfo &metadata);
+  void addFlowResult(const core::DetectionResult &result,
+                     const core::FlowInfo &metadata);
 
   /** Remove all rows from the model. */
   void clear();
 
   /// Retrieve the detection result for a specific row.
-  [[nodiscard]] const nids::core::DetectionResult *resultAt(int row) const;
+  [[nodiscard]] const core::DetectionResult *resultAt(int row) const;
 
   /// Retrieve the flow metadata for a specific row.
-  [[nodiscard]] const nids::core::FlowInfo *metadataAt(int row) const;
-
-  /// Format the protocol number to a human-readable string.
-  [[nodiscard]] static QString protocolToString(std::uint8_t protocol) noexcept;
+  [[nodiscard]] const core::FlowInfo *metadataAt(int row) const;
 
 private:
   /// Return display data for a single cell (delegates to kDisplayFormatters

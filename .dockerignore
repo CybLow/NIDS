@@ -23,7 +23,7 @@ coverage.info
 coverage-cobertura.xml
 cppcheck-report.xml
 clang-tidy-report.txt
-.vcpkg-cache/
+.conan-cache/
 
 # OpenCode
 .opencode/

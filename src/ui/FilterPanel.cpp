@@ -8,8 +8,15 @@
 
 namespace nids::ui {
 
-FilterPanel::FilterPanel(const nids::core::ServiceRegistry &registry,
-                         QWidget *parent)
+namespace {
+/// Standard application names shown in the Application combo box.
+/// Shared between populateApplications() and updateApplicationFromPort()
+/// to avoid duplicated string lists (DRY).
+constexpr std::array kStandardApps = {
+    "ALL", "HTTP", "FTP", "SSH", "HTTPS", "SMTP", "DNS", "Telnet", "Unknown"};
+} // anonymous namespace
+
+FilterPanel::FilterPanel(const core::ServiceRegistry &registry, QWidget *parent)
     : QWidget(parent), serviceRegistry_(registry) {
   setupLayout();
   populateProtocols();
@@ -18,49 +25,49 @@ FilterPanel::FilterPanel(const nids::core::ServiceRegistry &registry,
 }
 
 void FilterPanel::setupLayout() {
-  auto *layout = new QGridLayout(this);
+  auto *layout = new QGridLayout(this); // NOSONAR
 
   auto makeLabel = [this](const QString &text) {
-    return new QLabel(text, this);
+    return new QLabel(text, this); // NOSONAR
   };
 
   layout->addWidget(makeLabel("Network Card"), 0, 0);
-  networkCardCombo_ = new QComboBox(this);
+  networkCardCombo_ = new QComboBox(this); // NOSONAR
   layout->addWidget(networkCardCombo_, 1, 0);
 
   layout->addWidget(makeLabel("Protocol"), 0, 1);
-  protocolCombo_ = new QComboBox(this);
+  protocolCombo_ = new QComboBox(this); // NOSONAR
   layout->addWidget(protocolCombo_, 1, 1);
 
   layout->addWidget(makeLabel("Application"), 0, 2);
-  applicationCombo_ = new QComboBox(this);
+  applicationCombo_ = new QComboBox(this); // NOSONAR
   layout->addWidget(applicationCombo_, 1, 2);
 
   layout->addWidget(makeLabel("IP Source"), 0, 3);
-  sourceIpEdit_ = new QLineEdit(this);
+  sourceIpEdit_ = new QLineEdit(this); // NOSONAR
   sourceIpEdit_->setMinimumSize(100, 20);
   layout->addWidget(sourceIpEdit_, 1, 3);
 
   layout->addWidget(makeLabel("Port Source"), 0, 4);
-  sourcePortEdit_ = new QLineEdit(this);
+  sourcePortEdit_ = new QLineEdit(this); // NOSONAR
   sourcePortEdit_->setMinimumSize(100, 20);
   layout->addWidget(sourcePortEdit_, 1, 4);
 
   layout->addWidget(makeLabel("IP Destination"), 0, 5);
-  destIpEdit_ = new QLineEdit(this);
+  destIpEdit_ = new QLineEdit(this); // NOSONAR
   destIpEdit_->setMinimumSize(100, 20);
   layout->addWidget(destIpEdit_, 1, 5);
 
   layout->addWidget(makeLabel("Port Destination"), 0, 6);
-  destPortEdit_ = new QLineEdit(this);
+  destPortEdit_ = new QLineEdit(this); // NOSONAR
   destPortEdit_->setMinimumSize(100, 20);
   layout->addWidget(destPortEdit_, 1, 6);
 
   layout->addWidget(makeLabel("Custom Filter"), 2, 0);
-  customFilterEdit_ = new QLineEdit(this);
+  customFilterEdit_ = new QLineEdit(this); // NOSONAR
   layout->addWidget(customFilterEdit_, 2, 1, 1, 6);
 
-  startStopButton_ = new QPushButton("Start", this);
+  startStopButton_ = new QPushButton("Start", this); // NOSONAR
   startStopButton_->setEnabled(false);
   layout->addWidget(startStopButton_, 2, 7);
 
@@ -68,8 +75,8 @@ void FilterPanel::setupLayout() {
       R"(^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$)");
   portRegex_ = QRegularExpression(
       R"(^([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$)");
-  ipValidator_ = new QRegularExpressionValidator(ipRegex_, this);
-  portValidator_ = new QRegularExpressionValidator(portRegex_, this);
+  ipValidator_ = new QRegularExpressionValidator(ipRegex_, this);     // NOSONAR
+  portValidator_ = new QRegularExpressionValidator(portRegex_, this); // NOSONAR
 
   connect(startStopButton_, &QPushButton::clicked, this,
           &FilterPanel::startStopClicked);
@@ -99,8 +106,10 @@ void FilterPanel::populateProtocols() {
 void FilterPanel::populateApplications() {
   applicationCombo_->blockSignals(true);
   applicationCombo_->clear();
-  applicationCombo_->addItems({"ALL", "HTTP", "FTP", "SSH", "HTTPS", "SMTP",
-                               "DNS", "Telnet", "Unknown", "Other..."});
+  for (const auto *app : kStandardApps) {
+    applicationCombo_->addItem(app);
+  }
+  applicationCombo_->addItem("Other...");
   applicationCombo_->blockSignals(false);
 }
 
@@ -111,8 +120,8 @@ void FilterPanel::setInterfaces(const std::vector<std::string> &interfaces) {
   }
 }
 
-nids::core::PacketFilter FilterPanel::gatherFilter() const {
-  nids::core::PacketFilter filter;
+core::PacketFilter FilterPanel::gatherFilter() const {
+  core::PacketFilter filter;
   filter.networkCard = networkCardCombo_->currentText().toStdString();
   filter.protocol = protocolCombo_->currentText().toStdString();
   filter.application = applicationCombo_->currentText().toStdString();
@@ -170,37 +179,44 @@ void FilterPanel::onApplicationChanged(int index) {
   if (index == -1)
     return;
 
-  if (QString selected = applicationCombo_->itemText(index);
-      selected == "Other...") {
-    ServiceDialog dialog(serviceRegistry_.getUniqueServices(), this);
-    if (dialog.exec() == QDialog::Accepted) {
-      const QString &service = dialog.getSelectedService();
-      if (!service.isEmpty()) {
-        if (int existing = applicationCombo_->findText(lastCustomService_);
-            existing != -1) {
-          applicationCombo_->removeItem(existing);
-        }
-        applicationCombo_->blockSignals(true);
-        applicationCombo_->addItem(service);
-        applicationCombo_->setCurrentIndex(
-            applicationCombo_->findText(service));
-        applicationCombo_->blockSignals(false);
-        lastCustomService_ = service;
-      }
-    }
+  if (applicationCombo_->itemText(index) != "Other...") {
+    return;
   }
+
+  ServiceDialog dialog(serviceRegistry_.getUniqueServices(), this);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+
+  const QString &service = dialog.getSelectedService();
+  if (service.isEmpty()) {
+    return;
+  }
+
+  if (int existing = applicationCombo_->findText(lastCustomService_);
+      existing != -1) {
+    applicationCombo_->removeItem(existing);
+  }
+  applicationCombo_->blockSignals(true);
+  applicationCombo_->addItem(service);
+  applicationCombo_->setCurrentIndex(applicationCombo_->findText(service));
+  applicationCombo_->blockSignals(false);
+  lastCustomService_ = service;
 }
 
 void FilterPanel::updateApplicationFromPort() {
-  QStringList majorApps = {"ALL",  "HTTP", "FTP",    "SSH",    "HTTPS",
-                           "SMTP", "DNS",  "Telnet", "Unknown"};
+  QStringList majorApps;
+  majorApps.reserve(static_cast<int>(kStandardApps.size()));
+  for (const auto *app : kStandardApps) {
+    majorApps.append(app);
+  }
 
   bool srcOk = false;
   bool dstOk = false;
-  int srcPort = sourcePortEdit_->text().toInt(&srcOk);
-  int dstPort = destPortEdit_->text().toInt(&dstOk);
+  auto srcPort = sourcePortEdit_->text().toUShort(&srcOk);
+  auto dstPort = destPortEdit_->text().toUShort(&dstOk);
 
-  auto update = [&](int port) {
+  auto update = [&](std::uint16_t port) {
     auto name = QString::fromStdString(serviceRegistry_.getServiceByPort(port));
     if (majorApps.contains(name)) {
       populateApplications();

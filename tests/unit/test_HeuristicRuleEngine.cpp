@@ -1,7 +1,7 @@
 #include "infra/rules/HeuristicRuleEngine.h"
 #include <gtest/gtest.h>
 
-using nids::core::FlowMetadata;
+using nids::core::FlowInfo;
 using nids::infra::HeuristicRuleEngine;
 
 class HeuristicRuleEngineTest : public ::testing::Test {
@@ -9,13 +9,13 @@ protected: // NOSONAR
   HeuristicRuleEngine engine_;
 
   /// Create a baseline benign flow.
-  static FlowMetadata makeBenignFlow() {
-    FlowMetadata flow;
+  static FlowInfo makeBenignFlow() {
+    FlowInfo flow;
     flow.srcIp = "192.168.1.100";
     flow.dstIp = "10.0.0.1";
     flow.srcPort = 45000;
     flow.dstPort = 80;
-    flow.protocol = "TCP";
+    flow.protocol = 6;
     flow.totalFwdPackets = 10;
     flow.totalBwdPackets = 8;
     flow.flowDurationUs = 5'000'000; // 5 seconds
@@ -74,7 +74,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_normalPort_noSuspiciousPort) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_synFlood_fires) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.synFlagCount = 500;
   flow.ackFlagCount = 10; // ratio 50.0, well above 5.0 threshold
   flow.totalFwdPackets = 500;
@@ -92,7 +92,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_synFlood_fires) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_synFloodBelowThreshold_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.synFlagCount = 3;
   flow.ackFlagCount = 10; // ratio 0.3, below 5.0 threshold
   auto results = engine_.evaluate(flow);
@@ -107,7 +107,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_synFloodBelowThreshold_doesNotFire) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_icmpFlood_fires) {
   auto flow = makeBenignFlow();
-  flow.protocol = "ICMP";
+  flow.protocol = 1;
   flow.totalFwdPackets = 500;
   flow.totalBwdPackets = 500;
   flow.flowDurationUs =
@@ -127,7 +127,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_icmpFlood_fires) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_fires) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.dstPort = 22; // SSH
   flow.totalFwdPackets = 100;
   flow.fwdPacketsPerSecond = 50.0f; // well above 10 pkt/s threshold
@@ -144,7 +144,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_fires) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_nonAuthPort_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.dstPort = 8080; // Not an auth port
   flow.totalFwdPackets = 100;
   flow.fwdPacketsPerSecond = 50.0f;
@@ -179,7 +179,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_highPacketRate_fires) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_resetFlood_fires) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.rstFlagCount = 50;
   flow.totalFwdPackets = 60;
   flow.totalBwdPackets = 0;
@@ -266,7 +266,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_bothPortsSuspicious_higherSeverity) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_synFlood_zeroAck_fires) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.synFlagCount = 100;
   flow.ackFlagCount = 0; // Zero ACK → ratio = synFlagCount itself
   flow.totalFwdPackets = 100;
@@ -285,7 +285,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_synFlood_zeroAck_fires) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_icmpFlood_belowMinPkts_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "ICMP";
+  flow.protocol = 1;
   flow.totalFwdPackets = 5;
   flow.totalBwdPackets = 5;
   flow.flowDurationUs = 100'000; // rate 100/0.1=1000 but only 10 total < 20 min
@@ -301,7 +301,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_icmpFlood_belowMinPkts_doesNotFire) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_icmpFlood_zeroDuration_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "ICMP";
+  flow.protocol = 1;
   flow.totalFwdPackets = 500;
   flow.totalBwdPackets = 500;
   flow.flowDurationUs = 0; // Zero duration → return nullopt
@@ -317,7 +317,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_icmpFlood_zeroDuration_doesNotFire) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_zeroDuration_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.dstPort = 22;
   flow.totalFwdPackets = 100;
   flow.totalBwdPackets = 0;
@@ -334,7 +334,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_zeroDuration_doesNotFire) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_rdpPort_fires) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.dstPort = 3389; // RDP
   flow.totalFwdPackets = 100;
   flow.totalBwdPackets = 50;
@@ -387,7 +387,7 @@ TEST_F(HeuristicRuleEngineTest,
 
 TEST_F(HeuristicRuleEngineTest, evaluate_multipleRulesFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.dstPort = 4444; // Suspicious port
   flow.synFlagCount = 200;
   flow.ackFlagCount = 0; // SYN flood
@@ -421,7 +421,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_multipleRulesFire) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_resetFlood_belowMinRst_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.rstFlagCount = 10; // Below 30 minimum
   flow.totalFwdPackets = 15;
   flow.totalBwdPackets = 0;
@@ -437,7 +437,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_resetFlood_belowMinRst_doesNotFire) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_resetFlood_lowRatio_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.rstFlagCount = 35; // Above 30 minimum
   flow.totalFwdPackets = 500;
   flow.totalBwdPackets = 500; // Total 1000 → ratio = 35/1000 = 0.035 < 0.5
@@ -453,7 +453,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_resetFlood_lowRatio_doesNotFire) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_icmpFlood_belowRate_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "ICMP";
+  flow.protocol = 1;
   flow.totalFwdPackets = 15;
   flow.totalBwdPackets = 15;       // 30 total >= 20 min
   flow.flowDurationUs = 1'000'000; // 1s → rate = 30/1 = 30, below 100 threshold
@@ -469,7 +469,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_icmpFlood_belowRate_doesNotFire) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_belowMinPkts_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.dstPort = 22; // SSH (auth port)
   flow.totalFwdPackets = 5;
   flow.totalBwdPackets = 5;      // 10 total < 20 min
@@ -486,7 +486,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_belowMinPkts_doesNotFire) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_belowRate_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.dstPort = 22; // SSH
   flow.totalFwdPackets = 15;
   flow.totalBwdPackets = 10; // 25 total >= 20 min
@@ -521,7 +521,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_highPacketRate_belowRate_doesNotFire) {
 TEST_F(HeuristicRuleEngineTest,
        evaluate_resetFlood_zeroTotalPackets_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.rstFlagCount = 30; // Meets minimum
   flow.totalFwdPackets = 0;
   flow.totalBwdPackets = 0; // 0 total → defensive guard
@@ -558,7 +558,7 @@ TEST_F(HeuristicRuleEngineTest, evaluate_bothSuspiciousPorts_severityHigh) {
 
 TEST_F(HeuristicRuleEngineTest, evaluate_synFlood_belowRatio_doesNotFire) {
   auto flow = makeBenignFlow();
-  flow.protocol = "TCP";
+  flow.protocol = 6;
   flow.synFlagCount = 60; // >= kSynFloodMinSyns (50)
   flow.ackFlagCount = 20; // ratio = 60/20 = 3.0 < kSynFloodRatio (5.0)
   auto results = engine_.evaluate(flow);
@@ -587,9 +587,217 @@ TEST_F(HeuristicRuleEngineTest, evaluatePortScan_manyPorts_severityCapped) {
 
 // ── Non-TCP protocols don't trigger TCP-specific rules ───────────────
 
+// ── Brute force: each auth port produces a different service name ──
+
+TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_ftpPort_fires) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.dstPort = 21; // FTP
+  flow.totalFwdPackets = 100;
+  flow.totalBwdPackets = 50;
+  flow.flowDurationUs = 1'000'000; // 1s → rate = 150 > 10
+  auto results = engine_.evaluate(flow);
+
+  bool found = false;
+  for (const auto &r : results) {
+    if (r.ruleName == "brute_force") {
+      found = true;
+      EXPECT_NE(r.description.find("FTP"), std::string::npos);
+    }
+  }
+  EXPECT_TRUE(found) << "Expected brute_force to fire for FTP port";
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_telnetPort_fires) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.dstPort = 23; // Telnet
+  flow.totalFwdPackets = 100;
+  flow.totalBwdPackets = 50;
+  flow.flowDurationUs = 1'000'000;
+  auto results = engine_.evaluate(flow);
+
+  bool found = false;
+  for (const auto &r : results) {
+    if (r.ruleName == "brute_force") {
+      found = true;
+      EXPECT_NE(r.description.find("Telnet"), std::string::npos);
+    }
+  }
+  EXPECT_TRUE(found) << "Expected brute_force to fire for Telnet port";
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_vncPort_fires) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.dstPort = 5900; // VNC
+  flow.totalFwdPackets = 100;
+  flow.totalBwdPackets = 50;
+  flow.flowDurationUs = 1'000'000;
+  auto results = engine_.evaluate(flow);
+
+  bool found = false;
+  for (const auto &r : results) {
+    if (r.ruleName == "brute_force") {
+      found = true;
+      EXPECT_NE(r.description.find("VNC"), std::string::npos);
+    }
+  }
+  EXPECT_TRUE(found) << "Expected brute_force to fire for VNC port";
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_sshPort_mentionsSSH) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.dstPort = 22; // SSH
+  flow.totalFwdPackets = 100;
+  flow.totalBwdPackets = 50;
+  flow.flowDurationUs = 1'000'000;
+  auto results = engine_.evaluate(flow);
+
+  bool found = false;
+  for (const auto &r : results) {
+    if (r.ruleName == "brute_force") {
+      found = true;
+      EXPECT_NE(r.description.find("SSH"), std::string::npos);
+    }
+  }
+  EXPECT_TRUE(found) << "Expected brute_force to fire for SSH port";
+}
+
+// ── Severity boundary tests ──────────────────────────────────────────
+
+TEST_F(HeuristicRuleEngineTest, evaluate_synFlood_severityCappedAtOne) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.synFlagCount = 10000;
+  flow.ackFlagCount = 1; // ratio 10000.0
+  flow.totalFwdPackets = 10000;
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    if (r.ruleName == "syn_flood") {
+      EXPECT_LE(r.severity, 1.0f);
+    }
+  }
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_icmpFlood_severityCappedAtOne) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 1;
+  flow.totalFwdPackets = 50000;
+  flow.totalBwdPackets = 50000;
+  flow.flowDurationUs = 1'000'000; // 1s → rate = 100000
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    if (r.ruleName == "icmp_flood") {
+      EXPECT_LE(r.severity, 1.0f);
+    }
+  }
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_bruteForce_severityCappedAtOne) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.dstPort = 22;
+  flow.totalFwdPackets = 5000;
+  flow.totalBwdPackets = 5000;
+  flow.flowDurationUs = 1'000'000; // rate = 10000
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    if (r.ruleName == "brute_force") {
+      EXPECT_LE(r.severity, 1.0f);
+    }
+  }
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_highPacketRate_severityCappedAtOne) {
+  auto flow = makeBenignFlow();
+  flow.totalFwdPackets = 100000;
+  flow.totalBwdPackets = 100000;
+  flow.flowDurationUs = 1'000'000; // rate = 200000
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    if (r.ruleName == "high_packet_rate") {
+      EXPECT_LE(r.severity, 1.0f);
+    }
+  }
+}
+
+TEST_F(HeuristicRuleEngineTest, evaluate_resetFlood_severityCappedAtOne) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 6;
+  flow.rstFlagCount = 100;
+  flow.totalFwdPackets = 100;
+  flow.totalBwdPackets = 0; // ratio = 100/100 = 1.0
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    if (r.ruleName == "reset_flood") {
+      EXPECT_LE(r.severity, 1.0f);
+      EXPECT_FLOAT_EQ(r.severity, 1.0f);
+    }
+  }
+}
+
+// ── All suspicious port values covered ───────────────────────────────
+
+TEST_F(HeuristicRuleEngineTest, evaluate_allSuspiciousPorts_detected) {
+  // Ensure each suspicious port triggers the rule.
+  const std::vector<std::uint16_t> suspiciousPorts = {
+      4444, 5555, 31337, 1337, 12345, 54321,
+      6666, 6667, 6668,  6669, 8888,  9999};
+
+  for (auto port : suspiciousPorts) {
+    auto flow = makeBenignFlow();
+    flow.dstPort = port;
+    auto results = engine_.evaluate(flow);
+
+    bool found = false;
+    for (const auto &r : results) {
+      if (r.ruleName == "suspicious_port") {
+        found = true;
+      }
+    }
+    EXPECT_TRUE(found) << "Expected suspicious_port rule for port " << port;
+  }
+}
+
+// ── SYN flood: non-TCP protocol check ────────────────────────────────
+
+TEST_F(HeuristicRuleEngineTest, evaluate_synFlood_icmpProtocol_doesNotFire) {
+  auto flow = makeBenignFlow();
+  flow.protocol = 1; // ICMP, not TCP
+  flow.synFlagCount = 500;
+  flow.ackFlagCount = 0;
+  auto results = engine_.evaluate(flow);
+
+  for (const auto &r : results) {
+    EXPECT_NE(r.ruleName, "syn_flood")
+        << "syn_flood should not fire for ICMP protocol";
+  }
+}
+
+// ── Port scan: exactly at threshold ──────────────────────────────────
+
+TEST_F(HeuristicRuleEngineTest, evaluatePortScan_exactlyAtThreshold_fires) {
+  std::vector<std::uint16_t> ports;
+  for (std::uint16_t i = 1; i <= 20; ++i) {
+    ports.push_back(i);
+  }
+  auto results = engine_.evaluatePortScan("10.0.0.1", ports);
+  EXPECT_FALSE(results.empty());
+  EXPECT_EQ(results[0].ruleName, "port_scan");
+}
+
+// ── Non-TCP protocols vs brute force / reset flood ───────────────────
+
 TEST_F(HeuristicRuleEngineTest, evaluate_udpFlow_noTcpRules) {
   auto flow = makeBenignFlow();
-  flow.protocol = "UDP";
+  flow.protocol = 17;
   flow.synFlagCount = 1000; // Would trigger syn_flood if TCP
   flow.ackFlagCount = 0;
   flow.rstFlagCount = 100; // Would trigger reset_flood if TCP

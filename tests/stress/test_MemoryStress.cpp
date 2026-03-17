@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
+#include "helpers/TestHelpers.h"
 #include "app/HybridDetectionService.h"
 #include "infra/flow/NativeFlowExtractor.h"
 #include "stress/StressTestHelpers.h"
@@ -16,20 +17,9 @@
 #include <format>
 #include <string>
 
-// PcapPlusPlus uses pcap_open_offline_with_tstamp_precision (npcap-only).
-// On Windows CI without npcap, pcap-dependent tests are skipped.
-#ifdef _WIN32
-#define SKIP_IF_NO_PCAP()                                                      \
-  GTEST_SKIP() << "npcap runtime not available on Windows CI"
-#else
-#define SKIP_IF_NO_PCAP()                                                      \
-  do {                                                                         \
-  } while (0)
-#endif
-
 namespace fs = std::filesystem;
 using nids::app::HybridDetectionService;
-using nids::infra::kFlowFeatureCount;
+using nids::core::kFlowFeatureCount;
 using nids::infra::NativeFlowExtractor;
 using nids::test::currentRssKb;
 using nids::test::generatePcap;
@@ -157,12 +147,12 @@ TEST_F(MemoryStressTest, sustainedEvaluation_memoryStable) {
                                        : nids::core::AttackType::Benign;
     pred.confidence = 0.85f;
 
-    nids::core::FlowMetadata meta;
+    nids::core::FlowInfo meta;
     meta.srcIp = std::format("10.0.0.{}", i % 256);
     meta.dstIp = "10.1.0.1";
     meta.srcPort = static_cast<std::uint16_t>(40000 + (i % 1000));
     meta.dstPort = 80;
-    meta.protocol = "TCP";
+    meta.protocol = 6;
     meta.totalFwdPackets = 100;
     meta.totalBwdPackets = 80;
     meta.fwdPacketsPerSecond = 500.0;

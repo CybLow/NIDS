@@ -3,13 +3,17 @@
 
 add_library(nids_infra STATIC
     capture/PcapCapture.cpp
+    capture/PcapCaptureWorker.cpp
     analysis/OnnxAnalyzer.cpp
     analysis/AnalyzerFactory.cpp
     analysis/FeatureNormalizer.cpp
     config/ConfigLoader.cpp
+    flow/FlowStats.cpp
     flow/NativeFlowExtractor.cpp
     threat/ThreatIntelProvider.cpp
     rules/HeuristicRuleEngine.cpp
+    output/ConsoleAlertSink.cpp
+    parsing/PacketParser.cpp
     platform/SocketInit.cpp
 )
 
@@ -22,7 +26,6 @@ target_link_libraries(nids_infra
         onnxruntime::onnxruntime
         nlohmann_json::nlohmann_json
         spdlog::spdlog
-        Qt::Core
 )
 
 target_compile_definitions(nids_infra PRIVATE NIDS_HAS_ONNX)

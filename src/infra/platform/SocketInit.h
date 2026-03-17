@@ -1,9 +1,9 @@
 #pragma once
 
-namespace nids::platform {
+namespace nids::infra::platform {
 
 /** Initialize platform networking (WSAStartup on Windows, no-op on POSIX). */
-bool initializeNetworking();
+[[nodiscard]] bool initializeNetworking();
 /** Shut down platform networking (WSACleanup on Windows, no-op on POSIX). */
 void cleanupNetworking();
 
@@ -16,6 +16,8 @@ public:
     ~NetworkInitGuard();
     NetworkInitGuard(const NetworkInitGuard&) = delete;
     NetworkInitGuard& operator=(const NetworkInitGuard&) = delete;
+    NetworkInitGuard(NetworkInitGuard&&) = delete;
+    NetworkInitGuard& operator=(NetworkInitGuard&&) = delete;
 
     /** Whether networking was successfully initialized. */
     [[nodiscard]] bool isInitialized() const noexcept { return initialized_; }
@@ -24,4 +26,4 @@ private:
     bool initialized_ = false;
 };
 
-} // namespace nids::platform
+} // namespace nids::infra::platform

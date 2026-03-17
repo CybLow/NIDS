@@ -1,19 +1,23 @@
 # src/app/CMakeLists.txt
-# Application layer — orchestration logic bridging UI to domain.
+# Application layer — pure C++23 orchestration logic, no Qt dependency.
 
 add_library(nids_app STATIC
     CaptureController.cpp
     AnalysisService.cpp
+    FlowAnalysisWorker.cpp
+    HeadlessCaptureRunner.cpp
+    LiveDetectionPipeline.cpp
     HybridDetectionService.cpp
-    ReportGenerator.cpp
+    PipelineFactory.cpp
+    commands/CaptureCommands.cpp
 )
 
 target_link_libraries(nids_app
     PUBLIC
         nids_core
     PRIVATE
+        nids_infra
         spdlog::spdlog
-        Qt::Core
 )
 
 nids_set_target_defaults(nids_app)

@@ -2,21 +2,16 @@
 
 // Native C++ flow feature extractor for LSNM2024-compatible flow analysis.
 //
-// Extracts 77 bidirectional flow features directly from pcap files.
-// Features are computed per-flow and returned as in-memory feature vectors
-// (no intermediate CSV).
+// Manages the lifecycle of bidirectional network flows: creation,
+// packet accumulation, timeout/split expiry, and finalization.
 //
-// The feature set covers:
-// - Flow duration, packet counts, byte counts (per direction)
-// - Packet length statistics (min, max, mean, std) per direction
-// - Inter-arrival time statistics per direction
-// - TCP flag counts (FIN, SYN, RST, PSH, ACK, URG, CWR, ECE)
-// - Header length, packet/byte rates
-// - Bulk transfer metrics
-// - Subflow metrics, active/idle time statistics
-// - Initial TCP window sizes
+// Flow identification (FlowKey) and statistics/feature construction
+// (FlowStats) are in separate headers for SRP.
 
 #include "core/services/IFlowExtractor.h"
+#include "infra/flow/FlowKey.h"
+#include "infra/flow/FlowStats.h"
+#include "infra/parsing/PacketParser.h"
 
 #include <cstdint>
 #include <functional>
@@ -32,164 +27,57 @@ class Packet;
 
 namespace nids::infra {
 
-/// Number of flow features produced by toFeatureVector().
-inline constexpr int kFlowFeatureCount = 77;
-
 /// Maximum packets per flow before forced split.  Prevents mega-flows
 /// (e.g. DDoS where millions of packets share a single 5-tuple) from
 /// collapsing into a single sample.  Must match Python preprocessing.
 inline constexpr std::uint64_t kMaxFlowPackets = 200;
 
-/// Returns the ordered list of feature column names matching toFeatureVector()
-/// output.
-[[nodiscard]] const std::vector<std::string> &flowFeatureNames();
-
-/** Five-tuple flow key identifying a unique bidirectional network flow. */
-struct FlowKey {
-  /** Source IP address (dotted-decimal). */
-  std::string srcIp;
-  /** Destination IP address (dotted-decimal). */
-  std::string dstIp;
-  /** Source transport port. */
-  std::uint16_t srcPort = 0;
-  /** Destination transport port. */
-  std::uint16_t dstPort = 0;
-  /** IP protocol number (6=TCP, 17=UDP, 1=ICMP). */
-  std::uint8_t protocol = 0;
-
-  bool operator==(const FlowKey &other) const = default;
-};
-
-/// Hash functor for FlowKey, combining all five tuple fields.
-struct FlowKeyHash {
-  /** Compute a combined hash of all five tuple fields. */
-  std::size_t operator()(const FlowKey &k) const noexcept {
-    std::size_t h = std::hash<std::string>{}(k.srcIp);
-    h ^= std::hash<std::string>{}(k.dstIp) + 0x9e3779b9 + (h << 6) + (h >> 2);
-    h ^= std::hash<std::uint16_t>{}(k.srcPort) + 0x9e3779b9 + (h << 6) +
-         (h >> 2);
-    h ^= std::hash<std::uint16_t>{}(k.dstPort) + 0x9e3779b9 + (h << 6) +
-         (h >> 2);
-    h ^= std::hash<std::uint8_t>{}(k.protocol) + 0x9e3779b9 + (h << 6) +
-         (h >> 2);
-    return h;
-  }
-};
-
-/** Accumulated per-flow statistics used to compute the 77-feature vector. */
-struct FlowStats { // NOSONAR - 45 fields required by CIC-IDS2017 feature vector
-                   // specification
-  /** Flow start time in microseconds since epoch. */
-  std::int64_t startTimeUs = 0;
-  /** Timestamp of the last packet in either direction (microseconds). */
-  std::int64_t lastTimeUs = 0;
-  /** Total packets in the forward direction. */
-  std::uint64_t totalFwdPackets = 0;
-  /** Total packets in the backward direction. */
-  std::uint64_t totalBwdPackets = 0;
-  /** Total payload bytes in the forward direction. */
-  std::uint64_t totalFwdBytes = 0;
-  /** Total payload bytes in the backward direction. */
-  std::uint64_t totalBwdBytes = 0;
-  /** Per-packet lengths in the forward direction. */
-  std::vector<std::uint32_t> fwdPacketLengths;
-  /** Per-packet lengths in the backward direction. */
-  std::vector<std::uint32_t> bwdPacketLengths;
-  /** Per-packet lengths across both directions. */
-  std::vector<std::uint32_t> allPacketLengths;
-  /** Inter-arrival times for the entire flow (microseconds). */
-  std::vector<std::int64_t> flowIatUs;
-  /** Forward-direction inter-arrival times (microseconds). */
-  std::vector<std::int64_t> fwdIatUs;
-  /** Backward-direction inter-arrival times (microseconds). */
-  std::vector<std::int64_t> bwdIatUs;
-  /** Timestamp of the last forward packet (-1 if none yet). */
-  std::int64_t lastFwdTimeUs = -1;
-  /** Timestamp of the last backward packet (-1 if none yet). */
-  std::int64_t lastBwdTimeUs = -1;
-  /** Count of forward packets with PSH flag set. */
-  std::uint32_t fwdPshFlags = 0;
-  /** Count of backward packets with PSH flag set. */
-  std::uint32_t bwdPshFlags = 0;
-  /** Count of forward packets with URG flag set. */
-  std::uint32_t fwdUrgFlags = 0;
-  /** Count of backward packets with URG flag set. */
-  std::uint32_t bwdUrgFlags = 0;
-  /** Total FIN flags observed in the flow. */
-  std::uint32_t finCount = 0;
-  /** Total SYN flags observed in the flow. */
-  std::uint32_t synCount = 0;
-  /** Total RST flags observed in the flow. */
-  std::uint32_t rstCount = 0;
-  /** Total PSH flags observed in the flow. */
-  std::uint32_t pshCount = 0;
-  /** Total ACK flags observed in the flow. */
-  std::uint32_t ackCount = 0;
-  /** Total URG flags observed in the flow. */
-  std::uint32_t urgCount = 0;
-  /** Total CWR flags observed in the flow. */
-  std::uint32_t cwrCount = 0;
-  /** Total ECE flags observed in the flow. */
-  std::uint32_t eceCount = 0;
-  /** Cumulative header bytes in the forward direction. */
-  std::uint32_t fwdHeaderBytes = 0;
-  /** Cumulative header bytes in the backward direction. */
-  std::uint32_t bwdHeaderBytes = 0;
-  /** Initial TCP window size in the forward direction. */
-  std::uint32_t fwdInitWinBytes = 0;
-  /** Initial TCP window size in the backward direction. */
-  std::uint32_t bwdInitWinBytes = 0;
-  /** Count of forward packets with payload > 0. */
-  std::uint32_t actDataPktFwd = 0;
-  /** Minimum segment size observed in the forward direction. */
-  std::uint32_t minSegSizeForward = 0;
-  /** Durations of active transfer periods (microseconds). */
-  std::vector<std::int64_t> activePeriodsUs;
-  /** Durations of idle periods (microseconds). */
-  std::vector<std::int64_t> idlePeriodsUs;
-  /** End timestamp of the last active period (-1 if none). */
-  std::int64_t lastActiveTimeUs = -1;
-  /** Start timestamp of the last idle period (-1 if none). */
-  std::int64_t lastIdleTimeUs = -1;
-  /** Byte counts of completed forward bulk transfers. */
-  std::vector<std::uint32_t> fwdBulkBytes;
-  /** Byte counts of completed backward bulk transfers. */
-  std::vector<std::uint32_t> bwdBulkBytes;
-  /** Packet counts of completed forward bulk transfers. */
-  std::vector<std::uint32_t> fwdBulkPackets;
-  /** Packet counts of completed backward bulk transfers. */
-  std::vector<std::uint32_t> bwdBulkPackets;
-
-  /** Packets in the current forward bulk transfer. */
-  std::uint32_t curFwdBulkPkts = 0;
-  /** Bytes in the current forward bulk transfer. */
-  std::uint32_t curFwdBulkBytes = 0;
-  /** Packets in the current backward bulk transfer. */
-  std::uint32_t curBwdBulkPkts = 0;
-  /** Bytes in the current backward bulk transfer. */
-  std::uint32_t curBwdBulkBytes = 0;
-  /** Whether the most recent packet was in the forward direction. */
-  bool lastPacketWasFwd = false;
-
-  /// Convert accumulated stats to a flat feature vector of kFlowFeatureCount
-  /// floats.
-  [[nodiscard]] std::vector<float> toFeatureVector(std::uint16_t dstPort) const;
-};
-
 /** Native C++ flow feature extractor producing LSNM2024-compatible 77-feature
  * vectors. */
 class NativeFlowExtractor : public core::IFlowExtractor {
 public:
-  /** Construct the extractor with the default flow timeout from Configuration.
-   */
+  /** Construct the extractor with timeouts from Configuration::instance(). */
   NativeFlowExtractor();
+
+  /// Register a callback for completed flows.  Pass nullptr to disable.
+  void setFlowCompletionCallback(
+      core::IFlowExtractor::FlowCompletionCallback cb) override;
 
   /**
    * Override the flow inactivity timeout.
    * @param timeoutUs  Timeout in microseconds; flows idle longer than this are
    * finalized.
    */
-  void setFlowTimeout(std::int64_t timeoutUs);
+  void setFlowTimeout(std::int64_t timeoutUs) override;
+
+  /**
+   * Set the maximum flow duration for time-window splitting.
+   *
+   * Active flows whose age (lastTimeUs - startTimeUs) exceeds this limit
+   * are completed and restarted with fresh stats.  This ensures long-lived
+   * connections (HTTP/2, WebSocket, SSH) produce periodic ML verdicts
+   * rather than accumulating indefinitely.
+   *
+   * Set to 0 to disable duration-based splitting (packet-count split still
+   * applies via kMaxFlowPackets).
+   *
+   * @param durationUs  Maximum flow age in microseconds.  Default: 15 seconds
+   *                    (from Configuration::maxFlowDurationUs()).
+   */
+  void setMaxFlowDuration(std::int64_t durationUs) override;
+
+  /**
+   * Sweep all active flows and expire those idle longer than flowTimeoutUs_.
+   *
+   * @param nowUs  Current time in microseconds (e.g., packet timestamp or
+   *               wall-clock time).
+   * @return       Number of flows expired by this sweep.
+   *
+   * In batch mode (extractFeatures), this is called periodically during pcap
+   * processing.  In future live mode (Phase 8.6), an external timer can call
+   * this to proactively expire idle flows.
+   */
+  [[nodiscard]] std::size_t sweepExpiredFlows(std::int64_t nowUs);
 
   [[nodiscard]] std::vector<std::vector<float>>
   extractFeatures(const std::string &pcapPath) override;
@@ -197,40 +85,70 @@ public:
   [[nodiscard]] const std::vector<core::FlowInfo> &
   flowMetadata() const noexcept override;
 
+  /// Feed a single raw packet for live flow extraction.
+  /// Includes periodic timeout sweeps (same interval as batch mode).
+  void processPacket(const std::uint8_t *data, std::size_t length,
+                     std::int64_t timestampUs) override;
+
+  /// Finalize all remaining active flows and fire the completion callback.
+  void finalizeAllFlows() override;
+
+  /// Reset all internal state for a new capture session.
+  void reset() override;
+
+  /// Diagnostic counters for live detection pipeline analysis.
+  struct DiagCounters {
+    std::uint64_t packetsReceived = 0; ///< Total calls to processPacket().
+    std::uint64_t packetsParsed =
+        0; ///< Packets that passed parsePacketHeaders().
+    std::uint64_t packetsSkipped =
+        0; ///< Packets rejected by parsePacketHeaders().
+    std::uint64_t flowsCompletedFinRst = 0; ///< Flows completed by TCP FIN/RST.
+    std::uint64_t flowsCompletedMaxPkts =
+        0; ///< Flows completed by kMaxFlowPackets split.
+    std::uint64_t flowsCompletedTimeout =
+        0; ///< Flows expired by idle timeout sweep.
+    std::uint64_t flowsCompletedDuration =
+        0; ///< Flows split by max duration (time-window).
+    std::uint64_t flowsCompletedFinalize = 0; ///< Flows finalized at shutdown.
+    std::uint64_t sweepCount = 0; ///< Number of sweep passes executed.
+  };
+
+  /// Access diagnostic counters (read-only snapshot).
+  [[nodiscard]] const DiagCounters &diagCounters() const noexcept {
+    return diag_;
+  }
+
+  /// Log a summary of diagnostic counters via spdlog.
+  void logDiagnostics() const;
+
 private:
   std::unordered_map<FlowKey, FlowStats, FlowKeyHash> flows_;
   std::vector<std::pair<FlowKey, FlowStats>> completedFlows_;
   std::vector<core::FlowInfo> flowMetadata_; ///< Populated by extractFeatures()
-  std::int64_t flowTimeoutUs_ = 600'000'000; // 600 seconds default
+  core::IFlowExtractor::FlowCompletionCallback flowCompletionCallback_;
+  std::int64_t flowTimeoutUs_ =
+      0; ///< Flow inactivity timeout (from Configuration).
+  std::int64_t maxFlowDurationUs_ =
+      0; ///< Max flow age before time-window split (0=disabled).
+  std::int64_t idleThresholdUs_ =
+      0; ///< Idle vs active period threshold (from Configuration).
+  std::int64_t lastSweepTimeUs_ = 0; ///< Timestamp of the last periodic sweep.
+  bool liveMode_ =
+      false; ///< True when processPacket() has been called (live capture).
+  DiagCounters diag_; ///< Diagnostic counters for pipeline analysis.
 
-  /// Parsed packet context passed between processPacket helpers.
-  struct ParsedPacket {
-    std::string srcIp;
-    std::string dstIp;
-    std::uint16_t srcPort = 0;
-    std::uint16_t dstPort = 0;
-    std::uint8_t protocol = 0;
-    std::uint32_t headerBytes = 0;
-    std::uint32_t totalPacketLen = 0;
-    std::uint32_t payloadSize = 0;
-    std::uint32_t transportHeaderLen = 0;
-    std::uint32_t ipIhl = 0;
-    std::uint8_t tcpFlags = 0;
-    std::uint16_t tcpWindow = 0;
-  };
+  /// Alias for the shared parsed packet struct from infra/parsing/.
+  using ParsedPacket = ParsedFields;
 
-  void processPacket(pcpp::RawPacket &rawPacket, std::int64_t timestampUs);
-  void finalizeBulks();
+  void processPacketInternal(pcpp::RawPacket &rawPacket,
+                             std::int64_t timestampUs);
   void
   buildFlowMetadata(); ///< Populate flowMetadata_ from completed + active flows
 
   /// Build feature vectors from completed + active flows (same order as
   /// flowMetadata_).
   [[nodiscard]] std::vector<std::vector<float>> buildFeatureVectors() const;
-
-  /// Parse all layers from a PcapPlusPlus parsed packet into ParsedPacket.
-  [[nodiscard]] static bool parsePacketHeaders(const pcpp::Packet &packet,
-                                               ParsedPacket &pkt);
 
   /// Evict timed-out flows and resolve the active flow key and direction.
   struct FlowLookupResult {
@@ -267,10 +185,16 @@ private:
   /// Update active/idle period tracking based on inter-packet gap.
   static void updateActiveIdle(FlowStats &stats, std::int64_t timestampUs,
                                std::int64_t prevLastTimeUs,
-                               std::int64_t flowGapUs);
+                               std::int64_t flowGapUs,
+                               std::int64_t idleThresholdUs);
 
   /// Finalize bulk counters and move flow to completedFlows_.
   void completeFlow(const FlowKey &key, FlowStats &stats);
+
+  /// Complete the current flow for a 5-tuple and restart with fresh stats.
+  /// Used by both max-packet and max-duration splitting paths (DRY).
+  void restartFlow(const FlowKey &key, FlowStats &stats,
+                   std::int64_t timestampUs);
 };
 
 } // namespace nids::infra

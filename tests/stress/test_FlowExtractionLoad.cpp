@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
+#include "helpers/TestHelpers.h"
 #include "infra/flow/NativeFlowExtractor.h"
 #include "stress/StressTestHelpers.h"
 
@@ -16,19 +17,8 @@
 #include <numeric>
 #include <string>
 
-// PcapPlusPlus uses pcap_open_offline_with_tstamp_precision (npcap-only).
-// On Windows CI without npcap, pcap-dependent tests are skipped.
-#ifdef _WIN32
-#define SKIP_IF_NO_PCAP()                                                      \
-  GTEST_SKIP() << "npcap runtime not available on Windows CI"
-#else
-#define SKIP_IF_NO_PCAP()                                                      \
-  do {                                                                         \
-  } while (0)
-#endif
-
 namespace fs = std::filesystem;
-using nids::infra::kFlowFeatureCount;
+using nids::core::kFlowFeatureCount;
 using nids::infra::kMaxFlowPackets;
 using nids::infra::NativeFlowExtractor;
 using nids::test::generatePcap;

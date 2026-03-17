@@ -1,4 +1,4 @@
-# Generated from CLion Inspection settings, updated for C++20
+# Generated from CLion Inspection settings, updated for C++23
 ---
 Checks: '-*,
 bugprone-argument-comment,

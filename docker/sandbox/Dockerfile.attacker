@@ -1,0 +1,38 @@
+# Attacker — traffic generator for NIDS sandbox testing.
+#
+# Provides tools for generating both benign and malicious network traffic
+# to test the NIDS detection pipeline.
+#
+# Available tools:
+#   - hping3:  TCP/UDP/ICMP flood, SYN scan, crafted packets
+#   - nmap:    Port scanning, service enumeration
+#   - scapy:   Custom packet crafting (Python)
+#   - curl:    HTTP traffic generation (benign baseline)
+#   - ab:      Apache Bench for high-rate HTTP requests
+#   - iperf3:  Bandwidth testing (benign bulk transfer)
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    hping3 \
+    nmap \
+    python3 python3-pip python3-scapy \
+    curl wget \
+    apache2-utils \
+    iperf3 \
+    iproute2 iputils-ping \
+    netcat-openbsd \
+    tcpdump \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /scripts
+
+# Copy attack simulation scripts
+COPY docker/sandbox/scripts/ /scripts/
+
+RUN chmod +x /scripts/*.sh 2>/dev/null || true
+
+# Keep container alive for interactive use
+CMD ["sleep", "infinity"]

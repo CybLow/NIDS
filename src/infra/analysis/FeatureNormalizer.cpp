@@ -5,12 +5,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <expected>
 #include <fstream>
 #include <optional>
 
 namespace nids::infra {
 
 namespace {
+
+/// Minimum absolute std-dev value; below this, std is replaced with 1.0
+/// to prevent division-by-zero during z-score normalization.
+constexpr float kMinStdDevEpsilon = 1e-8f;
 
 /// Validate the JSON structure and extract the normalization section.
 /// Returns std::nullopt on any validation failure (logs the error).
@@ -47,12 +52,14 @@ namespace {
 
 } // anonymous namespace
 
-bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
+std::expected<void, std::string> FeatureNormalizer::loadMetadata(
+    const std::string& metadataPath) {
     try {
         auto normOpt = extractNormalizationSection(metadataPath);
         if (!normOpt) {
             loaded_ = false;
-            return false;
+            return std::unexpected<std::string>(
+                "Failed to extract normalization section from '" + metadataPath + "'");
         }
 
         const auto& norm = *normOpt;
@@ -60,11 +67,12 @@ bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
         auto stdsJson = norm["stds"].get<std::vector<double>>();
 
         if (meansJson.size() != stdsJson.size()) {
-            spdlog::error(
+            std::string msg = fmt::format(
                 "FeatureNormalizer: means ({}) and stds ({}) have different sizes",
                 meansJson.size(), stdsJson.size());
+            spdlog::error(msg);
             loaded_ = false;
-            return false;
+            return std::unexpected<std::string>(std::move(msg));
         }
 
         means_.resize(meansJson.size());
@@ -77,7 +85,7 @@ bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
             // The Python preprocessing already replaces these with 1.0,
             // but we add an extra safety net here.
             auto stdVal = static_cast<float>(stdsJson[i]);
-            stds_[i] = (std::abs(stdVal) < 1e-8f) ? 1.0f : stdVal;
+            stds_[i] = (std::abs(stdVal) < kMinStdDevEpsilon) ? 1.0f : stdVal;
         }
 
         clipValue_ = norm["clip_value"].get<float>();
@@ -86,23 +94,27 @@ bool FeatureNormalizer::loadMetadata(const std::string& metadataPath) {
         spdlog::info(
             "FeatureNormalizer: loaded {} feature normalization params (clip={:.1f})",
             means_.size(), clipValue_);
-        return true;
+        return {};
 
     } catch (const nlohmann::json::exception& e) {
-        spdlog::error("FeatureNormalizer: JSON error in '{}': {}", metadataPath, e.what());
+        std::string msg = fmt::format(
+            "FeatureNormalizer: JSON error in '{}': {}", metadataPath, e.what());
+        spdlog::error(msg);
         loaded_ = false;
-        return false;
+        return std::unexpected<std::string>(std::move(msg));
     } catch (const std::ios_base::failure& e) {
-        spdlog::error("FeatureNormalizer: I/O error loading '{}': {}", metadataPath, e.what());
+        std::string msg = fmt::format(
+            "FeatureNormalizer: I/O error loading '{}': {}", metadataPath, e.what());
+        spdlog::error(msg);
         loaded_ = false;
-        return false;
+        return std::unexpected<std::string>(std::move(msg));
     }
 }
 
-std::vector<float> FeatureNormalizer::normalize(const std::vector<float>& features) const {
+std::vector<float> FeatureNormalizer::normalize(std::span<const float> features) const {
     if (!loaded_) {
         spdlog::warn("FeatureNormalizer: metadata not loaded, returning raw features");
-        return features;
+        return {features.begin(), features.end()};
     }
 
     if (features.size() != means_.size()) {
@@ -110,7 +122,7 @@ std::vector<float> FeatureNormalizer::normalize(const std::vector<float>& featur
             "FeatureNormalizer: feature count mismatch (got {}, expected {}), "
             "returning raw features",
             features.size(), means_.size());
-        return features;
+        return {features.begin(), features.end()};
     }
 
     std::vector<float> normalized(features.size());

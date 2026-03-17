@@ -18,9 +18,9 @@ TEST_F(ServiceRegistryTest, knownPortReturnsService) {
 }
 
 TEST_F(ServiceRegistryTest, unknownPortReturnsUnknown) {
-  EXPECT_EQ(registry.getServiceByPort(99999), "Unknown");
   EXPECT_EQ(registry.getServiceByPort(0), "Unknown");
-  EXPECT_EQ(registry.getServiceByPort(-1), "Unknown");
+  EXPECT_EQ(registry.getServiceByPort(65535), "Unknown");
+  EXPECT_EQ(registry.getServiceByPort(60000), "Unknown");
 }
 
 TEST_F(ServiceRegistryTest, uniqueServicesNotEmpty) {
@@ -32,27 +32,22 @@ TEST_F(ServiceRegistryTest, uniqueServicesNotEmpty) {
 }
 
 TEST_F(ServiceRegistryTest, resolveApplication_destinationPortPriority) {
-  auto result = registry.resolveApplication("80", "443", "53");
+  auto result = registry.resolveApplication(80, 443, 53);
   EXPECT_EQ(result, "HTTPS");
 }
 
 TEST_F(ServiceRegistryTest, resolveApplication_sourcePortFallback) {
-  auto result = registry.resolveApplication("80", "", "53");
+  auto result = registry.resolveApplication(80, 0, 53);
   EXPECT_EQ(result, "HTTP");
 }
 
 TEST_F(ServiceRegistryTest, resolveApplication_packetPortFallback) {
-  auto result = registry.resolveApplication("", "", "53");
+  auto result = registry.resolveApplication(0, 0, 53);
   EXPECT_EQ(result, "DNS");
 }
 
-TEST_F(ServiceRegistryTest, resolveApplication_allEmpty) {
-  auto result = registry.resolveApplication("", "", "");
-  EXPECT_EQ(result, "Unknown");
-}
-
-TEST_F(ServiceRegistryTest, resolveApplication_invalidPort) {
-  auto result = registry.resolveApplication("not_a_port", "", "");
+TEST_F(ServiceRegistryTest, resolveApplication_allZero) {
+  auto result = registry.resolveApplication(0, 0, 0);
   EXPECT_EQ(result, "Unknown");
 }
 
@@ -97,32 +92,32 @@ TEST_F(ServiceRegistryTest, knownPorts_infraPorts) {
 
 // ── resolveApplication exception cascades ────────────────────────────
 
-TEST_F(ServiceRegistryTest, resolveApplication_invalidDstPort_fallsToSrc) {
-  // filterDstPort "abc" is invalid, filterSrcPort "80" resolves to HTTP
-  auto result = registry.resolveApplication("80", "abc", "");
+TEST_F(ServiceRegistryTest, resolveApplication_dstPortZero_fallsToSrc) {
+  // filterDstPort is 0 (unset), filterSrcPort 80 resolves to HTTP
+  auto result = registry.resolveApplication(80, 0, 0);
   EXPECT_EQ(result, "HTTP");
 }
 
-TEST_F(ServiceRegistryTest, resolveApplication_emptyDst_validSrc_unknownPort) {
+TEST_F(ServiceRegistryTest, resolveApplication_srcPort_unknownPort) {
   // filterSrcPort is a valid number but not a known port
-  auto result = registry.resolveApplication("99999", "", "");
+  auto result = registry.resolveApplication(60000, 0, 0);
   EXPECT_EQ(result, "Unknown");
 }
 
 TEST_F(ServiceRegistryTest, resolveApplication_allValid_dstPortWins) {
   // All three are valid ports, destination port has priority
-  auto result = registry.resolveApplication("22", "80", "53");
+  auto result = registry.resolveApplication(22, 80, 53);
   EXPECT_EQ(result, "HTTP");
 }
 
 TEST_F(ServiceRegistryTest, resolveApplication_srcAndPacketPort) {
   // No filter dst port, src port wins over packet port
-  auto result = registry.resolveApplication("443", "", "22");
+  auto result = registry.resolveApplication(443, 0, 22);
   EXPECT_EQ(result, "HTTPS");
 }
 
 TEST_F(ServiceRegistryTest, resolveApplication_onlyPacketPort) {
-  auto result = registry.resolveApplication("", "", "3306");
+  auto result = registry.resolveApplication(0, 0, 3306);
   EXPECT_EQ(result, "MySQL");
 }
 

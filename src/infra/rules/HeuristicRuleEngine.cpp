@@ -1,4 +1,5 @@
 #include "infra/rules/HeuristicRuleEngine.h"
+#include "core/model/ProtocolConstants.h"
 
 #include <spdlog/spdlog.h>
 
@@ -76,20 +77,31 @@ constexpr std::size_t kPortScanThreshold =
   return "Auth";
 }
 
+/// Compute packet rate (packets/sec) from a flow.
+/// Returns std::nullopt if the flow duration is zero or negative, meaning
+/// no meaningful rate can be calculated.
+[[nodiscard]] std::optional<double> packetRate(const core::FlowInfo &flow) {
+  double durationSec = flow.flowDurationUs / 1'000'000.0;
+  if (durationSec <= 0.0) {
+    return std::nullopt;
+  }
+  auto totalPackets = flow.totalFwdPackets + flow.totalBwdPackets;
+  return static_cast<double>(totalPackets) / durationSec;
+}
+
 } // anonymous namespace
 
-std::vector<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::evaluate(const nids::core::FlowMetadata &flow) const {
+std::vector<core::RuleMatch>
+HeuristicRuleEngine::evaluate(const core::FlowInfo &flow) const {
 
-  std::vector<nids::core::HeuristicRuleResult> results;
+  std::vector<core::RuleMatch> results;
   results.reserve(4); // Typically 0-2 rules fire, pre-allocate small
 
-  auto tryAdd =
-      [&results](std::optional<nids::core::HeuristicRuleResult> &&result) {
-        if (result.has_value()) {
-          results.push_back(std::move(*result));
-        }
-      };
+  auto tryAdd = [&results](std::optional<core::RuleMatch> &&result) {
+    if (result.has_value()) {
+      results.push_back(std::move(*result));
+    }
+  };
 
   tryAdd(checkSuspiciousPort(flow));
   tryAdd(checkSynFlood(flow));
@@ -101,12 +113,11 @@ HeuristicRuleEngine::evaluate(const nids::core::FlowMetadata &flow) const {
   return results;
 }
 
-std::vector<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::evaluatePortScan(
+std::vector<core::RuleMatch> HeuristicRuleEngine::evaluatePortScan(
     std::string_view srcIp,
     const std::vector<std::uint16_t> &distinctDstPorts) const {
 
-  std::vector<nids::core::HeuristicRuleResult> results;
+  std::vector<core::RuleMatch> results;
 
   if (distinctDstPorts.size() >= kPortScanThreshold) {
     results.push_back(
@@ -129,8 +140,8 @@ std::size_t HeuristicRuleEngine::ruleCount() const noexcept {
 
 // ── Individual rule implementations ─────────────────────────────────
 
-std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkSuspiciousPort(const nids::core::FlowMetadata &flow) {
+std::optional<core::RuleMatch>
+HeuristicRuleEngine::checkSuspiciousPort(const core::FlowInfo &flow) {
   bool srcSuspicious = isSuspiciousPort(flow.srcPort);
   bool dstSuspicious = isSuspiciousPort(flow.dstPort);
 
@@ -155,14 +166,14 @@ HeuristicRuleEngine::checkSuspiciousPort(const nids::core::FlowMetadata &flow) {
 
   float severity = (srcSuspicious && dstSuspicious) ? 0.8f : 0.6f;
 
-  return nids::core::HeuristicRuleResult{.ruleName = "suspicious_port",
-                                         .description = std::move(desc),
-                                         .severity = severity};
+  return core::RuleMatch{.ruleName = "suspicious_port",
+                         .description = std::move(desc),
+                         .severity = severity};
 }
 
-std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkSynFlood(const nids::core::FlowMetadata &flow) {
-  if (flow.protocol != "TCP") {
+std::optional<core::RuleMatch>
+HeuristicRuleEngine::checkSynFlood(const core::FlowInfo &flow) {
+  if (flow.protocol != core::kIpProtoTcp) {
     return std::nullopt;
   }
 
@@ -180,7 +191,7 @@ HeuristicRuleEngine::checkSynFlood(const nids::core::FlowMetadata &flow) {
     return std::nullopt;
   }
 
-  return nids::core::HeuristicRuleResult{
+  return core::RuleMatch{
       .ruleName = "syn_flood",
       .description = std::format(
           "High SYN/ACK ratio ({}) with {} SYN flags -- potential SYN flood",
@@ -189,9 +200,9 @@ HeuristicRuleEngine::checkSynFlood(const nids::core::FlowMetadata &flow) {
           1.0f, static_cast<float>(synAckRatio / (kSynFloodRatio * 4)))};
 }
 
-std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkIcmpFlood(const nids::core::FlowMetadata &flow) {
-  if (flow.protocol != "ICMP") {
+std::optional<core::RuleMatch>
+HeuristicRuleEngine::checkIcmpFlood(const core::FlowInfo &flow) {
+  if (flow.protocol != core::kIpProtoIcmp) {
     return std::nullopt;
   }
 
@@ -200,29 +211,23 @@ HeuristicRuleEngine::checkIcmpFlood(const nids::core::FlowMetadata &flow) {
     return std::nullopt;
   }
 
-  // Calculate packet rate
-  double durationSec = flow.flowDurationUs / 1'000'000.0;
-  if (durationSec <= 0.0) {
+  auto rate = packetRate(flow);
+  if (!rate.has_value() || *rate < kIcmpFloodRate) {
     return std::nullopt;
   }
 
-  double pktRate = static_cast<double>(totalPackets) / durationSec;
-  if (pktRate < kIcmpFloodRate) {
-    return std::nullopt;
-  }
-
-  return nids::core::HeuristicRuleResult{
+  return core::RuleMatch{
       .ruleName = "icmp_flood",
       .description = std::format("ICMP traffic at {} packets/sec with {} total "
                                  "packets -- potential ICMP flood",
-                                 pktRate, totalPackets),
+                                 *rate, totalPackets),
       .severity =
-          std::min(1.0f, static_cast<float>(pktRate / (kIcmpFloodRate * 10)))};
+          std::min(1.0f, static_cast<float>(*rate / (kIcmpFloodRate * 10)))};
 }
 
-std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkBruteForce(const nids::core::FlowMetadata &flow) {
-  if (flow.protocol != "TCP") {
+std::optional<core::RuleMatch>
+HeuristicRuleEngine::checkBruteForce(const core::FlowInfo &flow) {
+  if (flow.protocol != core::kIpProtoTcp) {
     return std::nullopt;
   }
 
@@ -230,62 +235,52 @@ HeuristicRuleEngine::checkBruteForce(const nids::core::FlowMetadata &flow) {
     return std::nullopt;
   }
 
-  auto totalPackets = flow.totalFwdPackets + flow.totalBwdPackets;
-  if (totalPackets < kBruteForceMinPkts) {
+  if (auto totalPackets = flow.totalFwdPackets + flow.totalBwdPackets;
+      totalPackets < kBruteForceMinPkts) {
     return std::nullopt;
   }
 
-  double durationSec = flow.flowDurationUs / 1'000'000.0;
-  if (durationSec <= 0.0) {
-    return std::nullopt;
-  }
-
-  double pktRate = static_cast<double>(totalPackets) / durationSec;
-  if (pktRate < kBruteForceRate) {
+  auto rate = packetRate(flow);
+  if (!rate.has_value() || *rate < kBruteForceRate) {
     return std::nullopt;
   }
 
   // High packet rate to an authentication port suggests brute force
   auto serviceName = authServiceName(flow.dstPort);
 
-  return nids::core::HeuristicRuleResult{
+  return core::RuleMatch{
       .ruleName = "brute_force",
       .description = std::format(
           "High packet rate ({} pkt/s) to {} port {} -- potential brute force",
-          pktRate, serviceName, flow.dstPort),
+          *rate, serviceName, flow.dstPort),
       .severity =
-          std::min(1.0f, static_cast<float>(pktRate / (kBruteForceRate * 10)))};
+          std::min(1.0f, static_cast<float>(*rate / (kBruteForceRate * 10)))};
 }
 
-std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkHighPacketRate(const nids::core::FlowMetadata &flow) {
+std::optional<core::RuleMatch>
+HeuristicRuleEngine::checkHighPacketRate(const core::FlowInfo &flow) {
   auto totalPackets = flow.totalFwdPackets + flow.totalBwdPackets;
   if (totalPackets < kHighPktMinPkts) {
     return std::nullopt;
   }
 
-  double durationSec = flow.flowDurationUs / 1'000'000.0;
-  if (durationSec <= 0.0) {
+  auto rate = packetRate(flow);
+  if (!rate.has_value() || *rate < kHighPacketRate) {
     return std::nullopt;
   }
 
-  double pktRate = static_cast<double>(totalPackets) / durationSec;
-  if (pktRate < kHighPacketRate) {
-    return std::nullopt;
-  }
-
-  return nids::core::HeuristicRuleResult{
+  return core::RuleMatch{
       .ruleName = "high_packet_rate",
       .description = std::format("Extremely high packet rate: {} packets/sec "
                                  "over {} packets -- potential DoS/DDoS",
-                                 pktRate, totalPackets),
+                                 *rate, totalPackets),
       .severity =
-          std::min(1.0f, static_cast<float>(pktRate / (kHighPacketRate * 5)))};
+          std::min(1.0f, static_cast<float>(*rate / (kHighPacketRate * 5)))};
 }
 
-std::optional<nids::core::HeuristicRuleResult>
-HeuristicRuleEngine::checkResetFlood(const nids::core::FlowMetadata &flow) {
-  if (flow.protocol != "TCP") {
+std::optional<core::RuleMatch>
+HeuristicRuleEngine::checkResetFlood(const core::FlowInfo &flow) {
+  if (flow.protocol != core::kIpProtoTcp) {
     return std::nullopt;
   }
 
@@ -305,7 +300,7 @@ HeuristicRuleEngine::checkResetFlood(const nids::core::FlowMetadata &flow) {
     return std::nullopt;
   }
 
-  return nids::core::HeuristicRuleResult{
+  return core::RuleMatch{
       .ruleName = "reset_flood",
       .description = std::format("High RST ratio ({}) with {} RST flags -- "
                                  "potential reset attack or scan response",

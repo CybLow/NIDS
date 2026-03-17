@@ -1,6 +1,6 @@
 # NIDS Roadmap
 
-> Last updated: 2026-03-14
+> Last updated: 2026-03-17
 
 This document consolidates **all** planned work — features, cleanup, tests, docs, and
 operational tasks — into a single prioritized roadmap. Items are organized into phases
@@ -29,80 +29,105 @@ Cross-references: [ADR-004](adr/004-model-benchmark-analysis.md),
 - [x] Phase 7 — UI for hybrid detection results (tabbed Packets/Flows view,
   `FlowTableModel`, `DetectionDetailWidget`, worker thread, TI status panel,
   weight tuning dialog)
+- [x] Phase 6 — Cleanup, config, and test foundation (ConfigLoader + `--config`,
+  legacy `analysisResults_` removed, 130 hybrid detection unit tests,
+  MIT LICENSE, server/client stubs cleaned up)
+- [x] Phase 8 — Real-time flow extraction and analysis (Welford accumulators,
+  timeout sweeps, streaming flow callbacks, producer-consumer pipeline,
+  live packet API, LiveDetectionPipeline)
+- [x] Phase 9.1 — gRPC server (`NidsServiceImpl` with 7 RPCs, `GrpcStreamSink`,
+  proto codegen, Conan `with_grpc` option, `nids-server` dual-mode executable)
+- [x] Phase 9.2 — CLI client (`NidsClient` gRPC wrapper, `nids-cli` with commands:
+  status, interfaces, capture start/stop, stream with filter)
+- [x] Docker sandbox for inline IPS testing (3-container topology: server, attacker,
+  victim on isolated `172.28.0.0/24` bridge network)
+- [x] Phase 9.4 — `--headless` flag on GUI binary (standalone capture + console
+  output, no Qt dependency at runtime when headless)
+- [x] 15-step improvement plan (C++23 modernization: `[[nodiscard]]`, `std::span`,
+  `std::expected`, `std::ranges`, `FilterBuilder`, `IAnalysisRepository`,
+  `ICommand` pattern, `PacketParser` extraction, `ProtocolConstants.h`,
+  Rule of Five, DIP fixes, CMake per-layer split)
+- [x] Self-audit fixes (removed dead `InMemoryAnalysisRepository`, stale test
+  name renames, deleted unnecessary move ops on `CaptureSession`)
+- [x] Deep structural audit (12 of 14 fixes: `PipelineFactory`, merged
+  `FlowInfo`/`FlowMetadata`, `SignalHandler.h`, `AsanOptions.h`,
+  `WelfordAccumulator` extraction, `evaluate()` 2-arg rewrite,
+  protocol-to-string deduplication, magic number cleanup,
+  `BoundedQueue` → `core/concurrent/`, `PacketFilter` → `core/model/`)
+- [x] 5-layer deep audit cleanup (128 files, 19,616 lines audited across
+  core/infra/app/ui+server+client/tests):
+  - Method extraction: 10 long methods decomposed (SRP) across OnnxAnalyzer,
+    NativeFlowExtractor, LiveDetectionPipeline, FlowAnalysisWorker,
+    AnalysisService, NidsServiceImpl, GrpcStreamSink, DetectionDetailWidget
+  - DRY fixes: OnnxAnalyzer `interpretOutput()`, FilterPanel `kStandardApps`,
+    WeightTuningDialog `sliderToWeight()`, NativeFlowExtractor `restartFlow()`
+  - Bug fixes: StopCapture flagged count, GetStatus inline loop
+  - Dead code removal: `PacketInfo::application`, `FlowTableModel::protocolToString()`
+  - Type safety: `ServiceRegistry::getServiceByPort()` int→uint16_t
+  - Const-correctness: `IPacketCapture::listInterfaces()` const,
+    Configuration getters return `const&` + `noexcept`
+  - Architecture: PipelineFactory explicit `nids_infra` CMake dependency
+  - Test split: `test_NativeFlowExtractor.cpp` (2,114 lines) → 6 focused files
+    + `PcapTestHelpers.h` shared helpers
+  - Redundant qualifier removal across ~55 files
+  - WelfordAccumulator: struct→class with private members
+  - Final grade: A- across all layers (430 tests, zero architecture violations)
 
 ---
 
-## Phase 6: Cleanup, Config, and Test Foundation
+## Phase 6: Cleanup, Config, and Test Foundation [DONE]
 
 **Goal**: Remove backward-compatibility scaffolding, implement deferred functionality
 that has zero new dependencies, and establish test coverage for all new hybrid
 detection code.
 
-### 6.1 — Implement `Configuration::loadFromFile()` JSON parsing
+### 6.1 — ~~Implement `Configuration::loadFromFile()` JSON parsing~~ [DONE]
 
-- **File**: `src/core/services/Configuration.cpp:65`
-- **Why**: `nlohmann_json` is already linked. The function is a no-op with a TODO.
-  Every runtime setting (model path, TI directory, hybrid weights, ONNX thread count)
-  can be loaded from a JSON file.
-- **Scope**: Parse the JSON, map keys to setters, log warnings for unknown keys.
-- **Deliverable**: Users can pass `--config /path/to/config.json` (add CLI arg parsing
-  with a simple `argv` loop in `main.cpp`).
+- `ConfigLoader` in `infra/config/` parses JSON with `nlohmann_json`
+- All config sections handled: model, capture, threat_intel, hybrid_detection, ui
+- `main.cpp` has `parseConfigArg()` for `--config /path/to/config.json` CLI arg
+- Unknown keys silently ignored (partial JSON keeps other defaults)
 
-### 6.2 — Remove legacy `analysisResults_` dual storage
+### 6.2 — ~~Remove legacy `analysisResults_` dual storage~~ [DONE]
 
-- **Files**: `CaptureSession.h/.cpp`, `AnalysisService.cpp`, `PacketTableModel`,
-  `ReportGenerator.cpp`, `MainWindow.cpp` (any code reading `analysisResults_`)
-- **Why**: `CaptureSession` maintains a legacy `std::vector<AttackType>` alongside the
-  new `std::vector<DetectionResult>`. This was kept for backward compatibility with UI
-  and report code. Once all consumers read from `DetectionResult`, the legacy vector
-  and `setAnalysisResult()`/`getAnalysisResult()` can be removed.
-- **Steps**:
-  1. Audit all call sites of `getAnalysisResult()` / `analysisResults_`.
-  2. Migrate each to use `getDetectionResult()`, extracting `.finalVerdict`.
-  3. Remove `analysisResults_`, `setAnalysisResult()`, `getAnalysisResult()`.
+- Legacy `analysisResults_` / `getAnalysisResult()` / `setAnalysisResult()` fully
+  removed; all consumers migrated to `DetectionResult`-based API
+- Renamed `analysisResultCount()` → `detectionResultCount()` for consistency
+- Updated all 10 call sites (MainWindow, test_CaptureSession, test_FlowAnalysisWorker)
 
-### 6.3 — Remove `FeatureNormalizer` clip_value fallback
+### 6.3 — ~~Remove `FeatureNormalizer` clip_value fallback~~ [DONE]
 
-- **File**: `src/infra/analysis/FeatureNormalizer.cpp:61-68`
-- **Why**: Once all metadata JSON files include `clip_value`, the default-to-10.0
-  fallback is dead code.
-- **Action**: Remove the fallback, make `clip_value` required, log an error if absent.
+- `clip_value` is now required in metadata JSON (error logged if absent)
+- No default-to-10.0 fallback in `FeatureNormalizer::loadMetadata()`
 
-### 6.4 — Clean up server/client stubs
+### 6.4 — ~~Clean up server/client stubs~~ [DONE]
 
-- **Files**: `src/server/NidsServer.h/.cpp`, `src/client/NidsClient.h/.cpp`
-- **Why**: These reference a legacy model path (`"../src/model/model.json"`),
-  contain commented-out gRPC code, and are not included in any CMake target.
-- **Decision**: Either (a) delete them entirely and recreate when gRPC is implemented,
-  or (b) update them to match current architecture (Configuration singleton, ONNX
-  model, hybrid detection). Option (a) is cleaner.
+- Stubs already updated: proper Phase 9 references, spdlog logging, no legacy
+  model paths, behind `NIDS_BUILD_SERVER=OFF` option
+- Will be rewritten when Phase 9 (gRPC) is implemented
 
-### 6.5 — Remove `PacketInfo.cpp` placeholder
+### 6.5 — ~~Remove `PacketInfo.cpp` placeholder~~ [DONE]
 
-- **File**: `src/core/model/PacketInfo.cpp`
-- **Why**: Contains only a comment. If no `.cpp` is needed, remove it and any CMake
-  reference.
+- File already removed; no CMake references exist
 
-### 6.6 — Add unit tests for hybrid detection components
+### 6.6 — ~~Add unit tests for hybrid detection components~~ [DONE]
 
-| Test file | Class under test | Key scenarios |
-|-----------|-----------------|---------------|
-| `test_ThreatIntelProvider.cpp` | `ThreatIntelProvider` | Load plain-text IPs, CIDR matching, empty file, malformed lines, duplicate IPs, `isKnownThreat()` hit/miss |
-| `test_HeuristicRuleEngine.cpp` | `HeuristicRuleEngine` | Each of 7 rules: trigger condition, below threshold, edge values |
-| `test_HybridDetectionService.cpp` | `HybridDetectionService` | ML-only fallback, TI escalation, weight calculation, benign + high-confidence override, all three sources contributing |
-| `test_FeatureNormalizer.cpp` | `FeatureNormalizer` | Load metadata JSON, normalize features, clip values, missing fields, dimension mismatch |
-| `test_DetectionResult.cpp` | `DetectionResult` | Struct initialization, default values |
-| `test_PredictionResult.cpp` | `PredictionResult` | Struct initialization, probability array |
-| `test_Configuration.cpp` | `Configuration` | `loadFromFile()` with valid JSON, missing file, malformed JSON, all getters |
+All 7 test files implemented with comprehensive coverage:
 
-- **Framework**: GoogleTest + GoogleMock (per AGENTS.md Section 9)
-- **Target**: 80% line coverage for `core/` and `app/` (AGENTS.md Section 9.2)
+| Test file | Tests | Coverage |
+|-----------|-------|----------|
+| `test_ThreatIntelProvider.cpp` | 32 | Feed loading, CIDR matching, delimiters, edge cases |
+| `test_HeuristicRuleEngine.cpp` | 27 | All 7 rules: trigger/below-threshold/edge values |
+| `test_HybridDetectionService.cpp` | 17 | ML-only, TI escalation, ensemble, all detection sources |
+| `test_FeatureNormalizer.cpp` | 20 | Load/normalize/clip/mismatch/reload |
+| `test_DetectionResult.cpp` | 11 | Struct init, flags, maxSeverity, detectionSourceToString |
+| `test_PredictionResult.cpp` | 6 | Struct init, isAttack, isHighConfidence |
+| `test_Configuration.cpp` | 17 | Singleton, getters, ConfigLoader with valid/invalid/partial JSON |
 
-### 6.7 — Add LICENSE file
+### 6.7 — ~~Add LICENSE file~~ [DONE]
 
-- **Files**: `LICENSE` (project root), `CMakeLists.txt:137` (uncomment CPack reference)
-- **Why**: Missing LICENSE blocks CPack packaging and legal compliance. README links to
-  a nonexistent file.
+- MIT License in project root
+- CPack `CPACK_RESOURCE_FILE_LICENSE` points to `${CMAKE_SOURCE_DIR}/LICENSE`
 
 ---
 
@@ -161,45 +186,118 @@ documented in ADR-004.
 - **File**: `src/infra/flow/NativeFlowExtractor.h`
 - Completed: `std::unordered_map` with `FlowKeyHash` functor, O(1) amortized lookup
 
-### 8.2 — Switch to Welford's online statistics
+### 8.2 — ~~Switch to Welford's online statistics~~ [DONE]
 
-- **Files**: `NativeFlowExtractor.h:57-88` (FlowStats vectors)
-- **Why**: Per-flow memory drops from ~7 KB (storing all per-packet vectors) to ~200 B
-  (running mean, variance, min, max, count)
-- Remove `fwdPacketLengths`, `bwdPacketLengths`, `allPacketLengths`, `flowIatUs`,
-  `fwdIatUs`, `bwdIatUs`, `activePeriodsUs`, `idlePeriodsUs` vectors
-- Replace with `WelfordAccumulator` structs that track N, mean, M2 (for variance),
-  min, max
+- **Files**: `NativeFlowExtractor.h`, `NativeFlowExtractor.cpp`, `test_NativeFlowExtractor.cpp`
+- Completed: `WelfordAccumulator` struct with numerically stable online algorithm
+- Replaced all 12 per-packet vectors with accumulator members (O(1) space per update)
+- Per-flow memory reduced from ~7 KB to ~200 B
+- Fixed backward IAT double-push bug in `updateDirectionStats()`
+- Removed dead vector-based free functions (`mean`, `stddev`, `variance`)
+- Added 5 `WelfordAccumulator` unit tests
 
-### 8.3 — Add periodic timeout sweeps
+### 8.3 — ~~Add periodic timeout sweeps~~ [DONE]
 
-- **Why**: Currently flow expiry is only checked lazily when the next packet for the
-  same 5-tuple arrives. Long-lived idle flows are never expired.
-- Add a timer (e.g., every 30s) that sweeps flows and expires those past the idle
-  timeout
-- Emit completed flows for analysis
+- **Files**: `NativeFlowExtractor.h`, `NativeFlowExtractor.cpp`, `test_NativeFlowExtractor.cpp`
+- Completed: `sweepExpiredFlows(nowUs)` public method iterates active flows and
+  expires any idle beyond `flowTimeoutUs_`
+- Called every 30 seconds (by packet timestamp) during batch pcap processing
+- Designed for future live mode: external timer can call `sweepExpiredFlows()`
+- Constructor now reads `flowTimeoutUs_` and `idleThresholdUs_` from
+  `Configuration::instance()` (was hardcoded)
+- Removed `kDefaultFlowTimeoutUs` and `kIdleThresholdUs` local constants
+- `updateActiveIdle()` now accepts idle threshold as parameter
+- Added 4 sweep-specific unit tests (284 total)
 
-### 8.4 — Stream completed flows to ML analyzer
+### 8.4 — ~~Stream completed flows to ML analyzer~~ [DONE]
 
-- **Why**: Currently all flows are accumulated in memory and analyzed sequentially
-  (`AnalysisService.cpp`). The CSV round-trip has been eliminated — features are
-  returned in-memory as `std::vector<std::vector<float>>`.
-- Next step: when a flow completes (timeout or FIN/RST), immediately normalize features
-  and run inference (true streaming, not batch-after-capture)
+- **Files**: `IFlowExtractor.h`, `NativeFlowExtractor.h/.cpp`, `AnalysisService.cpp`,
+  `test_NativeFlowExtractor.cpp`, `test_AnalysisService.cpp`, `test_Pipeline.cpp`
+- Completed: `FlowCompletionCallback` in `IFlowExtractor` fires for each completed
+  flow (FIN/RST, max-packets, timeout sweep, end-of-capture)
+- `NativeFlowExtractor::completeFlow()` and `finalizeBulks()` invoke the callback
+  with the 77-float feature vector and `FlowInfo` metadata
+- `AnalysisService::analyzeCapture()` uses the streaming callback to normalize,
+  predict, and store results as flows complete — no batch accumulation
+- Backward-compatible batch fallback for extractors that don't invoke the callback
+- Added 6 callback unit tests (290 total), updated 2 mock extractors
+- All 290 unit + 31 Qt + 24 stress tests pass
 
-### 8.5 — Producer-consumer threading
+### 8.5 — ~~Producer-consumer threading~~ [DONE]
 
-- **Pattern**: Capture thread → Flow extractor thread → Analyzer thread
-- Use a lock-free or mutex-protected queue between stages
-- `std::jthread` for non-Qt threads (per AGENTS.md Section 4.1)
-- Connect results back to UI via `Qt::QueuedConnection` signals
+- **Files**: `BoundedQueue.h`, `FlowAnalysisWorker.h/.cpp`, `AnalysisService.cpp`,
+  `test_BoundedQueue.cpp`, `test_FlowAnalysisWorker.cpp`, `tests/CMakeLists.txt`,
+  `src/app/CMakeLists.txt`
+- Completed: `BoundedQueue<T>` thread-safe bounded FIFO (blocking push/pop,
+  backpressure, close/end-of-stream semantics)
+- Completed: `FlowAnalysisWorker` — `std::jthread`-based consumer that pops
+  `FlowWorkItem` from a `BoundedQueue`, normalizes features, runs ML inference
+  (with optional hybrid detection), stores results in `CaptureSession`, and
+  invokes a `ResultCallback` for UI progress
+- Completed: `AnalysisService::analyzeCapture()` wired to use the pipelined
+  architecture — extraction and inference run concurrently on separate threads
+  with bounded queue backpressure between them
+- Batch fallback preserved for mock extractors and alternative implementations
+- Added 14 `BoundedQueue` + 11 `FlowAnalysisWorker` unit tests (315 total)
+- All 315 unit + 31 Qt + 24 stress tests pass
 
-### 8.6 — Live capture via PcapPlusPlus
+### 8.6 — ~~Live capture via PcapPlusPlus~~ [DONE]
 
-- Currently `NativeFlowExtractor::extractFeatures()` reads from a saved `.pcap` file
-  via `pcpp::PcapFileReaderDevice`
-- Add an overload or mode that accepts packets from the live `PcapCapture` callback
-- This enables real-time detection during capture, not just post-capture
+- **Files**: `IFlowExtractor.h`, `NativeFlowExtractor.h/.cpp`,
+  `test_NativeFlowExtractor.cpp`, `test_AnalysisService.cpp`, `test_Pipeline.cpp`
+- Completed: Added 3 new pure virtual methods to `IFlowExtractor` interface:
+  - `processPacket(data, length, timestampUs)` — feed raw packets during live capture
+  - `finalizeAllFlows()` — flush remaining active flows at end-of-capture
+  - `reset()` — clear all internal state for a new capture session
+- Completed: `NativeFlowExtractor` implements all 3 methods:
+  - `processPacket()` wraps raw bytes in `pcpp::RawPacket`, delegates to internal
+    parser, includes periodic sweep (same 30s interval as batch mode)
+  - `finalizeAllFlows()` calls `finalizeBulks()` to flush pending bulk counters
+    and fire completion callbacks for all remaining active flows
+  - `reset()` clears `flows_`, `completedFlows_`, `flowMetadata_`, `lastSweepTimeUs_`
+  - `extractFeatures()` refactored to call `reset()` at start and
+    `processPacketInternal()` internally (shared code path with live mode)
+- Feature parity: live mode produces identical feature vectors to batch mode
+  (verified by `ProcessPacket_featureVectorMatchesBatchMode` test)
+- Updated 2 mock extractors (AnalysisService, Pipeline tests) with no-op overrides
+- Added 14 live mode unit tests (329 total)
+- All 329 unit + 31 Qt + 24 stress tests pass
+
+### 8.7 — ~~Wire live detection into capture pipeline~~ [DONE]
+
+- **Files**: `IPacketCapture.h`, `PcapCapture.h/.cpp`, `CaptureController.h/.cpp`,
+  `LiveDetectionPipeline.h/.cpp`, `FlowAnalysisWorker.h/.cpp`,
+  `AnalysisService.cpp`, `MainWindow.cpp`, `main.cpp`,
+  `src/app/CMakeLists.txt`, `test_CaptureController.cpp`, `test_Pipeline.cpp`,
+  `test_FlowAnalysisWorker.cpp`
+- Completed: `RawPacketCallback` on `IPacketCapture` interface — fires on the
+  capture thread with raw packet bytes + timestamp for live flow extraction
+- Completed: `PcapCaptureWorker` fires the callback before parsing `PacketInfo`,
+  thread-safe set/read via mutex
+- Completed: `LiveDetectionPipeline` (new, `app/`) — pure C++23 orchestrator:
+  - Manages `BoundedQueue<FlowWorkItem>` + `FlowAnalysisWorker` lifecycle
+  - `feedPacket()` delegates to `IFlowExtractor::processPacket()`
+  - Uses `tryPush()` (non-blocking) to avoid stalling PcapPlusPlus thread;
+    drops flows under backpressure with logged warning
+  - `start()` resets extractor, creates queue + worker
+  - `stop()` finalizes remaining flows, drains queue, joins worker
+- Completed: `CaptureController` gains `enableLiveDetection()` / `disableLiveDetection()`
+  - On `startCapture()`: starts pipeline, registers raw packet callback
+  - On `stopCapture()`: clears callback, finalizes + stops pipeline
+  - `liveFlowDetected(DetectionResult, FlowInfo)` signal bridges worker
+    thread → main thread via `QMetaObject::invokeMethod`
+- Completed: `FlowAnalysisWorker::ResultCallback` extended to pass `FlowInfo`
+- Completed: `main.cpp` creates separate `NativeFlowExtractor`, `FeatureNormalizer`,
+  and `IPacketAnalyzer` instances for the live pipeline (no shared mutable state
+  with `AnalysisService`)
+- Completed: `MainWindow` connects `liveFlowDetected` → `FlowTableModel::addFlowResult()`
+  for incremental row insertion during capture; skips post-capture analysis prompt
+  when live detection was active
+- Updated 2 mock `IPacketCapture` implementations + 1 `FlowAnalysisWorker` test
+- Thread model: PcapPlusPlus thread → `feedPacket()` → flow extractor →
+  `BoundedQueue` → `FlowAnalysisWorker` (std::jthread) → `ResultCallback` →
+  `QMetaObject::invokeMethod` → main thread → `FlowTableModel`
+- All 329 unit + 31 Qt + 24 stress tests pass
 
 ---
 
@@ -208,32 +306,67 @@ documented in ADR-004.
 **Goal**: Enable headless operation for server deployments, systemd services, and
 remote monitoring.
 
-### 9.1 — Implement gRPC server
+### 9.1 — ~~Implement gRPC server~~ [DONE]
 
-- **Files**: `src/server/NidsServer.h/.cpp` (rewrite or recreate after Phase 6.4)
-- **Proto**: `proto/nids.proto` (already defines 7 RPCs)
-- **CMake**: Add `if(NIDS_BUILD_SERVER)` block, protobuf/gRPC compilation targets
-- RPCs: `StartCapture`, `StopCapture`, `GetStatus`, `GetPackets` (streaming),
-  `GetAnalysisResults`, `RunAnalysis`, `GetReport`
+- **Files**: `src/server/NidsServer.h/.cpp`, `src/server/server_main.cpp`
+- **Proto**: `proto/nids.proto` (7 RPCs: ListInterfaces, StartCapture, StopCapture,
+  GetStatus, StreamDetections, StreamPackets, AnalyzeCapture)
+- **CMake**: `if(NIDS_BUILD_SERVER)` block with protobuf/gRPC code generation,
+  `nids_proto` static library, `nids-server-lib`, `nids-server` executable
+- **Conan**: `with_grpc` option (`conan install . -o with_grpc=True`) pulls
+  `grpc/1.72.0`, `protobuf/5.27.0`, `abseil`, `c-ares`, `openssl`, `re2`, `zlib`
+- `NidsServiceImpl`: full implementations for ListInterfaces, StartCapture,
+  StopCapture, GetStatus, StreamDetections; stubs for StreamPackets, AnalyzeCapture
+- `GrpcStreamSink`: implements `IOutputSink` to bridge flow detections into
+  gRPC server-streaming responses
+- `NidsServer`: wrapper managing `grpc::Server` lifecycle (start/stop/blocking wait)
+- Dual-mode `server_main.cpp`: `--no-grpc` for standalone capture + console output,
+  default for gRPC server mode with full pipeline integration
+- Generated proto headers marked as `SYSTEM` include to avoid `-Werror` with GCC 15
+- ASan `allow_user_poisoning=0` override for known gRPC epoll false positives
 
-### 9.2 — Implement CLI client
+### 9.2 — ~~Implement CLI client~~ [DONE]
 
-- **Files**: `src/client/NidsClient.h/.cpp` (rewrite or recreate)
-- Commands: `nids-cli capture start/stop`, `nids-cli analyze`, `nids-cli report`,
-  `nids-cli status`, `nids-cli feeds update`
+- **Files**: `src/client/NidsClient.h/.cpp`, `src/client/cli_main.cpp`
+- `NidsClient`: typed C++ wrapper around gRPC stub with connect/disconnect,
+  listInterfaces, startCapture, stopCapture, getStatus, streamDetections
+- `ClientConfig`: server address (default `localhost:50051`), 5s connect timeout,
+  30s per-RPC timeout
+- `nids-cli` commands: `status`, `interfaces`, `capture start <iface> [--bpf]`,
+  `capture stop [session-id]`, `stream [--filter flagged|clean|all]`, `help`
+- Clean error handling: graceful 5s timeout on connection failure, proper exit codes
+- Signal handling: Ctrl+C stops stream command gracefully
 
-### 9.3 — `--headless` flag
+### 9.3 — ~~Docker sandbox for inline IPS testing~~ [DONE]
+
+- **Files**: `docker/sandbox/Dockerfile.server`, `docker/sandbox/Dockerfile.attacker`,
+  `docker/sandbox/Dockerfile.victim`, `docker/sandbox/compose.yml`,
+  `docker/sandbox/scripts/victim-start.sh`, `docker/sandbox/scripts/generate-benign.sh`,
+  `docker/sandbox/scripts/generate-attacks.sh`
+- 3-container topology on isolated `172.28.0.0/24` bridge:
+  - `nids-server` (172.28.0.10) — two-stage build, compiles from source with
+    `NIDS_BUILD_SERVER=ON`
+  - `attacker` (172.28.0.20) — Ubuntu 24.04 with hping3, nmap, scapy, curl, ab, iperf3
+  - `victim` (172.28.0.30) — Python HTTP server, dropbear SSH, iperf3, netcat
+- Attack scripts generate 8 attack types matching NIDS model classes
+- Benign scripts generate HTTP, ping, iperf3, TCP connect patterns
+
+### 9.4 — ~~`--headless` flag~~ [DONE]
 
 - **Files**: `src/main.cpp`
-- When `--headless` is passed, skip Qt UI initialization, start gRPC server
-- Required for systemd service (`docs/deployment.md:117-141`)
+- `--headless --interface <iface>` skips Qt initialization entirely, runs
+  standalone capture with `LiveDetectionPipeline` + `ConsoleAlertSink`
+- Also added `--bpf`, `--help`/`-h` flags to the GUI binary
+- Requires `--interface` in headless mode (validated with error message)
+- Graceful shutdown via SIGINT/SIGTERM
+- Note: for gRPC server mode, use the separate `nids-server` binary instead
 
-### 9.4 — `--config` flag
+### 9.5 — `--config` flag [DONE]
 
-- **Files**: `src/main.cpp`
+- **Files**: `src/main.cpp`, `src/server/server_main.cpp`
 - Parse `--config /path/to/config.json` from `argv`, pass to
-  `Configuration::loadFromFile()`
-- Required by `docs/deployment.md:160`
+  `Configuration::loadFromFile()` via `ConfigLoader`
+- Both GUI (`main.cpp`) and server (`server_main.cpp`) support this flag
 
 ---
 
@@ -300,6 +433,98 @@ remote monitoring.
 
 ---
 
+## Phase 12: SIEM / OSSEC Output Sinks
+
+**Goal**: Forward detection alerts to SIEM, HIDS, and log management infrastructure.
+
+See [detailed spec](phases/phase-12-siem-output-sinks.md) for full component designs.
+
+- [ ] 12.1 — `SyslogSink` (RFC 5424 over UDP/TCP/TLS)
+- [ ] 12.2 — `CefFormatter` (ArcSight Common Event Format)
+- [ ] 12.3 — `LeefFormatter` (IBM QRadar LEEF)
+- [ ] 12.4 — `WazuhApiSink` (Wazuh manager REST API)
+- [ ] 12.5 — `JsonFileSink` (JSON-lines file output with rotation)
+- [ ] 12.6 — `SinkChain` (fan-out to multiple sinks)
+- [ ] 12.7 — `OutputSinkFactory` (create sinks from config)
+
+---
+
+## Phase 13: Threat Hunting Capabilities
+
+**Goal**: Proactive retroactive search for threats in historical network traffic.
+
+See [detailed spec](phases/phase-13-threat-hunting.md) for full component designs.
+
+- [ ] 13.1 — `PcapRingBuffer` (rolling PCAP storage with retention policies)
+- [ ] 13.2 — `SqliteFlowIndex` (flow metadata database for historical queries)
+- [ ] 13.3 — `HuntEngine` (retroactive analysis, IOC search, correlation, timeline)
+- [ ] 13.4 — `StatisticalBaseline` (traffic pattern baselining + anomaly detection)
+- [ ] 13.5 — gRPC hunt RPCs + CLI `nids-cli hunt` commands
+
+Dependencies: SQLite3 or DuckDB
+
+---
+
+## Phase 14: YARA Rules Integration
+
+**Goal**: Content/pattern scanning for malware signatures, C2 beacons, and exploit payloads.
+
+See [detailed spec](phases/phase-14-yara-rules.md) for full component designs.
+
+- [ ] 14.1 — `IContentScanner` interface + `ContentMatch` model
+- [ ] 14.2 — `YaraScanner` (libyara RAII wrapper)
+- [ ] 14.3 — `TcpReassembler` (PcapPlusPlus TCP stream reassembly)
+- [ ] 14.4 — Pipeline integration (per-packet + per-stream scanning)
+- [ ] 14.5 — `HybridDetectionService` 5-layer evaluation with YARA
+- [ ] 14.6 — Bundled YARA rules (C2, exploits, tools) + hot reload
+
+Dependencies: libyara 4.x
+
+---
+
+## Phase 15: Snort Rules Compatibility
+
+**Goal**: Per-packet signature matching with Snort 3.x rule syntax.
+
+See [detailed spec](phases/phase-15-snort-rules.md) for full component designs.
+
+- [ ] 15.1 — `ISignatureEngine` interface + `SignatureMatch` + `SnortRule` models
+- [ ] 15.2 — `SnortRuleParser` (parse Snort rule syntax into AST)
+- [ ] 15.3 — `ContentMatcher` (Aho-Corasick multi-pattern search)
+- [ ] 15.4 — `PcreEngine` (PCRE2 regex wrapper)
+- [ ] 15.5 — `FlowStateTracker` (TCP connection state for `flow:` option)
+- [ ] 15.6 — `FlowbitsManager` (cross-rule stateful correlation)
+- [ ] 15.7 — `RuleVariableStore` (`$HOME_NET`, `$EXTERNAL_NET` resolution)
+- [ ] 15.8 — `SnortRuleEngine` (main orchestrator with port-group pre-filter)
+- [ ] 15.9 — Pipeline integration + ET Open ruleset testing
+
+Dependencies: PCRE2, optionally Hyperscan (Intel x86_64)
+
+---
+
+## Phase 16: Inline IPS Gateway Mode
+
+**Goal**: Active inline prevention — dual-NIC bridge with per-packet forward/drop.
+
+See [detailed spec](phases/phase-16-inline-ips.md) for full component designs.
+
+**Requires Phase 15** (Snort rules for per-packet verdicts).
+
+- [ ] 16.1 — `PacketVerdict` + `IInlineCapture` interface
+- [ ] 16.2 — `NfqueueCapture` (Netfilter Queue inline, simpler path)
+- [ ] 16.3 — `AfPacketCapture` (AF_PACKET v3, high-performance)
+- [ ] 16.4 — `VerdictEngine` (combine TI + signatures + ML into per-packet verdict)
+- [ ] 16.5 — `NetfilterBlocker` (dynamic iptables/nftables for ML-informed blocking)
+- [ ] 16.6 — `BypassManager` (kernel-level forwarding for verified-clean flows)
+- [ ] 16.7 — `InlinePipeline` (orchestrator for inline IPS lifecycle)
+- [ ] 16.8 — Fail-open / fail-closed modes + watchdog
+- [ ] 16.9 — Docker sandbox dual-network topology + integration tests
+
+Dependencies: Linux kernel headers, libnetfilter_queue, Phase 15
+Platform: **Linux only** (passive mode remains cross-platform)
+
+---
+
 ## Future / Long-Term (No Current Timeline)
 
 These items are documented for completeness but are not planned for near-term work.
@@ -307,19 +532,20 @@ These items are documented for completeness but are not planned for near-term wo
 | Item | Source | Notes |
 |------|--------|-------|
 | Web dashboard | README.md | Would replace or supplement Qt UI for remote monitoring |
-| YARA rules integration | README.md | Signature-based detection, overlaps with Snort/Suricata |
-| Deep Packet Inspection | README.md | Explicitly out-of-scope per architecture.md |
 | NLFlowLyzer feature extraction | ADR-004 | Requires reimplementing NLFlowLyzer in C++ |
 | Hyperparameter search (Optuna) | ADR-004 | Low priority given accuracy ceiling evidence |
 | Additional ML backends (TensorRT, OpenVINO) | architecture.md | AnalyzerFactory designed for extensibility |
 | Concept-drift detection / auto-retraining | ADR-004, ADR-005 | Requires monitoring infrastructure |
 | NSIS Windows installer | AGENTS.md | CPack configuration for Windows |
 | `IProtocolParser` strategy interface | AGENTS.md §5.1 | For pluggable protocol parsers |
-| `FilterBuilder` builder pattern | AGENTS.md §5.5 | For complex filter construction |
-| `IAnalysisRepository` repository pattern | AGENTS.md §5.6 | Abstract analysis result storage |
-| Command pattern for capture operations | AGENTS.md §5.7 | Undo/queue/log capture operations |
-| `std::expected<T, E>` error handling | AGENTS.md §6.1 | Replace bool returns with rich errors |
+| ~~`FilterBuilder` builder pattern~~ | ~~AGENTS.md §5.5~~ | **Done** — `FilterBuilder` in `core/model/PacketFilter.h` |
+| ~~`IAnalysisRepository` repository pattern~~ | ~~AGENTS.md §5.6~~ | **Done** — interface in `core/services/IAnalysisRepository.h` |
+| ~~Command pattern for capture operations~~ | ~~AGENTS.md §5.7~~ | **Done** — `ICommand` + `CaptureCommands` in `app/commands/` |
+| ~~`std::expected<T, E>` error handling~~ | ~~AGENTS.md §6.1~~ | **Done** — `loadModel()`, `loadMetadata()`, `initialize()` return `std::expected` |
 | ~~`ServiceRegistry` optimize to `unordered_map`~~ | ~~`ServiceRegistry.h:23`~~ | **Done** — already uses `std::unordered_map` |
+| ~~YARA rules integration~~ | ~~README.md~~ | **Planned** — Phase 14 |
+| ~~Snort rules / DPI~~ | ~~README.md~~ | **Planned** — Phase 15 (see ADR-008) |
+| ~~Inline IPS~~ | ~~README.md~~ | **Planned** — Phase 16 (see ADR-008) |
 
 ---
 
@@ -327,9 +553,14 @@ These items are documented for completeness but are not planned for near-term wo
 
 For implementation, the recommended order is:
 
-1. **Phase 6** — Cleanup + tests + config (foundation for everything else)
-2. **Phase 7** — UI for hybrid results (makes the existing work visible to users)
-3. **Phase 8** — Real-time flow extraction (biggest architectural improvement)
-4. **Phase 9** — gRPC server/client (enables headless deployment)
+1. ~~**Phase 6** — Cleanup + tests + config~~ [DONE]
+2. ~~**Phase 7** — UI for hybrid results~~ [DONE]
+3. ~~**Phase 8** — Real-time flow extraction~~ [DONE]
+4. ~~**Phase 9** — gRPC server/client~~ [DONE]
 5. **Phase 10** — Model improvements (iterative, can be done in parallel with others)
 6. **Phase 11** — Documentation polish (ongoing)
+7. **Phase 12** — SIEM output sinks (4-5 weeks, zero new deps, immediate operational value)
+8. **Phase 13** — Threat hunting (6-8 weeks, SQLite, high SOC value)
+9. **Phase 14** — YARA rules (6-8 weeks, libyara, malware/C2 detection)
+10. **Phase 15** — Snort rules (10-14 weeks, PCRE2, comprehensive signature coverage)
+11. **Phase 16** — Inline IPS gateway (13-18 weeks, Linux-only, depends on Phase 15)

@@ -12,23 +12,34 @@
 
 #include "core/services/IPacketAnalyzer.h"
 
+#include <memory>
+#include <span>
 #include <string>
 #include <vector>
-#include <memory>
 
 namespace nids::infra {
 
 /** ONNX Runtime-based packet analyzer for ML inference. */
-class OnnxAnalyzer : public nids::core::IPacketAnalyzer {
+class OnnxAnalyzer : public core::IPacketAnalyzer {
 public:
     /** Construct analyzer and initialize the ONNX Runtime environment. */
     OnnxAnalyzer();
     ~OnnxAnalyzer() override;
 
-    [[nodiscard]] bool loadModel(const std::string& modelPath) override;
-    [[nodiscard]] nids::core::AttackType predict(const std::vector<float>& features) override;
-    [[nodiscard]] nids::core::PredictionResult predictWithConfidence(
-        const std::vector<float>& features) override;
+    OnnxAnalyzer(const OnnxAnalyzer&) = delete;
+    OnnxAnalyzer& operator=(const OnnxAnalyzer&) = delete;
+    OnnxAnalyzer(OnnxAnalyzer&&) = delete;
+    OnnxAnalyzer& operator=(OnnxAnalyzer&&) = delete;
+
+    [[nodiscard]] std::expected<void, std::string> loadModel(
+        const std::string& modelPath) override;
+    [[nodiscard]] core::AttackType predict(std::span<const float> features) override;
+    [[nodiscard]] core::PredictionResult predictWithConfidence(
+        std::span<const float> features) override;
+
+    /// Native batched inference — runs N flows in a single session.Run() call.
+    [[nodiscard]] std::vector<core::PredictionResult> predictBatch(
+        std::span<const float> batch, std::size_t featureCount) override;
 
 private:
     struct Impl;

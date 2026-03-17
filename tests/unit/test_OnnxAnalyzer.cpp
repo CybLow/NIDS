@@ -11,7 +11,7 @@
 #include "core/model/PredictionResult.h"
 #include "infra/analysis/AnalyzerFactory.h"
 #include "infra/analysis/OnnxAnalyzer.h"
-#include "infra/flow/NativeFlowExtractor.h" // kFlowFeatureCount
+#include "core/model/FlowConstants.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -25,7 +25,7 @@ using nids::core::kAttackTypeCount;
 using nids::core::PredictionResult;
 using nids::infra::AnalyzerBackend;
 using nids::infra::createAnalyzer;
-using nids::infra::kFlowFeatureCount;
+using nids::core::kFlowFeatureCount;
 using nids::infra::OnnxAnalyzer;
 
 namespace fs = std::filesystem;
@@ -74,17 +74,17 @@ TEST(OnnxAnalyzer, predictWithConfidenceWithoutLoad_returnsUnknown) {
   EXPECT_FLOAT_EQ(result.confidence, 0.0f);
 }
 
-TEST(OnnxAnalyzer, loadModel_invalidPath_returnsFalse) {
+TEST(OnnxAnalyzer, loadModel_invalidPath_returnsError) {
   OnnxAnalyzer analyzer;
   EXPECT_FALSE(analyzer.loadModel("/nonexistent/path/model.onnx"));
 }
 
-TEST(OnnxAnalyzer, loadModel_emptyPath_returnsFalse) {
+TEST(OnnxAnalyzer, loadModel_emptyPath_returnsError) {
   OnnxAnalyzer analyzer;
   EXPECT_FALSE(analyzer.loadModel(""));
 }
 
-TEST(OnnxAnalyzer, loadModel_directoryPath_returnsFalse) {
+TEST(OnnxAnalyzer, loadModel_directoryPath_returnsError) {
   OnnxAnalyzer analyzer;
   EXPECT_FALSE(analyzer.loadModel("/tmp"));
 }

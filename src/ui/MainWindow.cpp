@@ -1,18 +1,25 @@
 #include "ui/MainWindow.h"
-#include "app/ReportGenerator.h"
+
 #include "core/services/Configuration.h"
 #include "ui/WeightTuningDialog.h"
 
+#include <QAction>
 #include <QCursor>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMetaObject>
+#include <QProgressBar>
+#include <QScrollArea>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStringList>
+#include <QSystemTrayIcon>
+#include <QTabWidget>
+#include <QTableView>
 #include <QVBoxLayout>
 
 namespace nids::ui {
@@ -22,53 +29,47 @@ constexpr int kDefaultWindowWidth = 1500;
 constexpr int kDefaultWindowHeight = 700;
 constexpr int kHexViewMinWidth = 200;
 constexpr int kHexViewMinHeight = 100;
-constexpr int kMsPerSecond = 1000;
-constexpr int kMsPerMinute = 60'000;
-constexpr int kMsPerHour = 3'600'000;
+
 constexpr int kFlowsTabIndex = 1;
 constexpr int kDetailPanelStretchFactor = 1;
 constexpr int kFlowTableStretchFactor = 2;
 } // namespace
 
-MainWindow::MainWindow(
-    std::unique_ptr<nids::app::CaptureController> controller,
-    std::unique_ptr<nids::app::AnalysisService> analysisService,
-    nids::app::HybridDetectionService *hybridService,
-    nids::core::IThreatIntelligence *threatIntel,
-    nids::core::IRuleEngine *ruleEngine, QWidget *parent)
+MainWindow::MainWindow(std::unique_ptr<app::CaptureController> controller,
+                       std::unique_ptr<app::AnalysisService> analysisService,
+                       app::HybridDetectionService *hybridService,
+                       core::IThreatIntelligence *threatIntel,
+                       core::IRuleEngine *ruleEngine, QWidget *parent)
     : QMainWindow(parent), controller_(std::move(controller)),
       analysisService_(std::move(analysisService)), threatIntel_(threatIntel),
       ruleEngine_(ruleEngine), hybridService_(hybridService) {
   setupUi();
+  wireControllerCallbacks();
+  wireAnalysisCallbacks();
   connectSignals();
-
-  // Move analysis service to a dedicated worker thread so analyzeCapture()
-  // does not block the UI.  Signals from AnalysisService are already
-  // connected with Qt::QueuedConnection, so they cross threads safely.
-  analysisThread_ = new QThread(this); // NOSONAR
-  analysisService_->moveToThread(analysisThread_);
-  analysisThread_->start();
 }
 
 MainWindow::~MainWindow() {
+  // Join any in-flight analysis thread before destroying the window.
+  // std::jthread destructor requests stop + joins, but we need to ensure
+  // the analysis service and session are still alive during the join.
+  if (analysisThread_.joinable()) {
+    analysisThread_.join();
+  }
   if (controller_ && controller_->isCapturing()) {
     controller_->stopCapture();
-  }
-  if (analysisThread_) {
-    analysisThread_->quit();
-    analysisThread_->wait();
   }
 }
 
 void MainWindow::setupUi() {
-  const auto &config = nids::core::Configuration::instance();
+  const auto &config = core::Configuration::instance();
 
   filterPanel_ = new FilterPanel(serviceRegistry_, this); // NOSONAR
   filterPanel_->setInterfaces(controller_->listInterfaces());
 
   // -- Packets tab --
-  tableModel_ = new PacketTableModel(this); // NOSONAR
-  packetTable_ = new QTableView();          // NOSONAR
+  tableModel_ = new PacketTableModel(&serviceRegistry_, this); // NOSONAR
+  packetTable_ = new QTableView();                             // NOSONAR
   packetTable_->setModel(tableModel_);
   packetTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   packetTable_->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -156,7 +157,7 @@ void MainWindow::setupUi() {
   updateTiStatus();
 }
 
-void MainWindow::connectSignals() {
+void MainWindow::connectSignals() const {
   connect(filterPanel_, &FilterPanel::startStopClicked, this,
           &MainWindow::toggleCapture);
   connect(notificationAction_, &QAction::triggered, this,
@@ -168,72 +169,107 @@ void MainWindow::connectSignals() {
   // Flow table selection -> detail panel
   connect(flowTable_->selectionModel(), &QItemSelectionModel::selectionChanged,
           this, &MainWindow::onFlowSelectionChanged);
+}
 
-  connect(controller_.get(), &nids::app::CaptureController::packetReceived,
-          this, &MainWindow::onPacketReceived, Qt::QueuedConnection);
+void MainWindow::wireControllerCallbacks() {
+  // CaptureController callbacks may fire on the capture thread —
+  // marshal all UI updates to the main thread via QMetaObject::invokeMethod.
 
-  connect(
-      controller_.get(), &nids::app::CaptureController::captureError, this,
-      [this](const QString &message) {
-        QMessageBox::warning(this, "Capture Error", message);
-      },
-      Qt::QueuedConnection);
+  controller_->setPacketReceivedCallback([this](const core::PacketInfo &info) {
+    QMetaObject::invokeMethod(
+        this, [this, info]() { onPacketReceived(info); }, Qt::QueuedConnection);
+  });
 
-  // Analysis service signals
-  connect(
-      analysisService_.get(), &nids::app::AnalysisService::analysisStarted,
-      this,
-      [this]() {
-        analysisProgress_->setVisible(true);
-        analysisProgress_->setValue(0);
-      },
-      Qt::QueuedConnection);
+  controller_->setLiveFlowCallback(
+      [this](core::DetectionResult result, core::FlowInfo metadata) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, r = std::move(result), m = std::move(metadata)]() {
+              flowModel_->addFlowResult(r, m);
+            },
+            Qt::QueuedConnection);
+      });
 
-  connect(
-      analysisService_.get(), &nids::app::AnalysisService::analysisProgress,
-      this,
-      [this](int current, int total) {
-        analysisProgress_->setMaximum(total);
-        analysisProgress_->setValue(current);
-      },
-      Qt::QueuedConnection);
+  controller_->setCaptureErrorCallback([this](const std::string &message) {
+    QMetaObject::invokeMethod(
+        this,
+        [this, msg = QString::fromStdString(message)]() {
+          QMessageBox::warning(this, "Capture Error", msg);
+        },
+        Qt::QueuedConnection);
+  });
+}
 
-  connect(
-      analysisService_.get(), &nids::app::AnalysisService::analysisFinished,
-      this,
-      [this]() {
-        analysisProgress_->setVisible(false);
-        populateFlowResults();
-      },
-      Qt::QueuedConnection);
+void MainWindow::wireAnalysisCallbacks() {
+  // AnalysisService callbacks fire on the analysis worker thread —
+  // marshal all UI updates to the main thread.
 
-  connect(
-      analysisService_.get(), &nids::app::AnalysisService::analysisError, this,
-      [this](const QString &message) {
-        QMessageBox::warning(this, "Analysis Error", message);
-      },
-      Qt::QueuedConnection);
+  analysisService_->setStartedCallback([this]() {
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+          analysisProgress_->setVisible(true);
+          analysisProgress_->setValue(0);
+        },
+        Qt::QueuedConnection);
+  });
+
+  analysisService_->setProgressCallback([this](int current, int total) {
+    QMetaObject::invokeMethod(
+        this,
+        [this, current, total]() {
+          analysisProgress_->setMaximum(total);
+          analysisProgress_->setValue(current);
+        },
+        Qt::QueuedConnection);
+  });
+
+  analysisService_->setFinishedCallback([this]() {
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+          analysisProgress_->setVisible(false);
+          populateFlowResults();
+        },
+        Qt::QueuedConnection);
+  });
+
+  analysisService_->setErrorCallback([this](const std::string &message) {
+    QMetaObject::invokeMethod(
+        this,
+        [this, msg = QString::fromStdString(message)]() {
+          QMessageBox::warning(this, "Analysis Error", msg);
+        },
+        Qt::QueuedConnection);
+  });
 }
 
 void MainWindow::toggleCapture() {
   if (controller_->isCapturing()) {
+    // Capture the live detection state before stopping (stopCapture clears it).
+    bool hadLiveDetection = controller_->isLiveDetectionActive();
+
     controller_->stopCapture();
     filterPanel_->setButtonText("Start");
     filterPanel_->setInputsReadOnly(false);
 
-    int ret = QMessageBox::question(
-        this, "Analysis", "Do you want to run ML analysis on captured traffic?",
-        QMessageBox::Yes | QMessageBox::No);
-    if (ret == QMessageBox::Yes) {
-      // Analysis runs on the worker thread. The report prompt is
-      // deferred to populateFlowResults() so that detection results
-      // are available when the report is generated.
-      runAnalysis();
+    if (hadLiveDetection) {
+      // Live detection already produced results — switch to Flows tab.
+      tabWidget_->setCurrentIndex(kFlowsTabIndex);
     } else {
-      // No analysis requested — offer report with packet data only.
-      promptForReport();
+      int ret = QMessageBox::question(
+          this, "Analysis",
+          "Do you want to run ML analysis on captured traffic?",
+          QMessageBox::Yes | QMessageBox::No);
+      if (ret == QMessageBox::Yes) {
+        runAnalysis();
+      }
     }
   } else {
+    // Clear stale data from the previous capture session.
+    tableModel_->clear();
+    flowModel_->clear();
+
     auto filter = filterPanel_->gatherFilter();
     controller_->startCapture(filter);
     filterPanel_->setButtonText("Stop");
@@ -242,19 +278,22 @@ void MainWindow::toggleCapture() {
 }
 
 void MainWindow::runAnalysis() {
-  auto dumpFile = nids::core::Configuration::instance().defaultDumpFile();
-  // Dispatch analysis to the worker thread via queued invocation.
+  // Join any previous analysis thread before launching a new one.
+  if (analysisThread_.joinable()) {
+    analysisThread_.join();
+  }
+  auto dumpFile = core::Configuration::instance().defaultDumpFile();
+  // Run analysis on a stored std::jthread.  AnalysisService callbacks
+  // are already wired to marshal results back to the main thread via
+  // QMetaObject::invokeMethod (see wireAnalysisCallbacks()).
   // CaptureSession is mutex-protected, so the reference is safe to use
   // from the worker thread while the UI thread reads packet data.
-  QMetaObject::invokeMethod(
-      analysisService_.get(),
-      [this, dumpFile]() {
-        analysisService_->analyzeCapture(dumpFile, controller_->session());
-      },
-      Qt::QueuedConnection);
+  analysisThread_ = std::jthread([this, dumpFile]() {
+    analysisService_->analyzeCapture(dumpFile, controller_->session());
+  });
 }
 
-void MainWindow::onPacketReceived(const nids::core::PacketInfo &info) {
+void MainWindow::onPacketReceived(const core::PacketInfo &info) {
   tableModel_->addPacket(info, filterPanel_->selectedInterface());
 }
 
@@ -293,12 +332,12 @@ void MainWindow::onFlowSelectionChanged() {
 
 void MainWindow::populateFlowResults() {
   const auto &session = controller_->session();
-  auto resultCount = session.analysisResultCount();
+  auto resultCount = session.detectionResultCount();
   if (resultCount == 0)
     return;
 
   // Collect all detection results from the session
-  std::vector<nids::core::DetectionResult> results;
+  std::vector<core::DetectionResult> results;
   results.reserve(resultCount);
   for (std::size_t i = 0; i < resultCount; ++i) {
     results.push_back(session.getDetectionResult(i));
@@ -309,20 +348,8 @@ void MainWindow::populateFlowResults() {
 
   flowModel_->setFlowResults(results, metadata);
 
-  // Switch to Flows tab to show results
+  // Switch to Flows tab to show results.
   tabWidget_->setCurrentIndex(kFlowsTabIndex);
-
-  // Now that detection results are available, offer to generate a report.
-  promptForReport();
-}
-
-void MainWindow::promptForReport() {
-  int ret =
-      QMessageBox::question(this, "Report", "Do you want to generate a report?",
-                            QMessageBox::Yes | QMessageBox::No);
-  if (ret == QMessageBox::Yes) {
-    generateReport();
-  }
 }
 
 void MainWindow::updateTiStatus() {
@@ -370,36 +397,6 @@ void MainWindow::notificationSettings() {
 
   menu->addAction(desktopAction);
   menu->popup(QCursor::pos());
-}
-
-void MainWindow::generateReport() {
-  auto result = nids::app::ReportGenerator::generate(
-      controller_->session(), "report.txt", filterPanel_->selectedInterface());
-
-  if (!result.success) {
-    QMessageBox::critical(this, "Error", "Failed to generate report");
-    return;
-  }
-
-  auto hours = static_cast<int>(result.generationTimeMs / kMsPerHour);
-  auto minutes =
-      static_cast<int>((result.generationTimeMs % kMsPerHour) / kMsPerMinute);
-  auto seconds =
-      static_cast<int>((result.generationTimeMs % kMsPerMinute) / kMsPerSecond);
-
-  QString message =
-      QString("Report generated at: %1\nGeneration time: %2h %3min %4s")
-          .arg(QString::fromStdString(result.filePath))
-          .arg(hours)
-          .arg(minutes)
-          .arg(seconds);
-
-  if (notificationEnabled_) {
-    trayIcon_->showMessage("Report Generation", message,
-                           QSystemTrayIcon::Information);
-  } else {
-    QMessageBox::information(this, "Report", message);
-  }
 }
 
 } // namespace nids::ui

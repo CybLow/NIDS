@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
+#include <expected>
 #include <fstream>
 
 namespace nids::infra {
@@ -21,21 +22,24 @@ void applyIfPresent(const nlohmann::json &obj, const std::string &key,
 
 } // anonymous namespace
 
-bool loadConfigFromFile(const std::filesystem::path &configPath,
-                        nids::core::Configuration &config) {
+std::expected<void, std::string> loadConfigFromFile(
+    const std::filesystem::path &configPath,
+    core::Configuration &config) {
   namespace fs = std::filesystem;
 
   if (!fs::exists(configPath)) {
     spdlog::debug("Config file '{}' not found, using defaults",
                   configPath.string());
-    return true;
+    return {};
   }
 
   try {
     std::ifstream file(configPath);
     if (!file.is_open()) {
-      spdlog::error("ConfigLoader: cannot open '{}'", configPath.string());
-      return false;
+      std::string msg = fmt::format("ConfigLoader: cannot open '{}'",
+                                    configPath.string());
+      spdlog::error(msg);
+      return std::unexpected<std::string>(std::move(msg));
     }
 
     auto json = nlohmann::json::parse(file);
@@ -63,6 +67,9 @@ bool loadConfigFromFile(const std::filesystem::path &configPath,
       applyIfPresent<int64_t>(capture, "flow_timeout_us", [&config](int64_t v) {
         config.setFlowTimeoutUs(v);
       });
+      applyIfPresent<int64_t>(
+          capture, "live_flow_timeout_us",
+          [&config](int64_t v) { config.setLiveFlowTimeoutUs(v); });
       applyIfPresent<int64_t>(
           capture, "idle_threshold_us",
           [&config](int64_t v) { config.setIdleThresholdUs(v); });
@@ -102,12 +109,13 @@ bool loadConfigFromFile(const std::filesystem::path &configPath,
     }
 
     spdlog::info("Configuration loaded from '{}'", configPath.string());
-    return true;
+    return {};
 
   } catch (const nlohmann::json::exception &e) {
-    spdlog::error("ConfigLoader: failed to parse '{}': {}", configPath.string(),
-                  e.what());
-    return false;
+    std::string msg = fmt::format("ConfigLoader: failed to parse '{}': {}",
+                                  configPath.string(), e.what());
+    spdlog::error(msg);
+    return std::unexpected(std::move(msg));
   }
 }
 

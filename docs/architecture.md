@@ -106,7 +106,7 @@ Dependencies flow **inward only**: UI -> App -> Core, and Infra -> Core.
 ├──────────────────────────────────────────────────────────────────┤
 │                      app/ (Orchestration)                        │
 │   CaptureController, AnalysisService, HybridDetectionService,   │
-│   ReportGenerator                                                │
+│   LiveDetectionPipeline, FlowAnalysisWorker                      │
 ├──────────────────────────────────────────────────────────────────┤
 │           core/ (Pure C++23, zero platform deps)                 │
 │   PacketInfo, AttackType, PredictionResult, DetectionResult,     │
@@ -195,12 +195,13 @@ Network Interface
                               │  (core)      │  + legacy AttackType
                               └──────┬───────┘
                                      │
-                        ┌────────────┴────────────┐
-                        ▼                         ▼
-                ┌──────────────┐          ┌───────────────┐
-                │  MainWindow   │          │ReportGenerator│
-                │  (ui)         │          │  (app)        │
-                └──────────────┘          └───────────────┘
+                                      │
+                         ┌────────────┴────────────┐
+                         ▼                         ▼
+                 ┌──────────────┐          ┌───────────────┐
+                 │  MainWindow   │          │  IOutputSink  │
+                 │  (ui)         │          │  (core)       │
+                 └──────────────┘          └───────────────┘
 ```
 
 ---

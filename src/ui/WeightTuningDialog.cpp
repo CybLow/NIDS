@@ -18,6 +18,11 @@ constexpr double kSpinStep = 0.01;
 constexpr int kSpinDecimals = 2;
 constexpr int kDialogMinWidth = 420;
 
+/// Convert a slider integer position (0–100) to a float weight (0.0–1.0).
+[[nodiscard]] float sliderToWeight(int sliderValue) {
+    return static_cast<float>(sliderValue) / static_cast<float>(kSliderScale);
+}
+
 // Default weight values (must match HybridDetectionService::Weights defaults)
 constexpr float kDefaultMl = 0.5f;
 constexpr float kDefaultTi = 0.3f;
@@ -26,7 +31,7 @@ constexpr float kDefaultThreshold = 0.7f;
 } // namespace
 
 WeightTuningDialog::WeightTuningDialog(
-    nids::app::HybridDetectionService *hybridService, QWidget *parent)
+    app::HybridDetectionService *hybridService, QWidget *parent)
     : QDialog(parent), hybridService_(hybridService) {
   setWindowTitle("Hybrid Detection Weights");
   setMinimumWidth(kDialogMinWidth);
@@ -35,7 +40,7 @@ WeightTuningDialog::WeightTuningDialog(
 }
 
 void WeightTuningDialog::setupUi() {
-  const auto &config = nids::core::Configuration::instance();
+  const auto &config = core::Configuration::instance();
 
   // -- Weight sliders --
   auto *weightsGroup =
@@ -223,14 +228,10 @@ void WeightTuningDialog::syncLabelsFromSliders() {
 }
 
 void WeightTuningDialog::applyWeights() {
-  auto ml =
-      static_cast<float>(mlSlider_->value()) / static_cast<float>(kSliderScale);
-  auto ti =
-      static_cast<float>(tiSlider_->value()) / static_cast<float>(kSliderScale);
-  auto heu = static_cast<float>(heuristicSlider_->value()) /
-             static_cast<float>(kSliderScale);
-  auto threshold = static_cast<float>(thresholdSlider_->value()) /
-                   static_cast<float>(kSliderScale);
+  auto ml = sliderToWeight(mlSlider_->value());
+  auto ti = sliderToWeight(tiSlider_->value());
+  auto heu = sliderToWeight(heuristicSlider_->value());
+  auto threshold = sliderToWeight(thresholdSlider_->value());
 
   // Apply to runtime service
   if (hybridService_) {
@@ -239,7 +240,7 @@ void WeightTuningDialog::applyWeights() {
   }
 
   // Persist to configuration singleton
-  auto &config = nids::core::Configuration::instance();
+  auto &config = core::Configuration::instance();
   config.setWeightMl(ml);
   config.setWeightThreatIntel(ti);
   config.setWeightHeuristic(heu);

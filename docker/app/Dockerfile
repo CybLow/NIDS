@@ -16,7 +16,7 @@ WORKDIR /app
 
 # Copy dependency manifests first for layer caching
 COPY conanfile.py CMakePresets.json ./
-COPY conan/ cowhy nan/
+COPY conan/ conan/
 
 ENV CC=gcc-14 CXX=g++-14
 RUN conan profile detect --force && \

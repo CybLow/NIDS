@@ -221,8 +221,8 @@ significant advantages over CICFlowMeter for future real-time use:
 
 | Aspect                  | CICFlowMeter                | NativeFlowExtractor (current)  |
 |-------------------------|-----------------------------|--------------------------------|
-| Language                | Java (JVM, GC)              | C++20 (native, zero-overhead)  |
-| Flow lookup             | Java HashMap                | `std::map` (could be `unordered_map`) |
+| Language                | Java (JVM, GC)              | C++23 (native, zero-overhead)  |
+| Flow lookup             | Java HashMap                | `std::unordered_map`           |
 | Feature computation     | Similar statistical features | 77 CICFlowMeter-compatible features |
 | Memory model            | JVM heap, GC-managed        | Stack/heap, RAII, predictable  |
 | Max-flow splitting      | Not standard                | 200-packet cap (bounded memory) |

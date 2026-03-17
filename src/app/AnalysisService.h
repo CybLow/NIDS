@@ -1,70 +1,99 @@
 #pragma once
 
-#include "core/model/CaptureSession.h"
+#include "app/FlowAnalysisWorker.h"
+#include "core/concurrent/BoundedQueue.h"
 #include "core/model/AttackType.h"
-#include "core/services/IPacketAnalyzer.h"
-#include "core/services/IFlowExtractor.h"
+#include "core/model/CaptureSession.h"
 #include "core/services/IFeatureNormalizer.h"
+#include "core/services/IFlowExtractor.h"
+#include "core/services/IPacketAnalyzer.h"
 
-#include <QObject>
-
+#include <expected>
+#include <functional>
 #include <memory>
 #include <string>
 
 namespace nids::app {
 
-class HybridDetectionService;  // forward declaration
+class HybridDetectionService;
 
-/** Service that orchestrates ML-based packet/flow analysis. */
-class AnalysisService : public QObject {
-    Q_OBJECT
-
+/** Service that orchestrates ML-based packet/flow analysis.
+ *
+ * Pure C++23 — no Qt dependency.  The UI layer can bridge callbacks
+ * to its own event loop (e.g. via QMetaObject::invokeMethod).
+ */
+class AnalysisService {
 public:
-    /** Construct with injected analyzer, flow extractor, and feature normalizer. */
-    explicit AnalysisService(std::unique_ptr<nids::core::IPacketAnalyzer> analyzer,
-                             std::unique_ptr<nids::core::IFlowExtractor> extractor,
-                             std::unique_ptr<nids::core::IFeatureNormalizer> normalizer,
-                             QObject* parent = nullptr);
+  // ── Callback types ─────────────────────────────────────────────
+  using StartedCallback = std::function<void()>;
+  using ProgressCallback = std::function<void(int current, int total)>;
+  using FinishedCallback = std::function<void()>;
+  using ErrorCallback = std::function<void(const std::string &message)>;
 
-    /** Load the ONNX model from the given path. Returns false on failure. */
-    [[nodiscard]] bool loadModel(const std::string& modelPath);
+  /** Construct with injected analyzer, flow extractor, and feature normalizer.
+   */
+  explicit AnalysisService(
+      std::unique_ptr<core::IPacketAnalyzer> analyzer,
+      std::unique_ptr<core::IFlowExtractor> extractor,
+      std::unique_ptr<core::IFeatureNormalizer> normalizer);
 
-    /// Load normalization parameters from model metadata JSON.
-    /// Must be called before analyzeCapture() for correct predictions.
-    [[nodiscard]] bool loadNormalization(const std::string& metadataPath);
+  /** Load the ONNX model from the given path. Returns error string on failure.
+   */
+  [[nodiscard]] std::expected<void, std::string>
+  loadModel(const std::string &modelPath);
 
-    /// Set the hybrid detection service for multi-layer analysis.
-    /// The caller retains ownership (non-owning pointer).
-    /// If not set, analysis falls back to ML-only mode.
-    void setHybridDetection(HybridDetectionService* service) noexcept;
+  /// Load normalization parameters from model metadata JSON.
+  /// Must be called before analyzeCapture() for correct predictions.
+  [[nodiscard]] std::expected<void, std::string>
+  loadNormalization(const std::string &metadataPath);
 
-    /**
-     * Run ML analysis on a pcap file, populating the session with detection results.
-     * @param pcapPath  Path to the pcap file to analyze.
-     * @param session   Capture session to populate with results.
-     */
-    void analyzeCapture(const std::string& pcapPath,
-                        nids::core::CaptureSession& session);
+  /// Set the hybrid detection service for multi-layer analysis.
+  /// The caller retains ownership (non-owning pointer).
+  /// If not set, analysis falls back to ML-only mode.
+  void setHybridDetection(HybridDetectionService *service) noexcept;
 
-    /// Returns per-flow metadata from the most recent analyzeCapture() call.
-    /// Indexed in the same order as detection results in the CaptureSession.
-    [[nodiscard]] const std::vector<nids::core::FlowInfo>& lastFlowMetadata() const noexcept;
+  /**
+   * Run ML analysis on a pcap file, populating the session with detection
+   * results.
+   * @param pcapPath  Path to the pcap file to analyze.
+   * @param session   Capture session to populate with results.
+   */
+  void analyzeCapture(const std::string &pcapPath,
+                      core::CaptureSession &session);
 
-signals:
-    /** Emitted when analysis begins. */
-    void analysisStarted();
-    /** Emitted to report progress (current flow out of total). */
-    void analysisProgress(int current, int total);
-    /** Emitted when analysis completes successfully. */
-    void analysisFinished();
-    /** Emitted when an error occurs during analysis. */
-    void analysisError(const QString& message);
+  /// Returns per-flow metadata from the most recent analyzeCapture() call.
+  /// Indexed in the same order as detection results in the CaptureSession.
+  [[nodiscard]] const std::vector<core::FlowInfo> &
+  lastFlowMetadata() const noexcept;
+
+  // ── Callback setters ───────────────────────────────────────────
+  void setStartedCallback(StartedCallback cb) { onStarted_ = std::move(cb); }
+  void setProgressCallback(ProgressCallback cb) { onProgress_ = std::move(cb); }
+  void setFinishedCallback(FinishedCallback cb) { onFinished_ = std::move(cb); }
+  void setErrorCallback(ErrorCallback cb) { onError_ = std::move(cb); }
 
 private:
-    std::unique_ptr<nids::core::IPacketAnalyzer> analyzer_;
-    std::unique_ptr<nids::core::IFlowExtractor> extractor_;
-    std::unique_ptr<nids::core::IFeatureNormalizer> normalizer_;
-    HybridDetectionService* hybridService_ = nullptr;  // non-owning
+  std::unique_ptr<core::IPacketAnalyzer> analyzer_;
+  std::unique_ptr<core::IFlowExtractor> extractor_;
+  std::unique_ptr<core::IFeatureNormalizer> normalizer_;
+  HybridDetectionService *hybridService_ = nullptr; // non-owning
+
+  // Callbacks (fired on the calling thread — the consumer is responsible
+  // for any thread marshaling).
+  StartedCallback onStarted_;
+  ProgressCallback onProgress_;
+  FinishedCallback onFinished_;
+  ErrorCallback onError_;
+
+  /// Push batch results through the worker pipeline when the streaming
+  /// callback was not invoked (e.g. mock extractors).
+  void pushBatchFallback(const FlowAnalysisWorker &worker,
+                         core::BoundedQueue<FlowWorkItem> &queue,
+                         std::vector<std::vector<float>> &allFeatures) const;
+
+  /// Log results and fire final callbacks.
+  void reportResults(const std::string &pcapPath, std::size_t processedCount,
+                     bool noFeatures) const;
 };
 
 } // namespace nids::app
