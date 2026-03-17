@@ -19,7 +19,7 @@ FlowAnalysisWorker::~FlowAnalysisWorker() {
   try {
     stop();
   } catch (...) {
-    // Destructors must not throw.
+    spdlog::error("Exception in destructor");
   }
 }
 

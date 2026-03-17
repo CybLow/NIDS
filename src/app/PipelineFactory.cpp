@@ -18,9 +18,9 @@ PipelineFactory::createDetectionServices(const core::Configuration &config) {
 
   // -- Threat Intelligence --
   auto threatIntel = std::make_unique<infra::ThreatIntelProvider>();
-  if (auto tiDir = config.threatIntelDirectory().string();
+  if (auto tiDir = config.threatIntelDirectory();
       std::filesystem::is_directory(tiDir)) {
-    auto loaded = threatIntel->loadFeeds(tiDir);
+    auto loaded = threatIntel->loadFeeds(tiDir.string());
     spdlog::info("Loaded {} threat intelligence entries from {} feed(s)",
                  loaded, threatIntel->feedCount());
   }

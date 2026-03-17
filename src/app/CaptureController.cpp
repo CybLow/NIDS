@@ -28,7 +28,7 @@ CaptureController::~CaptureController() {
       stopCapture();
     }
   } catch (...) {
-    // Destructors must not throw.
+    spdlog::error("Exception in destructor");
   }
 }
 

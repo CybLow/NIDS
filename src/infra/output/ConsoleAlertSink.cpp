@@ -9,12 +9,13 @@ bool ConsoleAlertSink::start() {
   flaggedFlows_.store(0);
   cleanFlows_.store(0);
   auto filterName = [this]() -> std::string_view {
+    using enum nids::infra::ConsoleFilter;
     switch (filter_) {
-    case ConsoleFilter::All:
+    case All:
       return "all";
-    case ConsoleFilter::Flagged:
+    case Flagged:
       return "flagged";
-    case ConsoleFilter::Clean:
+    case Clean:
       return "clean";
     }
     return "unknown";

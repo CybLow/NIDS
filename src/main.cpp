@@ -170,32 +170,34 @@ int main(int argc, char *argv[]) {
   }
 
   // -- Network init --
-  nids::infra::platform::NetworkInitGuard networkGuard;
-  if (!networkGuard.isInitialized()) {
-    spdlog::critical("Failed to initialize networking");
-    return 1;
-  }
+  if (nids::infra::platform::NetworkInitGuard networkGuard;
+      networkGuard.isInitialized()) {
 
-  // -- Configuration --
-  auto &config = nids::core::Configuration::instance();
-  if (!args.configPath.empty()) {
-    if (auto result = nids::infra::loadConfigFromFile(args.configPath, config);
-        !result.has_value()) {
-      spdlog::critical("Failed to parse config file '{}': {}",
-                       args.configPath.string(), result.error());
-      return 1;
+    // -- Configuration --
+    auto &config = nids::core::Configuration::instance();
+    if (!args.configPath.empty()) {
+      if (auto result =
+              nids::infra::loadConfigFromFile(args.configPath, config);
+          !result.has_value()) {
+        spdlog::critical("Failed to parse config file '{}': {}",
+                         args.configPath.string(), result.error());
+        return 1;
+      }
     }
-  }
 
-  // -- Mode selection --
-  if (args.headless) {
-    if (args.interface.empty()) {
-      std::cerr << "Error: --headless requires --interface <iface>\n\n";
-      printUsage(argv[0]);
-      return 1;
+    // -- Mode selection --
+    if (args.headless) {
+      if (args.interface.empty()) {
+        std::cerr << "Error: --headless requires --interface <iface>\n\n";
+        printUsage(argv[0]);
+        return 1;
+      }
+      return runHeadless(args, config);
     }
-    return runHeadless(args, config);
+
+    return runGui(argc, argv, config);
   }
 
-  return runGui(argc, argv, config);
+  spdlog::critical("Failed to initialize networking");
+  return 1;
 }

@@ -66,7 +66,7 @@ void NativeFlowExtractor::setMaxFlowDuration(std::int64_t durationUs) {
 }
 
 std::size_t NativeFlowExtractor::sweepExpiredFlows(std::int64_t nowUs) {
-  auto swept = std::erase_if(flows_, [&](auto &entry) {
+  auto swept = std::erase_if(flows_, [this, nowUs](auto &entry) {
     if (nowUs - entry.second.lastTimeUs > flowTimeoutUs_) {
       ++diag_.flowsCompletedTimeout;
       completeFlow(entry.first, entry.second);
@@ -131,8 +131,9 @@ void NativeFlowExtractor::processPacket(const std::uint8_t *data,
   // The const_cast is required because PcapPlusPlus RawPacket stores a
   // non-const pointer internally, but does not modify the data when
   // deleteRawDataOnDestruct is false.
-  pcpp::RawPacket rawPacket( // NOSONAR — const_cast required:
-      const_cast<std::uint8_t *>(
+  pcpp::RawPacket rawPacket(
+      const_cast<std::uint8_t *>( // NOSONAR — const_cast required: PcapPlusPlus
+                                  // API
           data), // NOLINT(cppcoreguidelines-pro-type-const-cast)
       static_cast<int>(length), ts,
       false); // PcapPlusPlus API takes non-const but does not modify with
