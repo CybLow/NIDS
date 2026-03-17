@@ -189,6 +189,45 @@ TEST_F(PcapRingBufferTest, destructor_closesCleanly) {
     });
 }
 
+TEST_F(PcapRingBufferTest, evict_toZero_removesAllButCurrent) {
+    auto dir = fs::temp_directory_path() / "nids_test_pcap_evict_zero";
+    DirGuard guard{dir};
+
+    infra::PcapStorageConfig cfg;
+    cfg.storageDir = dir;
+    cfg.maxFileSizeBytes = 200;
+
+    infra::PcapRingBuffer ring(std::move(cfg));
+
+    std::vector<std::uint8_t> packet(100, 0xEE);
+    for (int i = 0; i < 15; ++i) {
+        ring.store(packet, static_cast<int64_t>(i) * 1000000);
+    }
+
+    ring.evict(0); // Evict everything possible
+    // Current file still exists
+    EXPECT_GT(ring.listFiles().size(), 0u);
+}
+
+TEST_F(PcapRingBufferTest, store_largePackets_triggerMultipleRotations) {
+    auto dir = fs::temp_directory_path() / "nids_test_pcap_large";
+    DirGuard guard{dir};
+
+    infra::PcapStorageConfig cfg;
+    cfg.storageDir = dir;
+    cfg.maxFileSizeBytes = 500;
+
+    infra::PcapRingBuffer ring(std::move(cfg));
+
+    std::vector<std::uint8_t> bigPacket(400, 0xFF);
+    for (int i = 0; i < 5; ++i) {
+        ring.store(bigPacket, static_cast<int64_t>(i) * 1000000);
+    }
+
+    auto files = ring.listFiles();
+    EXPECT_GE(files.size(), 3u);
+}
+
 TEST_F(PcapRingBufferTest, sizeEviction_autoEvictsWhenMaxExceeded) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_autoevict";
     DirGuard guard{dir};

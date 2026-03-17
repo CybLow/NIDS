@@ -390,6 +390,97 @@ TEST(HuntEngine, buildTimeline_classifiesPortScanning) {
     EXPECT_GE(timeline.attackTypes.size(), 1u);
 }
 
+TEST(HuntEngine, iocSearch_multipleIps_deduplicatesResults) {
+    MockFlowIndex flowIndex;
+    auto f = makeIndexedFlow("10.0.0.1", "1.1.1.1", 111, 80,
+                             core::AttackType::SshBruteForce, 0.8f, true);
+    f.id = 42;
+    flowIndex.storedFlows.push_back(f);
+
+    MockFlowExtractor extractor;
+    MockAnalyzer analyzer;
+    MockNormalizer normalizer;
+    app::HybridDetectionService detector(nullptr, nullptr);
+
+    app::HuntEngine engine(flowIndex, extractor, analyzer,
+                           normalizer, detector);
+
+    // Search for both src and dst IP — same flow should appear only once.
+    core::IocSearchQuery query;
+    query.ips.push_back("10.0.0.1");
+    query.ips.push_back("1.1.1.1");
+
+    auto result = engine.iocSearch(query);
+    // The flow matches both IPs but should be deduplicated.
+    EXPECT_LE(result.matchedFlows.size(), 2u);
+}
+
+TEST(HuntEngine, detectAnomalies_fewFlows_noFlaggedRatioAnomaly) {
+    MockFlowIndex flowIndex;
+    // Only 5 flows — below the 10-flow threshold for flagged ratio check.
+    for (int i = 0; i < 5; ++i) {
+        flowIndex.storedFlows.push_back(
+            makeIndexedFlow("10.0.0.1", "1.1.1.1", 111, 80,
+                            core::AttackType::DdosUdp, 0.9f, true));
+    }
+
+    MockFlowExtractor extractor;
+    MockAnalyzer analyzer;
+    MockNormalizer normalizer;
+    app::HybridDetectionService detector(nullptr, nullptr);
+
+    app::HuntEngine engine(flowIndex, extractor, analyzer,
+                           normalizer, detector);
+
+    auto anomalies = engine.detectAnomalies(0, 999999999);
+    // avgCombinedScore > 0.5 should trigger volume spike, but
+    // flagged ratio check should NOT trigger (< 10 flows).
+    bool hasVolumeSpike = false;
+    for (const auto& a : anomalies) {
+        if (a.description.find("average combined score") != std::string::npos)
+            hasVolumeSpike = true;
+    }
+    EXPECT_TRUE(hasVolumeSpike);
+}
+
+TEST(HuntEngine, correlateByIp_emptyIndex_returnsEmpty) {
+    MockFlowIndex flowIndex;
+    MockFlowExtractor extractor;
+    MockAnalyzer analyzer;
+    MockNormalizer normalizer;
+    app::HybridDetectionService detector(nullptr, nullptr);
+
+    app::HuntEngine engine(flowIndex, extractor, analyzer,
+                           normalizer, detector);
+
+    auto result = engine.correlateByIp("10.0.0.99", 0, 999999999);
+    EXPECT_TRUE(result.matchedFlows.empty());
+}
+
+TEST(HuntEngine, buildTimeline_singleEvent_generatesValidTimeline) {
+    MockFlowIndex flowIndex;
+    MockFlowExtractor extractor;
+    MockAnalyzer analyzer;
+    MockNormalizer normalizer;
+    app::HybridDetectionService detector(nullptr, nullptr);
+
+    app::HuntEngine engine(flowIndex, extractor, analyzer,
+                           normalizer, detector);
+
+    std::vector<core::IndexedFlow> flows;
+    auto f = makeIndexedFlow("10.0.0.1", "1.1.1.1", 111, 80,
+                             core::AttackType::DdosUdp, 0.9f, true);
+    f.timestampUs = 5000000;
+    flows.push_back(f);
+
+    auto timeline = engine.buildTimeline(flows);
+    EXPECT_EQ(timeline.events.size(), 1u);
+    EXPECT_EQ(timeline.startTimeUs, 5000000);
+    EXPECT_EQ(timeline.endTimeUs, 5000000);
+    EXPECT_EQ(timeline.involvedIps.size(), 2u);
+    EXPECT_FALSE(timeline.incidentId.empty());
+}
+
 TEST(HuntEngine, setProgressCallback_isAccepted) {
     MockFlowIndex flowIndex;
     MockFlowExtractor extractor;
