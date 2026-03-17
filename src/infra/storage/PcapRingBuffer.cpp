@@ -8,6 +8,8 @@
 #include <chrono>
 #include <ctime>
 #include <filesystem>
+#include <iterator>
+#include <numeric>
 #include <ranges>
 
 namespace nids::infra {
@@ -26,11 +28,12 @@ PcapRingBuffer::PcapRingBuffer(PcapStorageConfig config)
 
     // Scan existing files for initial total size and sequence number.
     totalSize_ = computeTotalSize();
-    for (const auto& entry : fs::directory_iterator(config_.storageDir, ec)) {
-        if (entry.is_regular_file() && entry.path().extension() == ".pcap") {
-            ++fileSequence_;
-        }
-    }
+    fileSequence_ = static_cast<int>(std::ranges::count_if(
+        fs::directory_iterator(config_.storageDir, ec),
+        [](const auto& entry) {
+            return entry.is_regular_file() &&
+                   entry.path().extension() == ".pcap";
+        }));
 
     openNewFile();
     spdlog::info("PcapRingBuffer: started in '{}' (existing: {} bytes, "
@@ -61,8 +64,8 @@ void PcapRingBuffer::store(std::span<const std::uint8_t> packet,
     }
 
     timeval tv{};
-    tv.tv_sec = static_cast<time_t>(timestampUs / 1'000'000);
-    tv.tv_usec = static_cast<suseconds_t>(timestampUs % 1'000'000);
+    tv.tv_sec = static_cast<decltype(tv.tv_sec)>(timestampUs / 1'000'000);
+    tv.tv_usec = static_cast<decltype(tv.tv_usec)>(timestampUs % 1'000'000);
 
     pcpp::RawPacket rawPacket(
         packet.data(),
@@ -152,14 +155,15 @@ void PcapRingBuffer::evictBySize() {
 void PcapRingBuffer::evict(std::size_t targetBytes) {
     std::error_code ec;
 
-    // Collect files sorted by name (oldest first, since names are timestamped).
+    // Collect evictable files (oldest first, since names are timestamped).
     std::vector<fs::directory_entry> files;
-    for (const auto& entry : fs::directory_iterator(config_.storageDir, ec)) {
-        if (entry.is_regular_file() && entry.path().extension() == ".pcap" &&
-            entry.path() != currentFilePath_) {
-            files.push_back(entry);
-        }
-    }
+    auto dirIter = fs::directory_iterator(config_.storageDir, ec);
+    std::ranges::copy_if(dirIter, std::back_inserter(files),
+        [this](const auto& entry) {
+            return entry.is_regular_file() &&
+                   entry.path().extension() == ".pcap" &&
+                   entry.path() != currentFilePath_;
+        });
     std::ranges::sort(files, {}, [](const auto& e) {
         return e.path().filename().string();
     });
@@ -207,13 +211,16 @@ std::size_t PcapRingBuffer::sizeBytes() const noexcept {
 
 std::size_t PcapRingBuffer::computeTotalSize() const {
     std::error_code ec;
-    std::size_t total = 0;
-    for (const auto& entry : fs::directory_iterator(config_.storageDir, ec)) {
-        if (entry.is_regular_file() && entry.path().extension() == ".pcap") {
-            total += entry.file_size(ec);
-        }
-    }
-    return total;
+    auto dirIter = fs::directory_iterator(config_.storageDir, ec);
+    return std::accumulate(
+        fs::begin(dirIter), fs::end(dirIter), std::size_t{0},
+        [&ec](std::size_t acc, const auto& entry) {
+            if (entry.is_regular_file() &&
+                entry.path().extension() == ".pcap") {
+                return acc + entry.file_size(ec);
+            }
+            return acc;
+        });
 }
 
 fs::path PcapRingBuffer::generateFilePath() const {
@@ -221,7 +228,11 @@ fs::path PcapRingBuffer::generateFilePath() const {
     const auto now = system_clock::now();
     const auto time = system_clock::to_time_t(now);
     std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &time);
+#else
     gmtime_r(&time, &tm);
+#endif
 
     char buf[64]{};
     std::snprintf(buf, sizeof(buf), "%s_%04d%02d%02d_%02d%02d%02d_%03d.pcap",

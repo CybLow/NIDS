@@ -7,8 +7,11 @@
 #include <spdlog/spdlog.h>
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <iterator>
+#include <ranges>
 #include <stdexcept>
 #include <utility>
 
@@ -43,10 +46,11 @@ using StmtPtr = std::unique_ptr<sqlite3_stmt, StmtDeleter>;
     const std::vector<core::ThreatIntelMatch>& matches) {
     if (matches.empty()) return "[]";
     nlohmann::json arr = nlohmann::json::array();
-    for (const auto& m : matches) {
-        arr.push_back({{"ip", m.ip}, {"feed", m.feedName},
-                        {"src", m.isSource}});
-    }
+    std::ranges::transform(matches, std::back_inserter(arr),
+        [](const auto& m) -> nlohmann::json {
+            return {{"ip", m.ip}, {"feed", m.feedName},
+                    {"src", m.isSource}};
+        });
     return arr.dump();
 }
 
@@ -55,10 +59,11 @@ using StmtPtr = std::unique_ptr<sqlite3_stmt, StmtDeleter>;
     const std::vector<core::RuleMatch>& matches) {
     if (matches.empty()) return "[]";
     nlohmann::json arr = nlohmann::json::array();
-    for (const auto& r : matches) {
-        arr.push_back({{"name", r.ruleName}, {"desc", r.description},
-                        {"sev", r.severity}});
-    }
+    std::ranges::transform(matches, std::back_inserter(arr),
+        [](const auto& r) -> nlohmann::json {
+            return {{"name", r.ruleName}, {"desc", r.description},
+                    {"sev", r.severity}};
+        });
     return arr.dump();
 }
 
