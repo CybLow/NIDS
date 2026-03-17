@@ -9,6 +9,17 @@
 using namespace nids;
 namespace fs = std::filesystem;
 
+// PcapRingBuffer tests require PcapPlusPlus runtime (npcap on Windows).
+// Skip all tests on Windows CI where npcap is not installed.
+class PcapRingBufferTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+#ifdef _WIN32
+        GTEST_SKIP() << "PcapPlusPlus requires npcap on Windows";
+#endif
+    }
+};
+
 namespace {
 
 /// RAII helper to remove test pcap directory on scope exit.
@@ -22,7 +33,7 @@ struct DirGuard {
 
 } // namespace
 
-TEST(PcapRingBuffer, constructor_createsStorageDirectory) {
+TEST_F(PcapRingBufferTest, constructor_createsStorageDirectory) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_ring";
     DirGuard guard{dir};
     std::error_code ec;
@@ -36,7 +47,7 @@ TEST(PcapRingBuffer, constructor_createsStorageDirectory) {
     EXPECT_TRUE(fs::exists(dir));
 }
 
-TEST(PcapRingBuffer, store_writesPacketData) {
+TEST_F(PcapRingBufferTest, store_writesPacketData) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_store";
     DirGuard guard{dir};
 
@@ -53,7 +64,7 @@ TEST(PcapRingBuffer, store_writesPacketData) {
     EXPECT_GT(ring.sizeBytes(), 0u);
 }
 
-TEST(PcapRingBuffer, store_multiplePackets_increaseSize) {
+TEST_F(PcapRingBufferTest, store_multiplePackets_increaseSize) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_multi";
     DirGuard guard{dir};
 
@@ -73,7 +84,7 @@ TEST(PcapRingBuffer, store_multiplePackets_increaseSize) {
     EXPECT_GT(size2, size1);
 }
 
-TEST(PcapRingBuffer, store_emptyPacket_isIgnored) {
+TEST_F(PcapRingBufferTest, store_emptyPacket_isIgnored) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_empty";
     DirGuard guard{dir};
 
@@ -91,7 +102,7 @@ TEST(PcapRingBuffer, store_emptyPacket_isIgnored) {
     EXPECT_EQ(ring.sizeBytes(), sizeBefore);
 }
 
-TEST(PcapRingBuffer, listFiles_returnsStoredFiles) {
+TEST_F(PcapRingBufferTest, listFiles_returnsStoredFiles) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_list";
     DirGuard guard{dir};
 
@@ -112,7 +123,7 @@ TEST(PcapRingBuffer, listFiles_returnsStoredFiles) {
     }
 }
 
-TEST(PcapRingBuffer, rotation_createsNewFileWhenSizeExceeded) {
+TEST_F(PcapRingBufferTest, rotation_createsNewFileWhenSizeExceeded) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_rotate";
     DirGuard guard{dir};
 
@@ -132,7 +143,7 @@ TEST(PcapRingBuffer, rotation_createsNewFileWhenSizeExceeded) {
     EXPECT_GT(files.size(), 1u);
 }
 
-TEST(PcapRingBuffer, evict_reducesTotalSize) {
+TEST_F(PcapRingBufferTest, evict_reducesTotalSize) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_evict";
     DirGuard guard{dir};
 
@@ -154,7 +165,7 @@ TEST(PcapRingBuffer, evict_reducesTotalSize) {
     EXPECT_LT(ring.sizeBytes(), sizeBefore);
 }
 
-TEST(PcapRingBuffer, flush_doesNotCrash) {
+TEST_F(PcapRingBufferTest, flush_doesNotCrash) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_flush";
     DirGuard guard{dir};
 
@@ -165,7 +176,7 @@ TEST(PcapRingBuffer, flush_doesNotCrash) {
     EXPECT_NO_THROW(ring.flush());
 }
 
-TEST(PcapRingBuffer, destructor_closesCleanly) {
+TEST_F(PcapRingBufferTest, destructor_closesCleanly) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_dtor";
     DirGuard guard{dir};
 
@@ -178,7 +189,7 @@ TEST(PcapRingBuffer, destructor_closesCleanly) {
     });
 }
 
-TEST(PcapRingBuffer, sizeEviction_autoEvictsWhenMaxExceeded) {
+TEST_F(PcapRingBufferTest, sizeEviction_autoEvictsWhenMaxExceeded) {
     auto dir = fs::temp_directory_path() / "nids_test_pcap_autoevict";
     DirGuard guard{dir};
 
