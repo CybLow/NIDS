@@ -37,6 +37,8 @@ public:
         const core::FlowQuery& q) override {
         std::vector<core::IndexedFlow> result;
         for (const auto& f : storedFlows) {
+            if (q.srcIp && f.srcIp != *q.srcIp) continue;
+            if (q.dstIp && f.dstIp != *q.dstIp) continue;
             if (q.anyIp && f.srcIp != *q.anyIp && f.dstIp != *q.anyIp)
                 continue;
             if (q.anyPort && f.srcPort != *q.anyPort && f.dstPort != *q.anyPort)
@@ -294,6 +296,98 @@ TEST(HuntEngine, retroactiveAnalysis_nonexistentFile_returnsError) {
     auto result = engine.retroactiveAnalysis("/nonexistent/file.pcap");
     EXPECT_FALSE(result.completed);
     EXPECT_FALSE(result.errorMessage.empty());
+}
+
+TEST(HuntEngine, iocSearch_srcOnly_searchesSrcIpOnly) {
+    MockFlowIndex flowIndex;
+    flowIndex.storedFlows.push_back(
+        makeIndexedFlow("10.0.0.1", "1.1.1.1", 111, 80,
+                        core::AttackType::Benign, 0.0f, false));
+    flowIndex.storedFlows.push_back(
+        makeIndexedFlow("2.2.2.2", "10.0.0.1", 222, 80,
+                        core::AttackType::Benign, 0.0f, false));
+
+    MockFlowExtractor extractor;
+    MockAnalyzer analyzer;
+    MockNormalizer normalizer;
+    app::HybridDetectionService detector(nullptr, nullptr);
+
+    app::HuntEngine engine(flowIndex, extractor, analyzer,
+                           normalizer, detector);
+
+    core::IocSearchQuery query;
+    query.ips.push_back("10.0.0.1");
+    query.searchSrcOnly = true;
+
+    auto result = engine.iocSearch(query);
+    // Only the flow with src=10.0.0.1 should match.
+    EXPECT_EQ(result.matchedFlows.size(), 1u);
+    EXPECT_EQ(result.matchedFlows[0].srcIp, "10.0.0.1");
+}
+
+TEST(HuntEngine, iocSearch_dstOnly_searchesDstIpOnly) {
+    MockFlowIndex flowIndex;
+    flowIndex.storedFlows.push_back(
+        makeIndexedFlow("10.0.0.1", "1.1.1.1", 111, 80,
+                        core::AttackType::Benign, 0.0f, false));
+    flowIndex.storedFlows.push_back(
+        makeIndexedFlow("2.2.2.2", "10.0.0.1", 222, 80,
+                        core::AttackType::Benign, 0.0f, false));
+
+    MockFlowExtractor extractor;
+    MockAnalyzer analyzer;
+    MockNormalizer normalizer;
+    app::HybridDetectionService detector(nullptr, nullptr);
+
+    app::HuntEngine engine(flowIndex, extractor, analyzer,
+                           normalizer, detector);
+
+    core::IocSearchQuery query;
+    query.ips.push_back("10.0.0.1");
+    query.searchDstOnly = true;
+
+    auto result = engine.iocSearch(query);
+    EXPECT_EQ(result.matchedFlows.size(), 1u);
+    EXPECT_EQ(result.matchedFlows[0].dstIp, "10.0.0.1");
+}
+
+TEST(HuntEngine, buildTimeline_classifiesPortScanning) {
+    MockFlowIndex flowIndex;
+    MockFlowExtractor extractor;
+    MockAnalyzer analyzer;
+    MockNormalizer normalizer;
+    app::HybridDetectionService detector(nullptr, nullptr);
+
+    app::HuntEngine engine(flowIndex, extractor, analyzer,
+                           normalizer, detector);
+
+    std::vector<core::IndexedFlow> flows;
+    auto f1 = makeIndexedFlow("10.0.0.1", "1.1.1.1", 111, 80,
+                              core::AttackType::Benign, 0.0f, false);
+    f1.timestampUs = 1000000;
+    auto f2 = makeIndexedFlow("10.0.0.1", "1.1.1.1", 222, 22,
+                              core::AttackType::PortScanning, 0.6f, true);
+    f2.timestampUs = 2000000;
+    auto f3 = makeIndexedFlow("10.0.0.1", "1.1.1.1", 333, 443,
+                              core::AttackType::SshBruteForce, 0.9f, true);
+    f3.timestampUs = 3000000;
+    flows.push_back(f1);
+    flows.push_back(f2);
+    flows.push_back(f3);
+
+    auto timeline = engine.buildTimeline(flows);
+
+    EXPECT_EQ(timeline.events.size(), 3u);
+    // First event should be FirstContact.
+    EXPECT_EQ(timeline.events[0].type, core::EventType::FirstContact);
+    // Second should be Reconnaissance (port scanning).
+    EXPECT_EQ(timeline.events[1].type, core::EventType::Reconnaissance);
+    // Third should be Exploitation (flagged, not port scanning).
+    EXPECT_EQ(timeline.events[2].type, core::EventType::Exploitation);
+
+    EXPECT_FALSE(timeline.summary.empty());
+    EXPECT_FALSE(timeline.incidentId.empty());
+    EXPECT_GE(timeline.attackTypes.size(), 1u);
 }
 
 TEST(HuntEngine, setProgressCallback_isAccepted) {

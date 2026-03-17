@@ -554,6 +554,56 @@ TEST(ConfigLoader, validJsonOverridesHuntingConfig) {
   fs::remove(tmpPath);
 }
 
+TEST(Configuration, huntingConfigDefaults) {
+  auto &config = Configuration::instance();
+  const auto &hc = config.huntingConfig();
+
+  EXPECT_FALSE(hc.enabled);
+  EXPECT_EQ(hc.flowDatabasePath, fs::path("data/flows.db"));
+  EXPECT_EQ(hc.maxDatabaseSizeMb, 1024u);
+  EXPECT_TRUE(hc.indexAllFlows);
+  EXPECT_EQ(hc.baselineWindowHours, 168);
+  EXPECT_DOUBLE_EQ(hc.anomalyThresholdSigma, 3.0);
+  EXPECT_EQ(hc.pcapStorage.storageDir, fs::path("data/pcap"));
+  EXPECT_EQ(hc.pcapStorage.maxRetentionHours, 168);
+  EXPECT_EQ(hc.pcapStorage.filePrefix, "nids_capture");
+}
+
+TEST(Configuration, setHuntingConfig_roundTrip) {
+  auto &config = Configuration::instance();
+  auto orig = config.huntingConfig();
+
+  Configuration::HuntingConfig hc;
+  hc.enabled = true;
+  hc.flowDatabasePath = "/test/path.db";
+  hc.maxDatabaseSizeMb = 512;
+  hc.indexAllFlows = false;
+  hc.baselineWindowHours = 24;
+  hc.anomalyThresholdSigma = 2.0;
+  hc.pcapStorage.storageDir = "/test/pcap";
+  hc.pcapStorage.maxTotalSizeBytes = 1024;
+  hc.pcapStorage.maxRetentionHours = 12;
+  hc.pcapStorage.maxFileSizeBytes = 512;
+  hc.pcapStorage.filePrefix = "test_capture";
+
+  config.setHuntingConfig(hc);
+
+  const auto &stored = config.huntingConfig();
+  EXPECT_TRUE(stored.enabled);
+  EXPECT_EQ(stored.flowDatabasePath, fs::path("/test/path.db"));
+  EXPECT_EQ(stored.maxDatabaseSizeMb, 512u);
+  EXPECT_FALSE(stored.indexAllFlows);
+  EXPECT_EQ(stored.baselineWindowHours, 24);
+  EXPECT_DOUBLE_EQ(stored.anomalyThresholdSigma, 2.0);
+  EXPECT_EQ(stored.pcapStorage.storageDir, fs::path("/test/pcap"));
+  EXPECT_EQ(stored.pcapStorage.maxTotalSizeBytes, 1024u);
+  EXPECT_EQ(stored.pcapStorage.maxRetentionHours, 12);
+  EXPECT_EQ(stored.pcapStorage.maxFileSizeBytes, 512u);
+  EXPECT_EQ(stored.pcapStorage.filePrefix, "test_capture");
+
+  config.setHuntingConfig(orig);
+}
+
 TEST(ConfigLoader, validJsonHuntingPartialOverride) {
   auto &config = Configuration::instance();
   auto orig = config.huntingConfig();
