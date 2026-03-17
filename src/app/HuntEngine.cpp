@@ -48,7 +48,7 @@ core::HuntResult HuntEngine::retroactiveAnalysis(
     }
 
     // Extract features from the PCAP file.
-    auto features = extractor_.extractFeatures(pcapFile);
+    auto features = extractor_.extractFeatures(pcapFile.string());
     const auto& metadata = extractor_.flowMetadata();
     result.totalFlowsScanned = features.size();
 
