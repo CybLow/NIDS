@@ -560,3 +560,31 @@ most streams are much smaller than 1 MB).
 | 6 | Bundled YARA rules (C2, exploits, tools) + hot reload |
 | 7 | Configuration, gRPC extensions, CLI commands |
 | 8 | Integration tests + documentation + performance benchmarks |
+
+---
+
+## Implementation Status
+
+### Completed
+
+| Component | Files | Status |
+|-----------|-------|--------|
+| **ContentMatch model** | `core/model/ContentMatch.h` | Done |
+| **IContentScanner interface** | `core/services/IContentScanner.h` | Done |
+| **DetectionSource enum** | Extended with `ContentScan`, `SignatureMatch` | Done |
+| **DetectionResult** | Extended with `contentMatches`, `hasContentMatch()`, `maxContentSeverity()` | Done |
+| **YaraConfig** | `Configuration.h` — enabled, rulesDir, scanPackets, scanStreams, timeout, weight | Done |
+| **ConfigLoader** | YARA JSON section parsing | Done |
+| **YaraScanner** | `infra/rules/YaraScanner.h/.cpp` — RAII libyara wrapper, compilation, scanning, metadata extraction, hot reload | Done (14 tests) |
+| **TcpReassembler** | `infra/flow/TcpReassembler.h/.cpp` — PcapPlusPlus TCP reassembly with size limits | Done |
+| **HybridDetectionService** | 5-layer evaluation with content scan weight and YARA escalation | Done |
+| **CMake option** | `NIDS_ENABLE_YARA` — optional, off by default | Done |
+| **CI setup** | `libyara-dev` installed in Linux CI | Done |
+| **Test YARA rules** | `tests/data/test_rules.yar` — 4 test rules | Done |
+
+### Test Coverage
+
+| Test file | Tests |
+|-----------|-------|
+| `test_YaraScanner.cpp` | 14 (load, scan string/hex/multiple/empty/no-match, offsets, timeout, reload, metadata, directory, move) |
+| `test_InterfaceDestructors.cpp` | +1 (IContentScanner) |
