@@ -17,6 +17,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -479,6 +480,115 @@ TEST(HuntEngine, buildTimeline_singleEvent_generatesValidTimeline) {
     EXPECT_EQ(timeline.endTimeUs, 5000000);
     EXPECT_EQ(timeline.involvedIps.size(), 2u);
     EXPECT_FALSE(timeline.incidentId.empty());
+}
+
+TEST(HuntEngine, retroactiveAnalysis_withMockedPipeline_analyzesFlows) {
+    MockFlowIndex flowIndex;
+
+    // Set up mock extractor to return fake features.
+    MockFlowExtractor extractor;
+    std::vector<std::vector<float>> fakeFeatures = {
+        std::vector<float>(77, 0.5f),
+        std::vector<float>(77, 0.1f),
+    };
+    std::vector<core::FlowInfo> fakeMetadata;
+    core::FlowInfo f1;
+    f1.srcIp = "10.0.0.1";
+    f1.dstIp = "1.1.1.1";
+    f1.srcPort = 12345;
+    f1.dstPort = 80;
+    f1.protocol = 6;
+    core::FlowInfo f2;
+    f2.srcIp = "10.0.0.2";
+    f2.dstIp = "2.2.2.2";
+    f2.srcPort = 22222;
+    f2.dstPort = 443;
+    f2.protocol = 6;
+    fakeMetadata.push_back(f1);
+    fakeMetadata.push_back(f2);
+
+    // Create a temp file so file_exists check passes.
+    auto tmpPcap = std::filesystem::temp_directory_path() / "nids_test_retro.pcap";
+    { std::ofstream ofs(tmpPcap); ofs << "fake"; }
+
+    EXPECT_CALL(extractor, extractFeatures(tmpPcap.string()))
+        .WillOnce(::testing::Return(fakeFeatures));
+    EXPECT_CALL(extractor, flowMetadata())
+        .WillOnce(::testing::ReturnRef(fakeMetadata));
+
+    // Mock analyzer returns benign predictions.
+    MockAnalyzerWithConfidence analyzer;
+    core::PredictionResult benignPred;
+    benignPred.classification = core::AttackType::Benign;
+    benignPred.confidence = 0.99f;
+    EXPECT_CALL(analyzer, predictWithConfidence(::testing::_))
+        .WillRepeatedly(::testing::Return(benignPred));
+
+    MockNormalizer normalizer;
+    app::HybridDetectionService detector(nullptr, nullptr);
+
+    app::HuntEngine engine(flowIndex, extractor, analyzer,
+                           normalizer, detector);
+
+    auto result = engine.retroactiveAnalysis(tmpPcap);
+    EXPECT_TRUE(result.completed);
+    EXPECT_EQ(result.totalFlowsScanned, 2u);
+    // Benign flows should not be flagged.
+    EXPECT_TRUE(result.matchedFlows.empty());
+
+    std::filesystem::remove(tmpPcap);
+}
+
+TEST(HuntEngine, retroactiveAnalysis_withAttackDetection_flagsFlows) {
+    MockFlowIndex flowIndex;
+
+    MockFlowExtractor extractor;
+    std::vector<std::vector<float>> fakeFeatures = {
+        std::vector<float>(77, 0.9f),
+    };
+    std::vector<core::FlowInfo> fakeMetadata;
+    core::FlowInfo f1;
+    f1.srcIp = "10.0.0.1";
+    f1.dstIp = "1.1.1.1";
+    f1.srcPort = 12345;
+    f1.dstPort = 80;
+    f1.protocol = 6;
+    fakeMetadata.push_back(f1);
+
+    auto tmpPcap = std::filesystem::temp_directory_path() / "nids_test_retro_attack.pcap";
+    { std::ofstream ofs(tmpPcap); ofs << "fake"; }
+
+    EXPECT_CALL(extractor, extractFeatures(tmpPcap.string()))
+        .WillOnce(::testing::Return(fakeFeatures));
+    EXPECT_CALL(extractor, flowMetadata())
+        .WillOnce(::testing::ReturnRef(fakeMetadata));
+
+    MockAnalyzerWithConfidence analyzer;
+    core::PredictionResult attackPred;
+    attackPred.classification = core::AttackType::DdosUdp;
+    attackPred.confidence = 0.95f;
+    EXPECT_CALL(analyzer, predictWithConfidence(::testing::_))
+        .WillOnce(::testing::Return(attackPred));
+
+    MockNormalizer normalizer;
+    app::HybridDetectionService detector(nullptr, nullptr);
+
+    app::HuntEngine engine(flowIndex, extractor, analyzer,
+                           normalizer, detector);
+
+    bool progressCalled = false;
+    engine.setProgressCallback(
+        [&progressCalled](float p, std::string_view) {
+            if (p > 0.0f) progressCalled = true;
+        });
+
+    auto result = engine.retroactiveAnalysis(tmpPcap);
+    EXPECT_TRUE(result.completed);
+    EXPECT_EQ(result.totalFlowsScanned, 1u);
+    EXPECT_GE(result.matchedFlows.size(), 1u);
+    EXPECT_TRUE(progressCalled);
+
+    std::filesystem::remove(tmpPcap);
 }
 
 TEST(HuntEngine, setProgressCallback_isAccepted) {
