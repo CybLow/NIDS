@@ -1,25 +1,30 @@
 #pragma once
 
 /**
- * Hybrid detection service combining ML, threat intelligence, and heuristic rules.
+ * Hybrid detection service combining ML, threat intelligence, heuristic rules,
+ * and content scanning (YARA).
  *
- * Orchestrates the three detection layers to produce a unified DetectionResult
- * for each flow. Implements the escalation logic described in ADR-005:
+ * Orchestrates up to 5 detection layers to produce a unified DetectionResult
+ * for each flow. Implements the escalation logic described in ADR-005/ADR-008:
  * - TI matches always escalate (override benign ML verdicts)
  * - Low ML confidence + heuristic match = escalate
+ * - YARA content matches contribute to combined score
  * - High ML confidence with no corroboration = trust ML
  *
  * Located in the app/ layer per Clean Architecture (depends on core/ interfaces,
  * injected with infra/ implementations).
  */
 
+#include "core/model/ContentMatch.h"
 #include "core/model/DetectionResult.h"
 #include "core/model/FlowInfo.h"
 #include "core/model/PredictionResult.h"
 #include "core/services/IThreatIntelligence.h"
 #include "core/services/IRuleEngine.h"
 
+#include <span>
 #include <string>
+#include <vector>
 
 namespace nids::app {
 
@@ -34,6 +39,8 @@ public:
         float threatIntel = 0.3f;
         /** Heuristic rule engine weight (0.0–1.0). */
         float heuristic = 0.2f;
+        /** YARA content scanning weight (0.0–1.0). Phase 14. */
+        float contentScan = 0.0f;
     };
 
     /// Construct with optional TI and rule engine.
@@ -68,18 +75,28 @@ public:
         const std::string& srcIp,
         const std::string& dstIp) const;
 
+    /// Full 5-layer evaluation including YARA content scan results.
+    [[nodiscard]] core::DetectionResult evaluate(
+        const core::PredictionResult& mlResult,
+        const std::string& srcIp,
+        const std::string& dstIp,
+        const core::FlowInfo& flowInfo,
+        std::span<const core::ContentMatch> contentMatches) const;
+
 private:
     /// Compute the combined threat score from individual layer scores.
     [[nodiscard]] float computeCombinedScore(
         const core::PredictionResult& mlResult,
         bool hasTiMatch,
-        float maxRuleSeverity) const noexcept;
+        float maxRuleSeverity,
+        float maxContentSeverity = 0.0f) const noexcept;
 
     /// Determine the detection source based on which layers contributed.
     [[nodiscard]] static core::DetectionSource determineSource(
         bool mlIsAttack,
         bool hasTiMatch,
-        bool hasRuleMatch) noexcept;
+        bool hasRuleMatch,
+        bool hasContentMatch = false) noexcept;
 
     /// Determine the final verdict using escalation logic.
     [[nodiscard]] core::AttackType determineVerdict(

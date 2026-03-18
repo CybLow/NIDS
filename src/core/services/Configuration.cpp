@@ -130,4 +130,13 @@ void Configuration::setHuntingConfig(const HuntingConfig& config) {
   huntingConfig_ = config;
 }
 
+const Configuration::YaraConfig&
+Configuration::yaraConfig() const noexcept {
+  return yaraConfig_;
+}
+
+void Configuration::setYaraConfig(const YaraConfig& config) {
+  yaraConfig_ = config;
+}
+
 } // namespace nids::core

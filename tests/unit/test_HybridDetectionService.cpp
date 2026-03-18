@@ -406,3 +406,110 @@ TEST_F(HybridDetectionServiceTest, combinedScore_unknownMl_mlScoreIsZero) {
   // Unknown ML → mlScore = 0; no TI, no rules → combined = 0.0
   EXPECT_FLOAT_EQ(result.combinedScore, 0.0f);
 }
+
+// ── Phase 14: 5-layer evaluation with YARA content matches ──────────
+
+TEST_F(HybridDetectionServiceTest,
+       fiveLayerEval_noContentMatches_sameAsThreeLayer) {
+  HybridDetectionService service(nullptr, nullptr);
+
+  auto pred = makePrediction(AttackType::DdosUdp, 0.9f);
+  auto flow = makeBenignFlowMeta();
+  std::vector<ContentMatch> empty;
+
+  auto result = service.evaluate(pred, "10.0.0.1", "10.0.0.2", flow, empty);
+
+  EXPECT_EQ(result.finalVerdict, AttackType::DdosUdp);
+  EXPECT_TRUE(result.contentMatches.empty());
+  EXPECT_EQ(result.detectionSource, DetectionSource::MlOnly);
+}
+
+TEST_F(HybridDetectionServiceTest,
+       fiveLayerEval_contentMatchOnly_returnsContentScan) {
+  HybridDetectionService service(nullptr, nullptr);
+  HybridDetectionService::Weights w;
+  w.ml = 0.35f;
+  w.contentScan = 0.10f;
+  service.setWeights(w);
+
+  auto pred = makePrediction(AttackType::Benign, 0.6f);
+  auto flow = makeBenignFlowMeta();
+
+  ContentMatch cm;
+  cm.ruleName = "YARA_Test";
+  cm.severity = 0.8f;
+  std::vector<ContentMatch> matches = {cm};
+
+  auto result = service.evaluate(pred, "10.0.0.1", "10.0.0.2", flow, matches);
+
+  EXPECT_FALSE(result.contentMatches.empty());
+  EXPECT_EQ(result.detectionSource, DetectionSource::ContentScan);
+  // YARA severity >= 0.7 on benign ML → escalate to Unknown
+  EXPECT_EQ(result.finalVerdict, AttackType::Unknown);
+}
+
+TEST_F(HybridDetectionServiceTest,
+       fiveLayerEval_contentPlusMl_returnsEnsemble) {
+  HybridDetectionService service(nullptr, nullptr);
+  HybridDetectionService::Weights w;
+  w.ml = 0.35f;
+  w.contentScan = 0.10f;
+  service.setWeights(w);
+
+  auto pred = makePrediction(AttackType::SshBruteForce, 0.85f);
+  auto flow = makeBenignFlowMeta();
+
+  ContentMatch cm;
+  cm.ruleName = "YARA_SSH_Exploit";
+  cm.severity = 0.9f;
+  std::vector<ContentMatch> matches = {cm};
+
+  auto result = service.evaluate(pred, "10.0.0.1", "10.0.0.2", flow, matches);
+
+  EXPECT_TRUE(result.hasContentMatch());
+  EXPECT_EQ(result.detectionSource, DetectionSource::Ensemble);
+  EXPECT_EQ(result.finalVerdict, AttackType::SshBruteForce);
+  EXPECT_GT(result.combinedScore, 0.0f);
+}
+
+TEST_F(HybridDetectionServiceTest,
+       fiveLayerEval_lowSeverityContent_noEscalation) {
+  HybridDetectionService service(nullptr, nullptr);
+
+  auto pred = makePrediction(AttackType::Benign, 0.95f);
+  auto flow = makeBenignFlowMeta();
+
+  ContentMatch cm;
+  cm.ruleName = "YARA_Info";
+  cm.severity = 0.3f; // Low severity
+  std::vector<ContentMatch> matches = {cm};
+
+  auto result = service.evaluate(pred, "10.0.0.1", "10.0.0.2", flow, matches);
+
+  // Low severity content match should NOT escalate benign verdict
+  EXPECT_EQ(result.finalVerdict, AttackType::Benign);
+}
+
+TEST_F(HybridDetectionServiceTest,
+       fiveLayerEval_contentWeight_affectsCombinedScore) {
+  HybridDetectionService service(nullptr, nullptr);
+  HybridDetectionService::Weights w;
+  w.ml = 0.0f;
+  w.threatIntel = 0.0f;
+  w.heuristic = 0.0f;
+  w.contentScan = 1.0f; // Only content scan contributes
+  service.setWeights(w);
+
+  auto pred = makePrediction(AttackType::Benign, 0.99f);
+  auto flow = makeBenignFlowMeta();
+
+  ContentMatch cm;
+  cm.ruleName = "YARA_Test";
+  cm.severity = 0.5f;
+  std::vector<ContentMatch> matches = {cm};
+
+  auto result = service.evaluate(pred, "10.0.0.1", "10.0.0.2", flow, matches);
+
+  // combinedScore should be ~0.5 (contentScan weight=1.0 * severity=0.5)
+  EXPECT_NEAR(result.combinedScore, 0.5f, 0.05f);
+}

@@ -10,6 +10,7 @@
 
 #include "core/services/IAnalysisRepository.h"
 #include "core/services/ICommand.h"
+#include "core/services/IContentScanner.h"
 #include "core/services/IFlowIndex.h"
 #include "core/services/IHuntEngine.h"
 #include "core/services/IPcapStore.h"
@@ -136,7 +137,24 @@ public:
     void setProgressCallback(ProgressCallback) override {}
 };
 
+class MockContentScanner : public IContentScanner {
+public:
+    [[nodiscard]] bool loadRules(const std::filesystem::path&) override {
+        return true;
+    }
+    [[nodiscard]] bool reloadRules() override { return true; }
+    [[nodiscard]] std::vector<ContentMatch> scan(
+        std::span<const std::uint8_t>) override { return {}; }
+    [[nodiscard]] std::size_t ruleCount() const noexcept override { return 0; }
+    [[nodiscard]] std::size_t fileCount() const noexcept override { return 0; }
+};
+
 } // anonymous namespace
+
+TEST(InterfaceDestructors, IContentScanner_destructor) {
+    std::unique_ptr<IContentScanner> p = std::make_unique<MockContentScanner>();
+    p.reset();
+}
 
 TEST(InterfaceDestructors, IPcapStore_destructor) {
     std::unique_ptr<IPcapStore> p = std::make_unique<MockPcapStore>();

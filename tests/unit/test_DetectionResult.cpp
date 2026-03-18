@@ -78,9 +78,11 @@ TEST(DetectionSource, toStringCoversAllValues) {
     EXPECT_EQ(detectionSourceToString(DetectionSource::MlOnly), "ML Classifier");
     EXPECT_EQ(detectionSourceToString(DetectionSource::ThreatIntel), "Threat Intelligence");
     EXPECT_EQ(detectionSourceToString(DetectionSource::HeuristicRule), "Heuristic Rule");
+    EXPECT_EQ(detectionSourceToString(DetectionSource::ContentScan), "Content Scan (YARA)");
+    EXPECT_EQ(detectionSourceToString(DetectionSource::SignatureMatch), "Signature Match (Snort)");
     EXPECT_EQ(detectionSourceToString(DetectionSource::MlPlusThreatIntel), "ML + Threat Intel");
     EXPECT_EQ(detectionSourceToString(DetectionSource::MlPlusHeuristic), "ML + Heuristic");
-    EXPECT_EQ(detectionSourceToString(DetectionSource::Ensemble), "Ensemble (ML + TI + Rules)");
+    EXPECT_EQ(detectionSourceToString(DetectionSource::Ensemble), "Ensemble");
     EXPECT_EQ(detectionSourceToString(DetectionSource::None), "None");
 }
 

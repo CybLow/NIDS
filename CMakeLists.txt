@@ -27,6 +27,7 @@ set(CMAKE_AUTORCC ON)
 option(NIDS_BUILD_TESTS  "Build unit tests"                    ON)
 option(NIDS_BUILD_SERVER "Build headless server"               OFF)
 option(NIDS_COVERAGE     "Enable code coverage instrumentation" OFF)
+option(NIDS_ENABLE_YARA  "Enable YARA content scanning"        OFF)
 
 # ── CMake module path ────────────────────────────────────────────
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -45,6 +46,13 @@ include(FetchOnnxRuntime)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(SQLite3 CONFIG REQUIRED)
+
+# YARA (system package, optional)
+if(NIDS_ENABLE_YARA)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(YARA REQUIRED IMPORTED_TARGET yara)
+    message(STATUS "YARA ${YARA_VERSION} found")
+endif()
 
 # ── Layer libraries ──────────────────────────────────────────────
 add_subdirectory(src/core)

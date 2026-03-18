@@ -31,6 +31,7 @@ runs:
           libx11-xcb-dev libxkbcommon-dev \
           libxkbcommon-x11-dev libegl1-mesa-dev \
           gcc-14 g++-14 mold \
+          libyara-dev \
           ${{ inputs.extra-packages }}
 
     - name: Install Python packages

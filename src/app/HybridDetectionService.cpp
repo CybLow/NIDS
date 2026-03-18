@@ -71,6 +71,39 @@ core::DetectionResult HybridDetectionService::evaluate(
   return result;
 }
 
+core::DetectionResult HybridDetectionService::evaluate(
+    const core::PredictionResult &mlResult,
+    const std::string &srcIp,
+    const std::string &dstIp,
+    const core::FlowInfo &flowInfo,
+    std::span<const core::ContentMatch> contentMatches) const {
+
+  // Delegate to the 4-layer evaluate, then merge content matches.
+  auto result = evaluate(mlResult, srcIp, dstIp, flowInfo);
+
+  if (!contentMatches.empty()) {
+    result.contentMatches.assign(contentMatches.begin(), contentMatches.end());
+
+    // Recompute combined score with content scan contribution.
+    float maxContentSev = result.maxContentSeverity();
+    result.combinedScore = computeCombinedScore(
+        mlResult, result.hasThreatIntelMatch(), result.maxRuleSeverity(),
+        maxContentSev);
+
+    // Update detection source if content scan contributed.
+    result.detectionSource = determineSource(
+        mlResult.isAttack(), result.hasThreatIntelMatch(),
+        result.hasRuleMatch(), result.hasContentMatch());
+
+    // Escalate verdict if YARA found high-severity match and ML says benign.
+    if (!mlResult.isAttack() && maxContentSev >= 0.7f) {
+      result.finalVerdict = core::AttackType::Unknown;
+    }
+  }
+
+  return result;
+}
+
 core::DetectionResult
 HybridDetectionService::evaluate(const core::PredictionResult &mlResult,
                                  const std::string &srcIp,
@@ -92,7 +125,7 @@ HybridDetectionService::evaluate(const core::PredictionResult &mlResult,
 
 float HybridDetectionService::computeCombinedScore(
     const core::PredictionResult &mlResult, bool hasTiMatch,
-    float maxRuleSeverity) const noexcept {
+    float maxRuleSeverity, float maxContentSeverity) const noexcept {
 
   // ML score: probability of being malicious
   float mlScore = 0.0f;
@@ -107,19 +140,31 @@ float HybridDetectionService::computeCombinedScore(
   float tiScore = hasTiMatch ? 1.0f : 0.0f;
   float ruleScore = maxRuleSeverity;
 
+  float contentScore = maxContentSeverity;
+
   float combined = weights_.ml * mlScore + weights_.threatIntel * tiScore +
-                   weights_.heuristic * ruleScore;
+                   weights_.heuristic * ruleScore +
+                   weights_.contentScan * contentScore;
 
   return std::clamp(combined, 0.0f, 1.0f);
 }
 
 core::DetectionSource
 HybridDetectionService::determineSource(bool mlIsAttack, bool hasTiMatch,
-                                        bool hasRuleMatch) noexcept {
+                                        bool hasRuleMatch,
+                                        bool hasContentMatch) noexcept {
 
-  // Encode the three booleans as a 3-bit index: (ml << 2 | ti << 1 | rule)
-  // This replaces 6 chained if-statements with a single table lookup.
+  // Content scan alone → ContentScan. Multiple layers → Ensemble.
   using enum core::DetectionSource;
+
+  if (hasContentMatch) {
+    // If content scan plus any other layer → Ensemble.
+    if (mlIsAttack || hasTiMatch || hasRuleMatch) return Ensemble;
+    return ContentScan;
+  }
+
+  // Original 3-layer logic via table lookup.
+  // Encode as 3-bit index: (ml << 2 | ti << 1 | rule)
   static constexpr std::array<core::DetectionSource, 8> kSourceTable = {{
       /* 0b000: !ml, !ti, !rule */ None,
       /* 0b001: !ml, !ti,  rule */ HeuristicRule,
