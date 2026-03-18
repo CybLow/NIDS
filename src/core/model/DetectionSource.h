@@ -10,9 +10,11 @@ enum class DetectionSource : std::uint8_t {
     MlOnly,          ///< ML classifier alone (high confidence, no TI/rule match)
     ThreatIntel,     ///< Threat intelligence match overrode or confirmed ML
     HeuristicRule,   ///< Heuristic rule fired
+    ContentScan,     ///< YARA content scan match (Phase 14)
+    SignatureMatch,  ///< Snort signature match (Phase 15)
     MlPlusThreatIntel,   ///< ML + TI corroboration
     MlPlusHeuristic,     ///< ML + heuristic corroboration
-    Ensemble,        ///< All three layers contributed
+    Ensemble,        ///< Multiple layers contributed
     None             ///< No detection (benign, no flags)
 };
 
@@ -28,9 +30,11 @@ enum class DetectionSource : std::uint8_t {
         case MlOnly:           return "ML Classifier";
         case ThreatIntel:      return "Threat Intelligence";
         case HeuristicRule:     return "Heuristic Rule";
+        case ContentScan:      return "Content Scan (YARA)";
+        case SignatureMatch:   return "Signature Match (Snort)";
         case MlPlusThreatIntel: return "ML + Threat Intel";
         case MlPlusHeuristic:  return "ML + Heuristic";
-        case Ensemble:         return "Ensemble (ML + TI + Rules)";
+        case Ensemble:         return "Ensemble";
         case None:             return "None";
     }
     return "Unknown";
@@ -46,8 +50,12 @@ detectionSourceFromString(std::string_view name) noexcept {
     if (name == "ML Classifier") return MlOnly;
     if (name == "Threat Intelligence") return ThreatIntel;
     if (name == "Heuristic Rule") return HeuristicRule;
+    if (name == "Content Scan (YARA)") return ContentScan;
+    if (name == "Signature Match (Snort)") return SignatureMatch;
     if (name == "ML + Threat Intel") return MlPlusThreatIntel;
     if (name == "ML + Heuristic") return MlPlusHeuristic;
+    if (name == "Ensemble") return Ensemble;
+    // Legacy compatibility
     if (name == "Ensemble (ML + TI + Rules)") return Ensemble;
     return None;
 }

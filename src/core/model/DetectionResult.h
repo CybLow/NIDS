@@ -8,6 +8,7 @@
 /// layer(s) contributed, individual scores, and human-readable explanations.
 
 #include "core/model/AttackType.h"
+#include "core/model/ContentMatch.h"
 #include "core/model/DetectionSource.h"
 #include "core/model/PredictionResult.h"
 #include "core/model/RuleMatch.h"
@@ -28,6 +29,9 @@ struct DetectionResult {
 
   /** Heuristic rule matches triggered by flow metadata. */
   std::vector<RuleMatch> ruleMatches;
+
+  /** Content scan matches (YARA rules) — Phase 14. */
+  std::vector<ContentMatch> contentMatches;
 
   /** Final attack classification after combining all detection layers. */
   AttackType finalVerdict = AttackType::Unknown;
@@ -54,9 +58,24 @@ struct DetectionResult {
     return it->severity;
   }
 
+  /** Check whether any content scanner matched this flow. */
+  [[nodiscard]] bool hasContentMatch() const noexcept {
+    return !contentMatches.empty();
+  }
+
+  /// Maximum severity across all content matches, or 0.0 if none.
+  [[nodiscard]] float maxContentSeverity() const noexcept {
+    if (contentMatches.empty())
+      return 0.0f;
+    auto it = std::ranges::max_element(
+        contentMatches, {}, [](const auto& c) { return c.severity; });
+    return it->severity;
+  }
+
   /// True if any detection layer flagged this flow as suspicious.
   [[nodiscard]] bool isFlagged() const noexcept {
-    return mlResult.isAttack() || hasThreatIntelMatch() || hasRuleMatch();
+    return mlResult.isAttack() || hasThreatIntelMatch() ||
+           hasRuleMatch() || hasContentMatch();
   }
 };
 
