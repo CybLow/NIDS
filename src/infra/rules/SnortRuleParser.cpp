@@ -96,7 +96,7 @@ std::uint8_t SnortRuleParser::protocolFromString(
     if (proto == "tcp") return 6;
     if (proto == "udp") return 17;
     if (proto == "icmp") return 1;
-    if (proto == "ip") return 0; // any IP protocol
+    // "ip" or unknown protocol → 0 (matches any IP protocol).
     return 0;
 }
 

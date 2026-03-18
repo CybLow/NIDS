@@ -194,7 +194,7 @@ public:
         std::filesystem::path rulesDirectory = "data/rules";
         bool hotReload = true;
         int maxPcreMatchLength = 1500;
-        std::string homeNet = "192.168.0.0/16,10.0.0.0/8,172.16.0.0/12";
+        std::string homeNet = "192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"; // NOSONAR — RFC 1918 defaults, user-configurable
         std::string externalNet = "!$HOME_NET";
         std::string httpPorts = "80,443,8080,8443";
         float weight = 0.25f;  ///< Scoring weight in hybrid detection
