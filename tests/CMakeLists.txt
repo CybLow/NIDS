@@ -77,6 +77,9 @@ add_executable(nids_tests
     unit/test_OutputSinkFactory.cpp
     unit/test_HeadlessCaptureRunner.cpp
     unit/test_InterfaceDestructors.cpp
+    unit/test_SqliteFlowIndex.cpp
+    unit/test_HuntEngine.cpp
+    unit/test_PcapRingBuffer.cpp
 )
 
 target_include_directories(nids_tests PRIVATE

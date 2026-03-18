@@ -87,4 +87,18 @@ attackTypeToString(AttackType type) noexcept {
   return AttackType::Unknown;
 }
 
+/**
+ * Reverse lookup: convert a display string to an AttackType.
+ * Returns Unknown if the string does not match any known type.
+ */
+[[nodiscard]] inline AttackType
+attackTypeFromString(std::string_view name) noexcept {
+    for (std::size_t i = 0; i < kAttackTypeNames.size(); ++i) {
+        if (kAttackTypeNames[i] == name) {
+            return static_cast<AttackType>(i);
+        }
+    }
+    return AttackType::Unknown;
+}
+
 } // namespace nids::core

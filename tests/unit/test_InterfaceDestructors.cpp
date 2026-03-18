@@ -10,6 +10,9 @@
 
 #include "core/services/IAnalysisRepository.h"
 #include "core/services/ICommand.h"
+#include "core/services/IFlowIndex.h"
+#include "core/services/IHuntEngine.h"
+#include "core/services/IPcapStore.h"
 
 #include <memory>
 
@@ -85,4 +88,67 @@ TEST(InterfaceDestructors, IFeatureNormalizer_destructor) {
 TEST(InterfaceDestructors, IPacketAnalyzer_destructor) {
   std::unique_ptr<IPacketAnalyzer> p = std::make_unique<MockAnalyzer>();
   p.reset();
+}
+
+// ── Phase 13: Threat Hunting interfaces ─────────────────────────────
+
+namespace {
+
+class MockPcapStore : public IPcapStore {
+public:
+    void store(std::span<const std::uint8_t>, int64_t) override {}
+    [[nodiscard]] std::size_t sizeBytes() const noexcept override { return 0; }
+    void evict(std::size_t) override {}
+    [[nodiscard]] std::vector<PcapFileInfo> listFiles() const override {
+        return {};
+    }
+    void flush() override {}
+};
+
+class MockFlowIndex : public IFlowIndex {
+public:
+    void index(const FlowInfo&, const DetectionResult&,
+               std::string_view, std::size_t) override {}
+    [[nodiscard]] std::vector<IndexedFlow> query(
+        const FlowQuery&) override { return {}; }
+    [[nodiscard]] std::size_t count(
+        const FlowQuery&) const override { return 0; }
+    [[nodiscard]] std::vector<std::string> distinctValues(
+        std::string_view, std::size_t) const override { return {}; }
+    [[nodiscard]] FlowStatsSummary aggregate(
+        const FlowQuery&) const override { return {}; }
+    void optimize() override {}
+    [[nodiscard]] std::size_t sizeBytes() const noexcept override { return 0; }
+};
+
+class MockHuntEngine : public IHuntEngine {
+public:
+    [[nodiscard]] HuntResult retroactiveAnalysis(
+        const std::filesystem::path&) override { return {}; }
+    [[nodiscard]] HuntResult iocSearch(
+        const IocSearchQuery&) override { return {}; }
+    [[nodiscard]] HuntResult correlateByIp(
+        std::string_view, int64_t, int64_t) override { return {}; }
+    [[nodiscard]] Timeline buildTimeline(
+        const std::vector<IndexedFlow>&) override { return {}; }
+    [[nodiscard]] std::vector<AnomalyResult> detectAnomalies(
+        int64_t, int64_t) override { return {}; }
+    void setProgressCallback(ProgressCallback) override {}
+};
+
+} // anonymous namespace
+
+TEST(InterfaceDestructors, IPcapStore_destructor) {
+    std::unique_ptr<IPcapStore> p = std::make_unique<MockPcapStore>();
+    p.reset();
+}
+
+TEST(InterfaceDestructors, IFlowIndex_destructor) {
+    std::unique_ptr<IFlowIndex> p = std::make_unique<MockFlowIndex>();
+    p.reset();
+}
+
+TEST(InterfaceDestructors, IHuntEngine_destructor) {
+    std::unique_ptr<IHuntEngine> p = std::make_unique<MockHuntEngine>();
+    p.reset();
 }

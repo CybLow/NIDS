@@ -44,6 +44,7 @@ include(FetchOnnxRuntime)
 # Conan-managed packages
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
+find_package(SQLite3 CONFIG REQUIRED)
 
 # ── Layer libraries ──────────────────────────────────────────────
 add_subdirectory(src/core)

@@ -30,6 +30,7 @@ class NidsConan(ConanFile):
         self.requires("spdlog/1.15.1")
         self.requires("nlohmann_json/3.11.3")
         self.requires("pcapplusplus/25.05")
+        self.requires("sqlite3/3.47.2")
         if self.options.with_grpc:
             self.requires("grpc/1.72.0")
 

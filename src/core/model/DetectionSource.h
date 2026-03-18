@@ -36,4 +36,20 @@ enum class DetectionSource : std::uint8_t {
     return "Unknown";
 }
 
+/**
+ * Reverse lookup: convert a display string to a DetectionSource.
+ * Returns None if the string does not match any known source.
+ */
+[[nodiscard]] inline DetectionSource
+detectionSourceFromString(std::string_view name) noexcept {
+    using enum DetectionSource;
+    if (name == "ML Classifier") return MlOnly;
+    if (name == "Threat Intelligence") return ThreatIntel;
+    if (name == "Heuristic Rule") return HeuristicRule;
+    if (name == "ML + Threat Intel") return MlPlusThreatIntel;
+    if (name == "ML + Heuristic") return MlPlusHeuristic;
+    if (name == "Ensemble (ML + TI + Rules)") return Ensemble;
+    return None;
+}
+
 } // namespace nids::core

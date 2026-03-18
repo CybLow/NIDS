@@ -121,4 +121,13 @@ void Configuration::setConsoleOutputEnabled(bool enabled) {
   consoleOutputEnabled_ = enabled;
 }
 
+const Configuration::HuntingConfig&
+Configuration::huntingConfig() const noexcept {
+  return huntingConfig_;
+}
+
+void Configuration::setHuntingConfig(const HuntingConfig& config) {
+  huntingConfig_ = config;
+}
+
 } // namespace nids::core

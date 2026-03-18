@@ -506,3 +506,123 @@ TEST(ConfigLoader, validJsonOverridesAllOutputSinks) {
   config.setConsoleOutputEnabled(origConsole);
   fs::remove(tmpPath);
 }
+
+// ── ConfigLoader: hunting section overrides ─────────────────────────
+
+TEST(ConfigLoader, validJsonOverridesHuntingConfig) {
+  auto &config = Configuration::instance();
+  auto orig = config.huntingConfig();
+
+  auto tmpPath = fs::temp_directory_path() / "nids_test_config_hunting.json";
+  {
+    std::ofstream out(tmpPath);
+    out << R"({
+            "hunting": {
+                "enabled": true,
+                "flow_database_path": "/var/lib/nids/hunt.db",
+                "max_database_size_mb": 2048,
+                "index_all_flows": false,
+                "baseline_window_hours": 72,
+                "anomaly_threshold_sigma": 2.5,
+                "pcap_storage": {
+                    "storage_dir": "/var/lib/nids/pcap",
+                    "max_total_size_bytes": 5368709120,
+                    "max_retention_hours": 48,
+                    "max_file_size_bytes": 52428800,
+                    "file_prefix": "hunt_capture"
+                }
+            }
+        })";
+  }
+
+  EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+  const auto &hc = config.huntingConfig();
+  EXPECT_TRUE(hc.enabled);
+  EXPECT_EQ(hc.flowDatabasePath, fs::path("/var/lib/nids/hunt.db"));
+  EXPECT_EQ(hc.maxDatabaseSizeMb, 2048u);
+  EXPECT_FALSE(hc.indexAllFlows);
+  EXPECT_EQ(hc.baselineWindowHours, 72);
+  EXPECT_DOUBLE_EQ(hc.anomalyThresholdSigma, 2.5);
+  EXPECT_EQ(hc.pcapStorage.storageDir,
+            fs::path("/var/lib/nids/pcap"));
+  EXPECT_EQ(hc.pcapStorage.maxTotalSizeBytes, 5368709120u);
+  EXPECT_EQ(hc.pcapStorage.maxRetentionHours, 48);
+  EXPECT_EQ(hc.pcapStorage.maxFileSizeBytes, 52428800u);
+  EXPECT_EQ(hc.pcapStorage.filePrefix, "hunt_capture");
+
+  config.setHuntingConfig(orig);
+  fs::remove(tmpPath);
+}
+
+TEST(Configuration, huntingConfigDefaults) {
+  const auto &config = Configuration::instance();
+  const auto &hc = config.huntingConfig();
+
+  EXPECT_FALSE(hc.enabled);
+  EXPECT_EQ(hc.flowDatabasePath, fs::path("data/flows.db"));
+  EXPECT_EQ(hc.maxDatabaseSizeMb, 1024u);
+  EXPECT_TRUE(hc.indexAllFlows);
+  EXPECT_EQ(hc.baselineWindowHours, 168);
+  EXPECT_DOUBLE_EQ(hc.anomalyThresholdSigma, 3.0);
+  EXPECT_EQ(hc.pcapStorage.storageDir, fs::path("data/pcap"));
+  EXPECT_EQ(hc.pcapStorage.maxRetentionHours, 168);
+  EXPECT_EQ(hc.pcapStorage.filePrefix, "nids_capture");
+}
+
+TEST(Configuration, setHuntingConfig_roundTrip) {
+  auto &config = Configuration::instance();
+  auto orig = config.huntingConfig();
+
+  Configuration::HuntingConfig hc;
+  hc.enabled = true;
+  hc.flowDatabasePath = "/test/path.db";
+  hc.maxDatabaseSizeMb = 512;
+  hc.indexAllFlows = false;
+  hc.baselineWindowHours = 24;
+  hc.anomalyThresholdSigma = 2.0;
+  hc.pcapStorage.storageDir = "/test/pcap";
+  hc.pcapStorage.maxTotalSizeBytes = 1024;
+  hc.pcapStorage.maxRetentionHours = 12;
+  hc.pcapStorage.maxFileSizeBytes = 512;
+  hc.pcapStorage.filePrefix = "test_capture";
+
+  config.setHuntingConfig(hc);
+
+  const auto &stored = config.huntingConfig();
+  EXPECT_TRUE(stored.enabled);
+  EXPECT_EQ(stored.flowDatabasePath, fs::path("/test/path.db"));
+  EXPECT_EQ(stored.maxDatabaseSizeMb, 512u);
+  EXPECT_FALSE(stored.indexAllFlows);
+  EXPECT_EQ(stored.baselineWindowHours, 24);
+  EXPECT_DOUBLE_EQ(stored.anomalyThresholdSigma, 2.0);
+  EXPECT_EQ(stored.pcapStorage.storageDir, fs::path("/test/pcap"));
+  EXPECT_EQ(stored.pcapStorage.maxTotalSizeBytes, 1024u);
+  EXPECT_EQ(stored.pcapStorage.maxRetentionHours, 12);
+  EXPECT_EQ(stored.pcapStorage.maxFileSizeBytes, 512u);
+  EXPECT_EQ(stored.pcapStorage.filePrefix, "test_capture");
+
+  config.setHuntingConfig(orig);
+}
+
+TEST(ConfigLoader, validJsonHuntingPartialOverride) {
+  auto &config = Configuration::instance();
+  auto orig = config.huntingConfig();
+
+  auto tmpPath = fs::temp_directory_path() / "nids_test_config_hunt_partial.json";
+  {
+    std::ofstream out(tmpPath);
+    out << R"({
+            "hunting": {
+                "enabled": true
+            }
+        })";
+  }
+
+  EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+  EXPECT_TRUE(config.huntingConfig().enabled);
+  // Defaults preserved for unset fields.
+  EXPECT_EQ(config.huntingConfig().baselineWindowHours, 168);
+
+  config.setHuntingConfig(orig);
+  fs::remove(tmpPath);
+}

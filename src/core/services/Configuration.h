@@ -143,6 +143,31 @@ public:
     void setJsonFileOutputConfig(const JsonFileOutputConfig& config);
     void setConsoleOutputEnabled(bool enabled);
 
+    // -- Threat Hunting --
+
+    /** PCAP ring-buffer storage configuration. */
+    struct PcapStorageConfig {
+        std::filesystem::path storageDir = "data/pcap";
+        std::size_t maxTotalSizeBytes = 10ULL * 1024 * 1024 * 1024;  ///< 10 GB
+        int64_t maxRetentionHours = 168;                              ///< 7 days
+        std::size_t maxFileSizeBytes = 100 * 1024 * 1024;             ///< 100 MB
+        std::string filePrefix = "nids_capture";
+    };
+
+    /** Threat hunting subsystem configuration. */
+    struct HuntingConfig {
+        bool enabled = false;
+        PcapStorageConfig pcapStorage;
+        std::filesystem::path flowDatabasePath = "data/flows.db";
+        std::size_t maxDatabaseSizeMb = 1024;   ///< 1 GB
+        bool indexAllFlows = true;               ///< false = only flagged flows
+        int baselineWindowHours = 168;           ///< 7 days
+        double anomalyThresholdSigma = 3.0;      ///< 3-sigma anomaly threshold
+    };
+
+    [[nodiscard]] const HuntingConfig& huntingConfig() const noexcept;
+    void setHuntingConfig(const HuntingConfig& config);
+
     // -- UI --
 
     /** Get the main window title string. */
@@ -170,6 +195,7 @@ private:
     SyslogOutputConfig syslogOutputConfig_;
     JsonFileOutputConfig jsonFileOutputConfig_;
     bool consoleOutputEnabled_ = true;
+    HuntingConfig huntingConfig_;
 };
 
 } // namespace nids::core
