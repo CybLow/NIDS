@@ -80,6 +80,7 @@ add_executable(nids_tests
     unit/test_SqliteFlowIndex.cpp
     unit/test_HuntEngine.cpp
     unit/test_PcapRingBuffer.cpp
+    $<$<BOOL:${NIDS_ENABLE_YARA}>:unit/test_YaraScanner.cpp>
 )
 
 target_include_directories(nids_tests PRIVATE
@@ -94,6 +95,10 @@ target_link_libraries(nids_tests PRIVATE
     nids_infra
     nids_app
     nlohmann_json::nlohmann_json
+)
+
+target_compile_definitions(nids_tests PRIVATE
+    NIDS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 )
 
 nids_set_target_defaults(nids_tests)

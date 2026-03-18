@@ -168,6 +168,24 @@ public:
     [[nodiscard]] const HuntingConfig& huntingConfig() const noexcept;
     void setHuntingConfig(const HuntingConfig& config);
 
+    // -- YARA Content Scanning --
+
+    /** YARA content scanning configuration. */
+    struct YaraConfig {
+        bool enabled = false;
+        std::filesystem::path rulesDirectory = "data/yara";
+        bool scanPackets = true;         ///< Per-packet quick scan
+        bool scanStreams = true;         ///< Per-stream deep scan (TCP reassembly)
+        int scanTimeoutMs = 10;          ///< Per-scan timeout in milliseconds
+        std::size_t maxStreamSizeBytes = 1 * 1024 * 1024;  ///< 1 MB
+        std::size_t maxConcurrentStreams = 10000;
+        bool hotReload = true;           ///< Watch rules dir for changes
+        float weight = 0.10f;            ///< Scoring weight in hybrid detection
+    };
+
+    [[nodiscard]] const YaraConfig& yaraConfig() const noexcept;
+    void setYaraConfig(const YaraConfig& config);
+
     // -- UI --
 
     /** Get the main window title string. */
@@ -196,6 +214,7 @@ private:
     JsonFileOutputConfig jsonFileOutputConfig_;
     bool consoleOutputEnabled_ = true;
     HuntingConfig huntingConfig_;
+    YaraConfig yaraConfig_;
 };
 
 } // namespace nids::core

@@ -21,6 +21,7 @@ add_library(nids_infra STATIC
     platform/SocketInit.cpp
     storage/PcapRingBuffer.cpp
     storage/SqliteFlowIndex.cpp
+    flow/TcpReassembler.cpp
 )
 
 target_link_libraries(nids_infra
@@ -36,6 +37,12 @@ target_link_libraries(nids_infra
 )
 
 target_compile_definitions(nids_infra PRIVATE NIDS_HAS_ONNX)
+
+if(NIDS_ENABLE_YARA)
+    target_sources(nids_infra PRIVATE rules/YaraScanner.cpp)
+    target_link_libraries(nids_infra PRIVATE PkgConfig::YARA)
+    target_compile_definitions(nids_infra PUBLIC NIDS_HAS_YARA)
+endif()
 
 if(WIN32)
     # Delay-load npcap DLLs so test discovery and non-pcap tests can run

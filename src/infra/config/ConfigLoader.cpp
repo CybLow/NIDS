@@ -195,6 +195,35 @@ std::expected<void, std::string> loadConfigFromFile(
       config.setHuntingConfig(hc);
     }
 
+    // -- YARA Content Scanning --
+    if (json.contains("yara")) {
+      const auto &yara = json["yara"];
+      core::Configuration::YaraConfig yc;
+      applyIfPresent<bool>(yara, "enabled",
+                           [&yc](bool v) { yc.enabled = v; });
+      applyIfPresent<std::string>(
+          yara, "rules_directory",
+          [&yc](std::string_view v) { yc.rulesDirectory = v; });
+      applyIfPresent<bool>(yara, "scan_packets",
+                           [&yc](bool v) { yc.scanPackets = v; });
+      applyIfPresent<bool>(yara, "scan_streams",
+                           [&yc](bool v) { yc.scanStreams = v; });
+      applyIfPresent<int>(yara, "scan_timeout_ms",
+                          [&yc](int v) { yc.scanTimeoutMs = v; });
+      applyIfPresent<std::size_t>(
+          yara, "max_stream_size_bytes",
+          [&yc](std::size_t v) { yc.maxStreamSizeBytes = v; });
+      applyIfPresent<std::size_t>(
+          yara, "max_concurrent_streams",
+          [&yc](std::size_t v) { yc.maxConcurrentStreams = v; });
+      applyIfPresent<bool>(yara, "hot_reload",
+                           [&yc](bool v) { yc.hotReload = v; });
+      applyIfPresent<float>(yara, "weight",
+                            [&yc](float v) { yc.weight = v; });
+
+      config.setYaraConfig(yc);
+    }
+
     // -- UI --
     if (json.contains("ui")) {
       const auto &ui = json["ui"];
