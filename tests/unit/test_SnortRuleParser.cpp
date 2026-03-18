@@ -239,6 +239,137 @@ TEST(SnortRuleParser, parse_dropAction_setsAction) {
     EXPECT_EQ(result->action, core::SnortRule::Action::Drop);
 }
 
+TEST(SnortRuleParser, parse_passAction_setsAction) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(pass tcp any any -> any any (msg:"Pass"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->action, core::SnortRule::Action::Pass);
+}
+
+TEST(SnortRuleParser, parse_rejectAction_setsAction) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(reject tcp any any -> any any (msg:"Reject"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->action, core::SnortRule::Action::Reject);
+}
+
+TEST(SnortRuleParser, parse_sdropAction_setsAction) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(sdrop tcp any any -> any any (msg:"SDrop"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->action, core::SnortRule::Action::SDrop);
+}
+
+TEST(SnortRuleParser, parse_logAction_setsAction) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(log tcp any any -> any any (msg:"Log"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->action, core::SnortRule::Action::Log);
+}
+
+TEST(SnortRuleParser, parse_unknownAction_fails) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(foobar tcp any any -> any any (msg:"Bad"; sid:1; rev:1;))");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SnortRuleParser, parse_flowToClient_setsDirection) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; flow:to_client; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->flow.has_value());
+    EXPECT_EQ(result->flow->direction,
+              core::SnortRule::FlowOption::Direction::ToClient);
+}
+
+TEST(SnortRuleParser, parse_flowStateless_setsStateless) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; flow:stateless; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->flow.has_value());
+    EXPECT_TRUE(result->flow->stateless);
+}
+
+TEST(SnortRuleParser, parse_flowbitsIsset_parsesCommand) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; flowbits:isset,login; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->flowbits.size(), 1u);
+    EXPECT_EQ(result->flowbits[0].command,
+              core::SnortRule::FlowbitsOption::Command::Isset);
+}
+
+TEST(SnortRuleParser, parse_flowbitsToggle_parsesCommand) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; flowbits:toggle,flag; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->flowbits.size(), 1u);
+    EXPECT_EQ(result->flowbits[0].command,
+              core::SnortRule::FlowbitsOption::Command::Toggle);
+}
+
+TEST(SnortRuleParser, parse_flowbitsUnset_parsesCommand) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; flowbits:unset,flag; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->flowbits.size(), 1u);
+    EXPECT_EQ(result->flowbits[0].command,
+              core::SnortRule::FlowbitsOption::Command::Unset);
+}
+
+TEST(SnortRuleParser, parse_thresholdBoth_setsType) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; threshold:type both, track by_dst, count 10, seconds 30; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->threshold.has_value());
+    EXPECT_EQ(result->threshold->type,
+              core::SnortRule::ThresholdOption::Type::Both);
+    EXPECT_EQ(result->threshold->track,
+              core::SnortRule::ThresholdOption::Track::ByDst);
+    EXPECT_EQ(result->threshold->count, 10);
+    EXPECT_EQ(result->threshold->seconds, 30);
+}
+
+TEST(SnortRuleParser, parse_metadata_extractsKeyValues) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; metadata:affected_product Web_Server, attack_target Server; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_GE(result->metadata.size(), 2u);
+    EXPECT_EQ(result->metadata[0].first, "affected_product");
+}
+
+TEST(SnortRuleParser, parse_contentWithEscapedChars_decoded) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; content:"test\;data"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->contents.size(), 1u);
+    // Pattern should contain 'test;data'
+    auto& pattern = result->contents[0].pattern;
+    std::string decoded(pattern.begin(), pattern.end());
+    EXPECT_NE(decoded.find(';'), std::string::npos);
+}
+
+TEST(SnortRuleParser, parse_ipProtocol_returns0) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert ip any any -> any any (msg:"IP"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->protocol, 0);
+}
+
 TEST(SnortRuleParser, parseFile_loadsTestRules) {
     auto path = findTestRules();
     if (path.empty()) GTEST_SKIP() << "Test rules not found";
