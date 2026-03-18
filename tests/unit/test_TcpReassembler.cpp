@@ -71,3 +71,20 @@ TEST_F(TcpReassemblerTest, destructor_cleansUpCleanly) {
                std::span<const std::uint8_t>) {});
     });
 }
+
+TEST_F(TcpReassemblerTest, completedStreams_initiallyZero) {
+    infra::TcpReassembler reassembler;
+    EXPECT_EQ(reassembler.completedStreams(), 0u);
+}
+
+TEST_F(TcpReassemblerTest, reset_afterSetCallback_clearsStreams) {
+    infra::TcpReassembler reassembler;
+    reassembler.setCallback(
+        [](const core::FlowInfo&,
+           std::span<const std::uint8_t>,
+           std::span<const std::uint8_t>) {});
+    reassembler.reset();
+
+    EXPECT_EQ(reassembler.activeStreams(), 0u);
+    EXPECT_EQ(reassembler.completedStreams(), 0u);
+}
