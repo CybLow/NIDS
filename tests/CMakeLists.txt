@@ -80,6 +80,7 @@ add_executable(nids_tests
     unit/test_SqliteFlowIndex.cpp
     unit/test_HuntEngine.cpp
     unit/test_PcapRingBuffer.cpp
+    unit/test_TcpReassembler.cpp
     $<$<BOOL:${NIDS_ENABLE_YARA}>:unit/test_YaraScanner.cpp>
 )
 

@@ -626,3 +626,79 @@ TEST(ConfigLoader, validJsonHuntingPartialOverride) {
   config.setHuntingConfig(orig);
   fs::remove(tmpPath);
 }
+
+// ── ConfigLoader: YARA section overrides ────────────────────────────
+
+TEST(ConfigLoader, validJsonOverridesYaraConfig) {
+  auto &config = Configuration::instance();
+  auto orig = config.yaraConfig();
+
+  auto tmpPath = fs::temp_directory_path() / "nids_test_config_yara.json";
+  {
+    std::ofstream out(tmpPath);
+    out << R"({
+            "yara": {
+                "enabled": true,
+                "rules_directory": "/opt/nids/yara_rules",
+                "scan_packets": false,
+                "scan_streams": true,
+                "scan_timeout_ms": 25,
+                "max_stream_size_bytes": 2097152,
+                "max_concurrent_streams": 5000,
+                "hot_reload": false,
+                "weight": 0.15
+            }
+        })";
+  }
+
+  EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+  const auto &yc = config.yaraConfig();
+  EXPECT_TRUE(yc.enabled);
+  EXPECT_EQ(yc.rulesDirectory, fs::path("/opt/nids/yara_rules"));
+  EXPECT_FALSE(yc.scanPackets);
+  EXPECT_TRUE(yc.scanStreams);
+  EXPECT_EQ(yc.scanTimeoutMs, 25);
+  EXPECT_EQ(yc.maxStreamSizeBytes, 2097152u);
+  EXPECT_EQ(yc.maxConcurrentStreams, 5000u);
+  EXPECT_FALSE(yc.hotReload);
+  EXPECT_FLOAT_EQ(yc.weight, 0.15f);
+
+  config.setYaraConfig(orig);
+  fs::remove(tmpPath);
+}
+
+TEST(Configuration, yaraConfigDefaults) {
+  const auto &config = Configuration::instance();
+  const auto &yc = config.yaraConfig();
+
+  EXPECT_FALSE(yc.enabled);
+  EXPECT_EQ(yc.rulesDirectory, fs::path("data/yara"));
+  EXPECT_TRUE(yc.scanPackets);
+  EXPECT_TRUE(yc.scanStreams);
+  EXPECT_EQ(yc.scanTimeoutMs, 10);
+  EXPECT_TRUE(yc.hotReload);
+  EXPECT_FLOAT_EQ(yc.weight, 0.10f);
+}
+
+TEST(Configuration, setYaraConfig_roundTrip) {
+  auto &config = Configuration::instance();
+  auto orig = config.yaraConfig();
+
+  Configuration::YaraConfig yc;
+  yc.enabled = true;
+  yc.rulesDirectory = "/test/yara";
+  yc.scanPackets = false;
+  yc.scanTimeoutMs = 50;
+  yc.weight = 0.25f;
+
+  config.setYaraConfig(yc);
+
+  const auto &stored = config.yaraConfig();
+  EXPECT_TRUE(stored.enabled);
+  EXPECT_EQ(stored.rulesDirectory, fs::path("/test/yara"));
+  EXPECT_FALSE(stored.scanPackets);
+  EXPECT_EQ(stored.scanTimeoutMs, 50);
+  EXPECT_FLOAT_EQ(stored.weight, 0.25f);
+
+  config.setYaraConfig(orig);
+}
