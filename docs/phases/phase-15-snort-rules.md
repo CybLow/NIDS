@@ -789,3 +789,31 @@ the Aho-Corasick + PCRE2 path. The Vectorscan fork provides ARM support.
 | 11 | Hot reload, configuration, gRPC extensions |
 | 12 | Integration tests + documentation |
 | 13-14 | Performance tuning + edge case hardening |
+
+---
+
+## Implementation Status
+
+### Completed
+
+| Component | Files | Status |
+|-----------|-------|--------|
+| **SignatureMatch model** | `core/model/SignatureMatch.h` | Done |
+| **SnortRule AST model** | `core/model/SnortRule.h` | Done |
+| **ISignatureEngine interface** | `core/services/ISignatureEngine.h` | Done |
+| **DetectionResult** | Extended with `signatureMatches`, `hasSignatureMatch()`, `maxSignatureSeverity()` | Done |
+| **SnortRuleParser** | `infra/rules/SnortRuleParser.h/.cpp` — full Snort 3.x syntax: header, content (text+hex), PCRE, flow, flowbits, threshold, metadata | Done (20 tests) |
+| **SnortRuleEngine** | `infra/rules/SnortRuleEngine.h/.cpp` — port-group pre-filter, content matching with position modifiers, bidirectional rules | Done (10 tests) |
+| **RuleVariableStore** | `infra/rules/RuleVariableStore.h/.cpp` — $HOME_NET resolution, IP/port matching | Done |
+| **SignatureConfig** | `Configuration.h` — enabled, rulesDirectory, homeNet, weight | Done |
+| **ConfigLoader** | Signatures JSON section parsing | Done |
+| **PCRE2 dependency** | `pcre2/10.44` via Conan | Done |
+| **CMake option** | `NIDS_ENABLE_SIGNATURES` | Done |
+
+### Test Coverage
+
+| Test file | Tests |
+|-----------|-------|
+| `test_SnortRuleParser.cpp` | 20 (header, content text/hex/modifiers/negation, PCRE, flow, flowbits, threshold, references, protocols, actions, file loading) |
+| `test_SnortRuleEngine.cpp` | 10 (load, HTTP GET match, SSH match, hex content, no match, empty, variables, reload, bidirectional) |
+| `test_InterfaceDestructors.cpp` | +1 (ISignatureEngine) |

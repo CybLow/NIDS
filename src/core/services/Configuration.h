@@ -186,6 +186,23 @@ public:
     [[nodiscard]] const YaraConfig& yaraConfig() const noexcept;
     void setYaraConfig(const YaraConfig& config);
 
+    // -- Snort Signature Detection --
+
+    /** Snort signature engine configuration. */
+    struct SignatureConfig {
+        bool enabled = false;
+        std::filesystem::path rulesDirectory = "data/rules";
+        bool hotReload = true;
+        int maxPcreMatchLength = 1500;
+        std::string homeNet = "192.168.0.0/16,10.0.0.0/8,172.16.0.0/12";
+        std::string externalNet = "!$HOME_NET";
+        std::string httpPorts = "80,443,8080,8443";
+        float weight = 0.25f;  ///< Scoring weight in hybrid detection
+    };
+
+    [[nodiscard]] const SignatureConfig& signatureConfig() const noexcept;
+    void setSignatureConfig(const SignatureConfig& config);
+
     // -- UI --
 
     /** Get the main window title string. */
@@ -215,6 +232,7 @@ private:
     bool consoleOutputEnabled_ = true;
     HuntingConfig huntingConfig_;
     YaraConfig yaraConfig_;
+    SignatureConfig signatureConfig_;
 };
 
 } // namespace nids::core

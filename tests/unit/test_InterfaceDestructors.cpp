@@ -14,6 +14,7 @@
 #include "core/services/IFlowIndex.h"
 #include "core/services/IHuntEngine.h"
 #include "core/services/IPcapStore.h"
+#include "core/services/ISignatureEngine.h"
 
 #include <memory>
 
@@ -168,5 +169,23 @@ TEST(InterfaceDestructors, IFlowIndex_destructor) {
 
 TEST(InterfaceDestructors, IHuntEngine_destructor) {
     std::unique_ptr<IHuntEngine> p = std::make_unique<MockHuntEngine>();
+    p.reset();
+}
+
+class MockSignatureEngine : public ISignatureEngine {
+public:
+    [[nodiscard]] bool loadRules(const std::filesystem::path&) override {
+        return true;
+    }
+    [[nodiscard]] bool reloadRules() override { return true; }
+    [[nodiscard]] std::vector<SignatureMatch> inspect(
+        std::span<const std::uint8_t>, const FlowInfo&) override { return {}; }
+    [[nodiscard]] std::size_t ruleCount() const noexcept override { return 0; }
+    [[nodiscard]] std::size_t fileCount() const noexcept override { return 0; }
+    void setVariable(std::string_view, std::string_view) override {}
+};
+
+TEST(InterfaceDestructors, ISignatureEngine_destructor) {
+    std::unique_ptr<ISignatureEngine> p = std::make_unique<MockSignatureEngine>();
     p.reset();
 }

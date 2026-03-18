@@ -224,6 +224,32 @@ std::expected<void, std::string> loadConfigFromFile(
       config.setYaraConfig(yc);
     }
 
+    // -- Snort Signatures --
+    if (json.contains("signatures")) {
+      const auto &sig = json["signatures"];
+      core::Configuration::SignatureConfig sc;
+      applyIfPresent<bool>(sig, "enabled",
+                           [&sc](bool v) { sc.enabled = v; });
+      applyIfPresent<std::string>(
+          sig, "rules_directory",
+          [&sc](std::string_view v) { sc.rulesDirectory = v; });
+      applyIfPresent<bool>(sig, "hot_reload",
+                           [&sc](bool v) { sc.hotReload = v; });
+      applyIfPresent<std::string>(
+          sig, "home_net",
+          [&sc](std::string_view v) { sc.homeNet = v; });
+      applyIfPresent<std::string>(
+          sig, "external_net",
+          [&sc](std::string_view v) { sc.externalNet = v; });
+      applyIfPresent<std::string>(
+          sig, "http_ports",
+          [&sc](std::string_view v) { sc.httpPorts = v; });
+      applyIfPresent<float>(sig, "weight",
+                            [&sc](float v) { sc.weight = v; });
+
+      config.setSignatureConfig(sc);
+    }
+
     // -- UI --
     if (json.contains("ui")) {
       const auto &ui = json["ui"];
