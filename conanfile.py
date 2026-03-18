@@ -31,6 +31,8 @@ class NidsConan(ConanFile):
         self.requires("nlohmann_json/3.11.3")
         self.requires("pcapplusplus/25.05")
         self.requires("sqlite3/3.47.2")
+        self.requires("pcre2/10.44")
+        self.requires("bzip2/1.0.8")
         if self.options.with_grpc:
             self.requires("grpc/1.72.0")
 
