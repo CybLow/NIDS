@@ -23,6 +23,7 @@ add_library(nids_infra STATIC
     storage/SqliteFlowIndex.cpp
     flow/TcpReassembler.cpp
     platform/NetfilterBlocker.cpp
+    $<$<PLATFORM_ID:Linux>:capture/AfPacketCapture.cpp>
 )
 
 target_link_libraries(nids_infra
