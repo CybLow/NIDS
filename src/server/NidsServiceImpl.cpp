@@ -213,6 +213,99 @@ grpc::Status NidsServiceImpl::GetStatus(
     return grpc::Status::OK;
 }
 
+// ── Phase 13: Threat hunting RPCs ───────────────────────────────────
+
+grpc::Status NidsServiceImpl::SearchFlows(
+    [[maybe_unused]] grpc::ServerContext* context,
+    [[maybe_unused]] const SearchFlowsRequest* request,
+    SearchFlowsResponse* response) {
+    response->set_total_count(0);
+    return grpc::Status::OK;
+}
+
+grpc::Status NidsServiceImpl::IocSearch(
+    [[maybe_unused]] grpc::ServerContext* context,
+    [[maybe_unused]] const IocSearchRequest* request,
+    IocSearchResponse* response) {
+    response->set_total_scanned(0);
+    return grpc::Status::OK;
+}
+
+// ── Phase 15: Signature management RPCs ─────────────────────────────
+
+grpc::Status NidsServiceImpl::LoadRules(
+    [[maybe_unused]] grpc::ServerContext* context,
+    [[maybe_unused]] const LoadRulesRequest* request,
+    LoadRulesResponse* response) {
+    response->set_success(false);
+    response->set_message("Signature engine not configured");
+    return grpc::Status::OK;
+}
+
+grpc::Status NidsServiceImpl::GetRuleStats(
+    [[maybe_unused]] grpc::ServerContext* context,
+    [[maybe_unused]] const GetRuleStatsRequest* request,
+    GetRuleStatsResponse* response) {
+    response->set_total_rules(0);
+    response->set_rule_files(0);
+    return grpc::Status::OK;
+}
+
+// ── Phase 16: Inline IPS RPCs ───────────────────────────────────────
+
+grpc::Status NidsServiceImpl::GetInlineStats(
+    [[maybe_unused]] grpc::ServerContext* context,
+    [[maybe_unused]] const GetInlineStatsRequest* request,
+    GetInlineStatsResponse* response) {
+    response->set_inline_active(false);
+    return grpc::Status::OK;
+}
+
+grpc::Status NidsServiceImpl::BlockFlow(
+    [[maybe_unused]] grpc::ServerContext* context,
+    [[maybe_unused]] const BlockFlowRequest* request,
+    BlockFlowResponse* response) {
+    response->set_success(false);
+    response->set_message("Inline IPS not active");
+    return grpc::Status::OK;
+}
+
+grpc::Status NidsServiceImpl::UnblockFlow(
+    [[maybe_unused]] grpc::ServerContext* context,
+    [[maybe_unused]] const UnblockFlowRequest* request,
+    UnblockFlowResponse* response) {
+    response->set_success(false);
+    return grpc::Status::OK;
+}
+
+// ── Health check ────────────────────────────────────────────────────
+
+grpc::Status NidsServiceImpl::HealthCheck(
+    [[maybe_unused]] grpc::ServerContext* context,
+    [[maybe_unused]] const HealthCheckRequest* request,
+    HealthCheckResponse* response) {
+    response->set_healthy(true);
+    response->set_version("0.2.0");
+
+    // Calculate uptime (approximate — from process start).
+    static const auto startTime = std::chrono::steady_clock::now();
+    const auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - startTime);
+    response->set_uptime_seconds(static_cast<uint64_t>(uptime.count()));
+
+    std::scoped_lock lock{sessionMutex_};
+    if (pipeline_) {
+        response->set_total_flows_processed(pipeline_->flowsDetected());
+    }
+    if (session_) {
+        response->set_total_alerts(session_->flaggedResultCount());
+    }
+
+    return grpc::Status::OK;
+}
+
+// ── Session management ──────────────────────────────────────────────
+
 void NidsServiceImpl::createSessionPipeline(const std::string& iface) {
     // Create session and pipeline
     session_ = std::make_unique<core::CaptureSession>();

@@ -82,6 +82,50 @@ public:
         const GetStatusRequest* request,
         GetStatusResponse* response) override;
 
+    // Phase 13: Threat hunting
+    grpc::Status SearchFlows(
+        grpc::ServerContext* context,
+        const SearchFlowsRequest* request,
+        SearchFlowsResponse* response) override;
+
+    grpc::Status IocSearch(
+        grpc::ServerContext* context,
+        const IocSearchRequest* request,
+        IocSearchResponse* response) override;
+
+    // Phase 15: Signature management
+    grpc::Status LoadRules(
+        grpc::ServerContext* context,
+        const LoadRulesRequest* request,
+        LoadRulesResponse* response) override;
+
+    grpc::Status GetRuleStats(
+        grpc::ServerContext* context,
+        const GetRuleStatsRequest* request,
+        GetRuleStatsResponse* response) override;
+
+    // Phase 16: Inline IPS control
+    grpc::Status GetInlineStats(
+        grpc::ServerContext* context,
+        const GetInlineStatsRequest* request,
+        GetInlineStatsResponse* response) override;
+
+    grpc::Status BlockFlow(
+        grpc::ServerContext* context,
+        const BlockFlowRequest* request,
+        BlockFlowResponse* response) override;
+
+    grpc::Status UnblockFlow(
+        grpc::ServerContext* context,
+        const UnblockFlowRequest* request,
+        UnblockFlowResponse* response) override;
+
+    // Health check
+    grpc::Status HealthCheck(
+        grpc::ServerContext* context,
+        const HealthCheckRequest* request,
+        HealthCheckResponse* response) override;
+
 private:
     core::IPacketCapture& capture_;
     core::IFlowExtractor& extractor_;

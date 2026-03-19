@@ -20,6 +20,8 @@ namespace {
     case HeuristicRule:    return SOURCE_HEURISTIC_RULE;
     case MlPlusThreatIntel: return SOURCE_ML_PLUS_TI;
     case MlPlusHeuristic:  return SOURCE_ML_PLUS_RULE;
+    case ContentScan:      return SOURCE_ENSEMBLE;  // Map to ensemble for now
+    case SignatureMatch:   return SOURCE_ENSEMBLE;
     case Ensemble:         return SOURCE_ENSEMBLE;
     case None:             return SOURCE_UNKNOWN;
     }
