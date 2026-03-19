@@ -362,6 +362,106 @@ TEST(SnortRuleParser, parse_contentWithEscapedChars_decoded) {
     EXPECT_NE(decoded.find(';'), std::string::npos);
 }
 
+TEST(SnortRuleParser, parse_contentDistance_applied) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; content:"A"; content:"B"; distance:5; within:10; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->contents.size(), 2u);
+    EXPECT_EQ(result->contents[1].distance, 5);
+    EXPECT_EQ(result->contents[1].within, 10);
+}
+
+TEST(SnortRuleParser, parse_negatedPcre_setsNegated) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; pcre:!"/bad/i"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->pcres.size(), 1u);
+    EXPECT_TRUE(result->pcres[0].negated);
+}
+
+TEST(SnortRuleParser, parse_pcreRelativeModifier_setsRelative) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; pcre:"/test/iR"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->pcres.size(), 1u);
+    EXPECT_TRUE(result->pcres[0].relative);
+    EXPECT_EQ(result->pcres[0].modifiers, "iR");
+}
+
+TEST(SnortRuleParser, parse_flowFromServer_setsToClient) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; flow:from_server; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->flow.has_value());
+    EXPECT_EQ(result->flow->direction,
+              core::SnortRule::FlowOption::Direction::ToClient);
+}
+
+TEST(SnortRuleParser, parse_flowFromClient_setsToServer) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; flow:from_client; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->flow.has_value());
+    EXPECT_EQ(result->flow->direction,
+              core::SnortRule::FlowOption::Direction::ToServer);
+}
+
+TEST(SnortRuleParser, parse_flowbitsNoalert_parsesCommand) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; flowbits:noalert; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->flowbits.size(), 1u);
+    EXPECT_EQ(result->flowbits[0].command,
+              core::SnortRule::FlowbitsOption::Command::Noalert);
+}
+
+TEST(SnortRuleParser, parse_flowbitsIsnotset_parsesCommand) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; flowbits:isnotset,flag; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->flowbits.size(), 1u);
+    EXPECT_EQ(result->flowbits[0].command,
+              core::SnortRule::FlowbitsOption::Command::IsnotSet);
+}
+
+TEST(SnortRuleParser, parse_thresholdType_threshold) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; threshold:type threshold, track by_src, count 3, seconds 120; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->threshold.has_value());
+    EXPECT_EQ(result->threshold->type,
+              core::SnortRule::ThresholdOption::Type::Threshold);
+}
+
+TEST(SnortRuleParser, parse_detectionFilter_sameAsThreshold) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; detection_filter:type limit, track by_dst, count 1, seconds 10; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->threshold.has_value());
+    EXPECT_EQ(result->threshold->type,
+              core::SnortRule::ThresholdOption::Type::Limit);
+}
+
+TEST(SnortRuleParser, parse_flowbitsWithGroup_parsesGroupAndName) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; flowbits:set,http.login_page; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->flowbits.size(), 1u);
+    EXPECT_TRUE(result->flowbits[0].group.has_value());
+    EXPECT_EQ(*result->flowbits[0].group, "http");
+    EXPECT_EQ(result->flowbits[0].name, "login_page");
+}
+
 TEST(SnortRuleParser, parse_ipProtocol_returns0) {
     infra::SnortRuleParser parser;
     auto result = parser.parse(
