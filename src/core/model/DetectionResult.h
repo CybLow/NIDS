@@ -12,6 +12,7 @@
 #include "core/model/DetectionSource.h"
 #include "core/model/PredictionResult.h"
 #include "core/model/RuleMatch.h"
+#include "core/model/SignatureMatch.h"
 #include "core/model/ThreatIntelMatch.h"
 
 #include <algorithm>
@@ -32,6 +33,9 @@ struct DetectionResult {
 
   /** Content scan matches (YARA rules) — Phase 14. */
   std::vector<ContentMatch> contentMatches;
+
+  /** Signature matches (Snort rules) — Phase 15. */
+  std::vector<SignatureMatch> signatureMatches;
 
   /** Final attack classification after combining all detection layers. */
   AttackType finalVerdict = AttackType::Unknown;
@@ -72,10 +76,24 @@ struct DetectionResult {
     return it->severity;
   }
 
+  /** Check whether any signature engine matched this flow. */
+  [[nodiscard]] bool hasSignatureMatch() const noexcept {
+    return !signatureMatches.empty();
+  }
+
+  /// Maximum severity across all signature matches, or 0.0 if none.
+  [[nodiscard]] float maxSignatureSeverity() const noexcept {
+    if (signatureMatches.empty())
+      return 0.0f;
+    auto it = std::ranges::max_element(
+        signatureMatches, {}, [](const auto& s) { return s.severity; });
+    return it->severity;
+  }
+
   /// True if any detection layer flagged this flow as suspicious.
   [[nodiscard]] bool isFlagged() const noexcept {
     return mlResult.isAttack() || hasThreatIntelMatch() ||
-           hasRuleMatch() || hasContentMatch();
+           hasRuleMatch() || hasContentMatch() || hasSignatureMatch();
   }
 };
 

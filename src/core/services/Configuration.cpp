@@ -139,4 +139,13 @@ void Configuration::setYaraConfig(const YaraConfig& config) {
   yaraConfig_ = config;
 }
 
+const Configuration::SignatureConfig&
+Configuration::signatureConfig() const noexcept {
+  return signatureConfig_;
+}
+
+void Configuration::setSignatureConfig(const SignatureConfig& config) {
+  signatureConfig_ = config;
+}
+
 } // namespace nids::core

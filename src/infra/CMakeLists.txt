@@ -44,6 +44,16 @@ if(NIDS_ENABLE_YARA)
     target_compile_definitions(nids_infra PUBLIC NIDS_HAS_YARA)
 endif()
 
+if(NIDS_ENABLE_SIGNATURES)
+    target_sources(nids_infra PRIVATE
+        rules/SnortRuleParser.cpp
+        rules/SnortRuleEngine.cpp
+        rules/RuleVariableStore.cpp
+    )
+    target_link_libraries(nids_infra PRIVATE PCRE2::8BIT)
+    target_compile_definitions(nids_infra PUBLIC NIDS_HAS_SIGNATURES)
+endif()
+
 if(WIN32)
     # Delay-load npcap DLLs so test discovery and non-pcap tests can run
     # without npcap runtime installed. Pcap-dependent tests use GTEST_SKIP

@@ -82,6 +82,9 @@ add_executable(nids_tests
     unit/test_PcapRingBuffer.cpp
     unit/test_TcpReassembler.cpp
     $<$<BOOL:${NIDS_ENABLE_YARA}>:unit/test_YaraScanner.cpp>
+    $<$<BOOL:${NIDS_ENABLE_SIGNATURES}>:unit/test_SnortRuleParser.cpp>
+    $<$<BOOL:${NIDS_ENABLE_SIGNATURES}>:unit/test_SnortRuleEngine.cpp>
+    $<$<BOOL:${NIDS_ENABLE_SIGNATURES}>:unit/test_RuleVariableStore.cpp>
 )
 
 target_include_directories(nids_tests PRIVATE
