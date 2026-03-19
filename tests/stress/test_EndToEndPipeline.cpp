@@ -21,7 +21,7 @@ protected:
     void SetUp() override {
         // Generate a test pcap.
         pcapPath_ = std::filesystem::temp_directory_path() / "nids_e2e_stress.pcap";
-        generatePcap(pcapPath_, kPacketCount, kFlowCount);
+        generatePcap(pcapPath_.string(), kPacketCount, kFlowCount);
     }
 
     void TearDown() override {
@@ -62,7 +62,7 @@ TEST_F(EndToEndPipelineStress, fullPipeline_50kPackets_completesUnder10s) {
 
         for (std::size_t i = 0; i < features.size(); ++i) {
             auto prediction = analyzer.predictWithConfidence(features[i]);
-            auto result = hybridService.evaluate(
+            [[maybe_unused]] auto result = hybridService.evaluate(
                 prediction, metadata[i].srcIp, metadata[i].dstIp, metadata[i]);
             outputCount.fetch_add(1);
         }
