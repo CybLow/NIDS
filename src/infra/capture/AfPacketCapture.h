@@ -32,9 +32,9 @@ public:
     [[nodiscard]] core::IInlineCapture::Stats stats() const noexcept override;
 
 private:
-    [[nodiscard]] bool createSocket(const std::string& iface, int& fd);
-    [[nodiscard]] bool bindToInterface(int fd, const std::string& iface);
-    [[nodiscard]] bool setPromiscuous(const std::string& iface, int fd);
+    [[nodiscard]] bool createSocket(const std::string& iface, int& fd) const;
+    [[nodiscard]] bool bindToInterface(int fd, const std::string& iface) const;
+    [[nodiscard]] bool setPromiscuous(const std::string& iface, int fd) const;
     void forwardPacket(const std::uint8_t* data, std::size_t len);
     void captureLoop();
 
