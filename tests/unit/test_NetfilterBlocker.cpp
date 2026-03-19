@@ -43,7 +43,7 @@ TEST(NetfilterBlocker, unblock_removesRule) {
     NetfilterBlocker blocker(true);
     auto key = makeKey();
 
-    blocker.block(key, "test");
+    EXPECT_TRUE(blocker.block(key, "test"));
     EXPECT_TRUE(blocker.isBlocked(key));
 
     EXPECT_TRUE(blocker.unblock(key));
@@ -59,9 +59,9 @@ TEST(NetfilterBlocker, unblock_nonexistentKey_returnsFalse) {
 TEST(NetfilterBlocker, clearAll_removesAllRules) {
     NetfilterBlocker blocker(true);
 
-    blocker.block(makeKey("10.0.0.1", "1.1.1.1", 111, 80), "a");
-    blocker.block(makeKey("10.0.0.2", "2.2.2.2", 222, 443), "b");
-    blocker.block(makeKey("10.0.0.3", "3.3.3.3", 333, 22), "c");
+    EXPECT_TRUE(blocker.block(makeKey("10.0.0.1", "1.1.1.1", 111, 80), "a"));
+    EXPECT_TRUE(blocker.block(makeKey("10.0.0.2", "2.2.2.2", 222, 443), "b"));
+    EXPECT_TRUE(blocker.block(makeKey("10.0.0.3", "3.3.3.3", 333, 22), "c"));
     EXPECT_EQ(blocker.activeRuleCount(), 3u);
 
     blocker.clearAll();
@@ -72,10 +72,8 @@ TEST(NetfilterBlocker, sweepExpired_removesOldRules) {
     NetfilterBlocker blocker(true);
     auto key = makeKey();
 
-    // Block with 0 duration = immediately expired.
-    blocker.block(key, "test", std::chrono::seconds{0});
+    EXPECT_TRUE(blocker.block(key, "test", std::chrono::seconds{0}));
 
-    // Small delay to ensure clock has advanced past expiry.
     std::this_thread::sleep_for(std::chrono::milliseconds{10});
 
     blocker.sweepExpired();
@@ -86,7 +84,7 @@ TEST(NetfilterBlocker, sweepExpired_keepsActiveRules) {
     NetfilterBlocker blocker(true);
     auto key = makeKey();
 
-    blocker.block(key, "test", std::chrono::seconds{3600});
+    EXPECT_TRUE(blocker.block(key, "test", std::chrono::seconds{3600}));
     blocker.sweepExpired();
 
     EXPECT_EQ(blocker.activeRuleCount(), 1u);
@@ -104,13 +102,13 @@ TEST(NetfilterBlocker, multipleBlocks_trackedIndependently) {
     auto key1 = makeKey("10.0.0.1", "1.1.1.1", 111, 80);
     auto key2 = makeKey("10.0.0.2", "2.2.2.2", 222, 443);
 
-    blocker.block(key1, "a");
-    blocker.block(key2, "b");
+    EXPECT_TRUE(blocker.block(key1, "a"));
+    EXPECT_TRUE(blocker.block(key2, "b"));
 
     EXPECT_TRUE(blocker.isBlocked(key1));
     EXPECT_TRUE(blocker.isBlocked(key2));
 
-    blocker.unblock(key1);
+    EXPECT_TRUE(blocker.unblock(key1));
     EXPECT_FALSE(blocker.isBlocked(key1));
     EXPECT_TRUE(blocker.isBlocked(key2));
 }
@@ -118,6 +116,6 @@ TEST(NetfilterBlocker, multipleBlocks_trackedIndependently) {
 TEST(NetfilterBlocker, destructor_clearsRules) {
     EXPECT_NO_THROW({
         NetfilterBlocker blocker(true);
-        blocker.block(makeKey(), "test");
+        EXPECT_TRUE(blocker.block(makeKey(), "test"));
     });
 }
