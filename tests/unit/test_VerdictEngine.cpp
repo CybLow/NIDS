@@ -141,6 +141,37 @@ TEST(VerdictEngine, emptyPayload_noDetectors_forwards) {
     EXPECT_EQ(result.verdict, core::PacketVerdict::Forward);
 }
 
+TEST(VerdictEngine, isBlocked_unknownFlow_returnsFalse) {
+    app::VerdictEngine engine(nullptr, nullptr, nullptr);
+    infra::FlowKey key{"1.2.3.4", "5.6.7.8", 111, 222, 6};
+    EXPECT_FALSE(engine.isBlocked(key));
+}
+
+TEST(VerdictEngine, blockFlow_duplicateKey_noDouble) {
+    app::VerdictEngine engine(nullptr, nullptr, nullptr);
+    infra::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
+
+    engine.blockFlow(key, "first");
+    engine.blockFlow(key, "second"); // duplicate insert
+    EXPECT_EQ(engine.blockCount(), 1u);
+}
+
+TEST(VerdictEngine, evaluate_tiNoBlock_dstChecked) {
+    nids::testing::MockThreatIntel mockTi;
+    EXPECT_CALL(mockTi, lookup(std::string_view("10.0.0.1")))
+        .WillOnce(Return(core::ThreatIntelLookup{false, ""}));
+    EXPECT_CALL(mockTi, lookup(std::string_view("192.168.1.1")))
+        .WillOnce(Return(core::ThreatIntelLookup{false, ""}));
+
+    app::VerdictEngine engine(&mockTi, nullptr, nullptr);
+
+    auto payload = toBytes("data");
+    auto flow = makeFlow("10.0.0.1", "192.168.1.1", 12345, 80);
+
+    auto result = engine.evaluate(payload, flow);
+    EXPECT_EQ(result.verdict, core::PacketVerdict::Forward);
+}
+
 TEST(VerdictEngine, setPolicy_updatesPolicy) {
     app::VerdictEngine engine(nullptr, nullptr, nullptr);
 
