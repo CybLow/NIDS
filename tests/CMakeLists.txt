@@ -156,6 +156,7 @@ add_executable(nids_stress_tests
     stress/test_MlInferenceLatency.cpp
     stress/test_ConcurrentAnalysis.cpp
     stress/test_MemoryStress.cpp
+    stress/test_EndToEndPipeline.cpp
 )
 
 target_include_directories(nids_stress_tests PRIVATE
