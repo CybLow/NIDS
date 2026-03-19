@@ -39,7 +39,7 @@ bool AfPacketCapture::initialize(const core::InlineConfig& config) {
         return false;
     }
     if (config.promiscuous) {
-        setPromiscuous(config.inputInterface, rxFd_);
+        [[maybe_unused]] auto ok = setPromiscuous(config.inputInterface, rxFd_);
     }
 
     // Create TX socket (output NIC).
@@ -133,7 +133,7 @@ void AfPacketCapture::stop() {
 }
 
 void AfPacketCapture::captureLoop() {
-    std::vector<std::uint8_t> buf(config_.snaplen);
+    std::vector<std::uint8_t> buf(static_cast<std::size_t>(config_.snaplen));
 
     pollfd pfd{};
     pfd.fd = rxFd_;
