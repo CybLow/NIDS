@@ -166,6 +166,8 @@ install(DIRECTORY data/threat_intel/
 if(UNIX)
     install(PROGRAMS scripts/ops/update_threat_feeds.sh
         DESTINATION ${CMAKE_INSTALL_DATADIR}/nids/scripts OPTIONAL)
+    install(FILES deploy/nids-server.service
+        DESTINATION lib/systemd/system OPTIONAL)
 endif()
 
 if(WIN32 AND TARGET onnxruntime::onnxruntime)
@@ -194,10 +196,10 @@ elseif(APPLE)
 else()
     set(CPACK_GENERATOR "DEB;RPM;TGZ")
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "libqt6widgets6 (>= 6.2), libqt6gui6 (>= 6.2), libqt6core6 (>= 6.2)")
+        "libpcap0.8, libstdc++6")
     set(CPACK_DEBIAN_PACKAGE_SECTION "net")
     set(CPACK_RPM_PACKAGE_REQUIRES
-        "qt6-qtbase")
+        "libpcap, libstdc++")
 endif()
 
 include(CPack)

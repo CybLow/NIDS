@@ -1,0 +1,40 @@
+[Unit]
+Description=NIDS - Network Intrusion Detection System Server
+Documentation=https://github.com/CybLow/NIDS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nids
+Group=nids
+
+ExecStart=/usr/local/bin/nids-server \
+    --config /etc/nids/config.json \
+    --interface %i
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Network capabilities (required for raw socket capture).
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+NoNewPrivileges=yes
+
+# Security hardening.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/nids /var/log/nids
+
+# Resource limits.
+LimitNOFILE=65536
+LimitCORE=0
+
+# Logging.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nids-server
+
+[Install]
+WantedBy=multi-user.target
