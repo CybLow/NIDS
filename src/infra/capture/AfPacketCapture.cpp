@@ -79,7 +79,8 @@ bool AfPacketCapture::bindToInterface(
 bool AfPacketCapture::setPromiscuous(
     const std::string& iface, int fd) const {
     struct ifreq ifr{};
-    std::strncpy(ifr.ifr_name, iface.c_str(), IFNAMSIZ - 1);
+    // Safe: iface is validated at bind time; IFNAMSIZ includes null.
+    iface.copy(ifr.ifr_name, IFNAMSIZ - 1); // NOSONAR — bounded by IFNAMSIZ
 
     if (::ioctl(fd, SIOCGIFFLAGS, &ifr) < 0) {
         spdlog::warn("AfPacketCapture: SIOCGIFFLAGS failed for {}", iface);
