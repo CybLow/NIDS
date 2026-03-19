@@ -13,6 +13,7 @@
 #include "core/services/IContentScanner.h"
 #include "core/services/IFlowIndex.h"
 #include "core/services/IHuntEngine.h"
+#include "core/services/IInlineCapture.h"
 #include "core/services/IPcapStore.h"
 #include "core/services/ISignatureEngine.h"
 
@@ -187,5 +188,19 @@ public:
 
 TEST(InterfaceDestructors, ISignatureEngine_destructor) {
     std::unique_ptr<ISignatureEngine> p = std::make_unique<MockSignatureEngine>();
+    p.reset();
+}
+
+class MockInlineCapture : public IInlineCapture {
+public:
+    [[nodiscard]] bool initialize(const InlineConfig&) override { return true; }
+    void setVerdictCallback(VerdictCallback) override {}
+    void start() override {}
+    void stop() override {}
+    [[nodiscard]] Stats stats() const noexcept override { return {}; }
+};
+
+TEST(InterfaceDestructors, IInlineCapture_destructor) {
+    std::unique_ptr<IInlineCapture> p = std::make_unique<MockInlineCapture>();
     p.reset();
 }

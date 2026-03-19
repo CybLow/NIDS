@@ -148,4 +148,13 @@ void Configuration::setSignatureConfig(const SignatureConfig& config) {
   signatureConfig_ = config;
 }
 
+const Configuration::InlineIpsConfig&
+Configuration::inlineIpsConfig() const noexcept {
+  return inlineIpsConfig_;
+}
+
+void Configuration::setInlineIpsConfig(const InlineIpsConfig& config) {
+  inlineIpsConfig_ = config;
+}
+
 } // namespace nids::core

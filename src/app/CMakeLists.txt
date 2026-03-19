@@ -12,6 +12,8 @@ add_library(nids_app STATIC
     SinkChain.cpp
     OutputSinkFactory.cpp
     HuntEngine.cpp
+    VerdictEngine.cpp
+    BypassManager.cpp
     commands/CaptureCommands.cpp
 )
 

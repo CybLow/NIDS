@@ -203,6 +203,27 @@ public:
     [[nodiscard]] const SignatureConfig& signatureConfig() const noexcept;
     void setSignatureConfig(const SignatureConfig& config);
 
+    // -- Inline IPS --
+
+    /** Inline IPS configuration. */
+    struct InlineIpsConfig {
+        bool enabled = false;
+        std::string inputInterface;
+        std::string outputInterface;
+        bool failOpen = true;           ///< true = fail-open, false = fail-closed
+        bool blockOnTiMatch = true;
+        bool blockOnSignature = true;
+        bool blockOnYara = false;
+        bool blockOnMlVerdict = true;
+        float mlBlockThreshold = 0.85f;
+        int blockDurationSeconds = 300;
+        int bypassCleanPacketThreshold = 100;
+        bool bypassEnabled = true;
+    };
+
+    [[nodiscard]] const InlineIpsConfig& inlineIpsConfig() const noexcept;
+    void setInlineIpsConfig(const InlineIpsConfig& config);
+
     // -- UI --
 
     /** Get the main window title string. */
@@ -233,6 +254,7 @@ private:
     HuntingConfig huntingConfig_;
     YaraConfig yaraConfig_;
     SignatureConfig signatureConfig_;
+    InlineIpsConfig inlineIpsConfig_;
 };
 
 } // namespace nids::core
