@@ -85,6 +85,9 @@ add_executable(nids_tests
     $<$<BOOL:${NIDS_ENABLE_SIGNATURES}>:unit/test_SnortRuleParser.cpp>
     $<$<BOOL:${NIDS_ENABLE_SIGNATURES}>:unit/test_SnortRuleEngine.cpp>
     $<$<BOOL:${NIDS_ENABLE_SIGNATURES}>:unit/test_RuleVariableStore.cpp>
+    unit/test_VerdictEngine.cpp
+    unit/test_BypassManager.cpp
+    unit/test_NetfilterBlocker.cpp
 )
 
 target_include_directories(nids_tests PRIVATE

@@ -702,3 +702,65 @@ TEST(Configuration, setYaraConfig_roundTrip) {
 
   config.setYaraConfig(orig);
 }
+
+// ── ConfigLoader: inline IPS section ────────────────────────────────
+
+TEST(ConfigLoader, validJsonOverridesInlineIpsConfig) {
+  auto &config = Configuration::instance();
+  auto orig = config.inlineIpsConfig();
+
+  auto tmpPath = fs::temp_directory_path() / "nids_test_config_inline.json";
+  {
+    std::ofstream out(tmpPath);
+    out << R"({
+            "inline": {
+                "enabled": true,
+                "input_interface": "eth0",
+                "output_interface": "eth1",
+                "fail_open": false,
+                "block_on_ti": true,
+                "block_on_signature": true,
+                "block_on_yara": true,
+                "block_on_ml": false,
+                "ml_block_threshold": 0.9,
+                "block_duration_seconds": 600,
+                "bypass_clean_packet_threshold": 200,
+                "bypass_enabled": false
+            }
+        })";
+  }
+
+  EXPECT_TRUE(nids::infra::loadConfigFromFile(tmpPath, config));
+  const auto &ic = config.inlineIpsConfig();
+  EXPECT_TRUE(ic.enabled);
+  EXPECT_EQ(ic.inputInterface, "eth0");
+  EXPECT_EQ(ic.outputInterface, "eth1");
+  EXPECT_FALSE(ic.failOpen);
+  EXPECT_TRUE(ic.blockOnTiMatch);
+  EXPECT_TRUE(ic.blockOnYara);
+  EXPECT_FALSE(ic.blockOnMlVerdict);
+  EXPECT_FLOAT_EQ(ic.mlBlockThreshold, 0.9f);
+  EXPECT_EQ(ic.blockDurationSeconds, 600);
+  EXPECT_EQ(ic.bypassCleanPacketThreshold, 200);
+  EXPECT_FALSE(ic.bypassEnabled);
+
+  config.setInlineIpsConfig(orig);
+  fs::remove(tmpPath);
+}
+
+TEST(Configuration, inlineIpsConfigDefaults) {
+  const auto &config = Configuration::instance();
+  const auto &ic = config.inlineIpsConfig();
+
+  EXPECT_FALSE(ic.enabled);
+  EXPECT_TRUE(ic.inputInterface.empty());
+  EXPECT_TRUE(ic.failOpen);
+  EXPECT_TRUE(ic.blockOnTiMatch);
+  EXPECT_TRUE(ic.blockOnSignature);
+  EXPECT_FALSE(ic.blockOnYara);
+  EXPECT_TRUE(ic.blockOnMlVerdict);
+  EXPECT_FLOAT_EQ(ic.mlBlockThreshold, 0.85f);
+  EXPECT_EQ(ic.blockDurationSeconds, 300);
+  EXPECT_EQ(ic.bypassCleanPacketThreshold, 100);
+  EXPECT_TRUE(ic.bypassEnabled);
+}

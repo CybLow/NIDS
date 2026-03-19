@@ -793,3 +793,28 @@ detection mode (PcapPlusPlus) remains cross-platform.
 | 14 | Bypass optimization (kernel-level forwarding for clean flows) |
 | 15-16 | Hardening: edge cases, error recovery, documentation |
 | 17-18 | Production readiness: monitoring, logging, operational docs |
+
+---
+
+## Implementation Status
+
+### Completed
+
+| Component | Files | Status |
+|-----------|-------|--------|
+| **PacketVerdict model** | `core/model/PacketVerdict.h` | Done |
+| **IInlineCapture interface** | `core/services/IInlineCapture.h` | Done |
+| **VerdictEngine** | `app/VerdictEngine.h/.cpp` — TI+signature+YARA+dynamic block | Done (9 tests) |
+| **BypassManager** | `app/BypassManager.h/.cpp` — clean flow tracking + bypass | Done (10 tests) |
+| **NetfilterBlocker** | `infra/platform/NetfilterBlocker.h/.cpp` — dry-run rule tracking | Done (11 tests) |
+| **InlineIpsConfig** | `Configuration.h` | Done |
+| **ConfigLoader** | Inline JSON section parsing | Done |
+
+### Test Coverage
+
+| Test file | Tests |
+|-----------|-------|
+| `test_VerdictEngine.cpp` | 9 (default forward, TI block src/dst, TI disabled, dynamic block/unblock/clear, empty payload, policy) |
+| `test_BypassManager.cpp` | 10 (new flow, below/above threshold, explicit bypass, revoke, sweep, disabled, multi-flow, policy update) |
+| `test_NetfilterBlocker.cpp` | 11 (constructor, block/unblock, duplicate, clearAll, sweep expired/active, unknown key, multi-block, destructor) |
+| `test_InterfaceDestructors.cpp` | +1 (IInlineCapture) |

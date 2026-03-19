@@ -22,6 +22,7 @@ add_library(nids_infra STATIC
     storage/PcapRingBuffer.cpp
     storage/SqliteFlowIndex.cpp
     flow/TcpReassembler.cpp
+    platform/NetfilterBlocker.cpp
 )
 
 target_link_libraries(nids_infra

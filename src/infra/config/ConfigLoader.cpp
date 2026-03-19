@@ -250,6 +250,40 @@ std::expected<void, std::string> loadConfigFromFile(
       config.setSignatureConfig(sc);
     }
 
+    // -- Inline IPS --
+    if (json.contains("inline")) {
+      const auto &inl = json["inline"];
+      core::Configuration::InlineIpsConfig ic;
+      applyIfPresent<bool>(inl, "enabled",
+                           [&ic](bool v) { ic.enabled = v; });
+      applyIfPresent<std::string>(
+          inl, "input_interface",
+          [&ic](std::string_view v) { ic.inputInterface = v; });
+      applyIfPresent<std::string>(
+          inl, "output_interface",
+          [&ic](std::string_view v) { ic.outputInterface = v; });
+      applyIfPresent<bool>(inl, "fail_open",
+                           [&ic](bool v) { ic.failOpen = v; });
+      applyIfPresent<bool>(inl, "block_on_ti",
+                           [&ic](bool v) { ic.blockOnTiMatch = v; });
+      applyIfPresent<bool>(inl, "block_on_signature",
+                           [&ic](bool v) { ic.blockOnSignature = v; });
+      applyIfPresent<bool>(inl, "block_on_yara",
+                           [&ic](bool v) { ic.blockOnYara = v; });
+      applyIfPresent<bool>(inl, "block_on_ml",
+                           [&ic](bool v) { ic.blockOnMlVerdict = v; });
+      applyIfPresent<float>(inl, "ml_block_threshold",
+                            [&ic](float v) { ic.mlBlockThreshold = v; });
+      applyIfPresent<int>(inl, "block_duration_seconds",
+                          [&ic](int v) { ic.blockDurationSeconds = v; });
+      applyIfPresent<int>(inl, "bypass_clean_packet_threshold",
+                          [&ic](int v) { ic.bypassCleanPacketThreshold = v; });
+      applyIfPresent<bool>(inl, "bypass_enabled",
+                           [&ic](bool v) { ic.bypassEnabled = v; });
+
+      config.setInlineIpsConfig(ic);
+    }
+
     // -- UI --
     if (json.contains("ui")) {
       const auto &ui = json["ui"];
