@@ -2,6 +2,7 @@
 
 #include "client/NidsClient.h"
 
+#include <QComboBox>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -15,78 +16,161 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include <thread>
+
 namespace nids::ui {
 
-ServerDashboard::ServerDashboard(QWidget* parent)
-    : QWidget(parent) {
+ServerDashboard::ServerDashboard(QWidget* parent) : QWidget(parent) {
     setupUi();
 }
 
-ServerDashboard::~ServerDashboard() = default;
+ServerDashboard::~ServerDashboard() {
+    streaming_.store(false);
+}
 
-// ── UI setup ────────────────────────────────────────────────────────
+// ── UI Construction ─────────────────────────────────────────────────
 
 void ServerDashboard::setupUi() {
     auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->addWidget(createConnectionBar());
 
-    // Connection bar.
-    auto* connLayout = new QHBoxLayout;
-    connLayout->addWidget(new QLabel("Server:"));
+    tabs_ = new QTabWidget;
+    tabs_->addTab(createHealthTab(), "Health");
+    tabs_->addTab(createCaptureTab(), "Capture");
+    tabs_->addTab(createStreamingTab(), "Live Stream");
+    tabs_->addTab(createHuntTab(), "Threat Hunting");
+    tabs_->addTab(createRulesTab(), "Signatures");
+    tabs_->setEnabled(false);
+    mainLayout->addWidget(tabs_);
+
+    refreshTimer_ = new QTimer(this);
+    connect(refreshTimer_, &QTimer::timeout, this, &ServerDashboard::onRefresh);
+}
+
+QWidget* ServerDashboard::createConnectionBar() {
+    auto* bar = new QWidget;
+    auto* layout = new QHBoxLayout(bar);
+    layout->setContentsMargins(0, 0, 0, 0);
+
+    layout->addWidget(new QLabel("Server:"));
     serverAddress_ = new QLineEdit("localhost:50051");
     serverAddress_->setMaximumWidth(250);
-    connLayout->addWidget(serverAddress_);
+    layout->addWidget(serverAddress_);
 
     connectBtn_ = new QPushButton("Connect");
     disconnectBtn_ = new QPushButton("Disconnect");
     disconnectBtn_->setEnabled(false);
-    connLayout->addWidget(connectBtn_);
-    connLayout->addWidget(disconnectBtn_);
+    layout->addWidget(connectBtn_);
+    layout->addWidget(disconnectBtn_);
 
     connectionStatus_ = new QLabel("Disconnected");
     connectionStatus_->setStyleSheet("color: red; font-weight: bold;");
-    connLayout->addWidget(connectionStatus_);
-    connLayout->addStretch();
+    layout->addWidget(connectionStatus_);
+    layout->addStretch();
 
-    mainLayout->addLayout(connLayout);
+    connect(connectBtn_, &QPushButton::clicked, this, &ServerDashboard::onConnect);
+    connect(disconnectBtn_, &QPushButton::clicked, this, &ServerDashboard::onDisconnect);
 
-    // Tabs.
-    tabs_ = new QTabWidget;
+    return bar;
+}
 
-    // ── Health tab ──────────────────────────────────────────────
-    auto* healthTab = new QWidget;
-    auto* healthLayout = new QFormLayout(healthTab);
+QWidget* ServerDashboard::createHealthTab() {
+    auto* tab = new QWidget;
+    auto* layout = new QFormLayout(tab);
     healthStatus_ = new QLabel("--");
     versionLabel_ = new QLabel("--");
     uptimeLabel_ = new QLabel("--");
     totalFlowsLabel_ = new QLabel("--");
     totalAlertsLabel_ = new QLabel("--");
-    healthLayout->addRow("Status:", healthStatus_);
-    healthLayout->addRow("Version:", versionLabel_);
-    healthLayout->addRow("Uptime:", uptimeLabel_);
-    healthLayout->addRow("Total flows:", totalFlowsLabel_);
-    healthLayout->addRow("Total alerts:", totalAlertsLabel_);
-    tabs_->addTab(healthTab, "Health");
+    layout->addRow("Status:", healthStatus_);
+    layout->addRow("Version:", versionLabel_);
+    layout->addRow("Uptime:", uptimeLabel_);
+    layout->addRow("Total flows:", totalFlowsLabel_);
+    layout->addRow("Total alerts:", totalAlertsLabel_);
+    return tab;
+}
 
-    // ── Server Status tab ──────────────────────────────────────
-    auto* statusTab = new QWidget;
-    auto* statusLayout = new QFormLayout(statusTab);
-    capturingLabel_ = new QLabel("--");
-    interfaceLabel_ = new QLabel("--");
+QWidget* ServerDashboard::createCaptureTab() {
+    auto* tab = new QWidget;
+    auto* layout = new QVBoxLayout(tab);
+
+    // Capture controls.
+    auto* ctrlGroup = new QGroupBox("Capture Control");
+    auto* ctrlLayout = new QHBoxLayout(ctrlGroup);
+
+    interfaceCombo_ = new QComboBox;
+    interfaceCombo_->setMinimumWidth(150);
+    refreshIfacesBtn_ = new QPushButton("Refresh");
+    startCaptureBtn_ = new QPushButton("Start Capture");
+    stopCaptureBtn_ = new QPushButton("Stop Capture");
+    stopCaptureBtn_->setEnabled(false);
+
+    ctrlLayout->addWidget(new QLabel("Interface:"));
+    ctrlLayout->addWidget(interfaceCombo_);
+    ctrlLayout->addWidget(refreshIfacesBtn_);
+    ctrlLayout->addWidget(startCaptureBtn_);
+    ctrlLayout->addWidget(stopCaptureBtn_);
+    ctrlLayout->addStretch();
+    layout->addWidget(ctrlGroup);
+
+    // Live stats.
+    auto* statsGroup = new QGroupBox("Session Statistics");
+    auto* statsLayout = new QFormLayout(statsGroup);
+    capturingLabel_ = new QLabel("No");
     sessionLabel_ = new QLabel("--");
-    packetsLabel_ = new QLabel("--");
-    flowsLabel_ = new QLabel("--");
-    flaggedLabel_ = new QLabel("--");
-    statusLayout->addRow("Capturing:", capturingLabel_);
-    statusLayout->addRow("Interface:", interfaceLabel_);
-    statusLayout->addRow("Session:", sessionLabel_);
-    statusLayout->addRow("Packets:", packetsLabel_);
-    statusLayout->addRow("Flows:", flowsLabel_);
-    statusLayout->addRow("Flagged:", flaggedLabel_);
-    tabs_->addTab(statusTab, "Capture Status");
+    packetsLabel_ = new QLabel("0");
+    flowsLabel_ = new QLabel("0");
+    flaggedLabel_ = new QLabel("0");
+    statsLayout->addRow("Capturing:", capturingLabel_);
+    statsLayout->addRow("Session ID:", sessionLabel_);
+    statsLayout->addRow("Packets:", packetsLabel_);
+    statsLayout->addRow("Flows:", flowsLabel_);
+    statsLayout->addRow("Flagged:", flaggedLabel_);
+    layout->addWidget(statsGroup);
+    layout->addStretch();
 
-    // ── Hunt tab ───────────────────────────────────────────────
-    auto* huntTab = new QWidget;
-    auto* huntLayout = new QVBoxLayout(huntTab);
+    connect(refreshIfacesBtn_, &QPushButton::clicked,
+            this, &ServerDashboard::onRefreshInterfaces);
+    connect(startCaptureBtn_, &QPushButton::clicked,
+            this, &ServerDashboard::onStartCapture);
+    connect(stopCaptureBtn_, &QPushButton::clicked,
+            this, &ServerDashboard::onStopCapture);
+
+    return tab;
+}
+
+QWidget* ServerDashboard::createStreamingTab() {
+    auto* tab = new QWidget;
+    auto* layout = new QVBoxLayout(tab);
+
+    auto* btnLayout = new QHBoxLayout;
+    startStreamBtn_ = new QPushButton("Start Streaming");
+    stopStreamBtn_ = new QPushButton("Stop");
+    stopStreamBtn_->setEnabled(false);
+    btnLayout->addWidget(startStreamBtn_);
+    btnLayout->addWidget(stopStreamBtn_);
+    btnLayout->addStretch();
+    layout->addLayout(btnLayout);
+
+    streamTable_ = new QTableWidget(0, 7);
+    streamTable_->setHorizontalHeaderLabels(
+        {"Flow", "Verdict", "Source", "Destination", "Protocol",
+         "Classification", "Score"});
+    streamTable_->horizontalHeader()->setStretchLastSection(true);
+    streamTable_->setEditTriggers(QTableWidget::NoEditTriggers);
+    layout->addWidget(streamTable_);
+
+    connect(startStreamBtn_, &QPushButton::clicked,
+            this, &ServerDashboard::onStartStreaming);
+    connect(stopStreamBtn_, &QPushButton::clicked,
+            this, &ServerDashboard::onStopStreaming);
+
+    return tab;
+}
+
+QWidget* ServerDashboard::createHuntTab() {
+    auto* tab = new QWidget;
+    auto* layout = new QVBoxLayout(tab);
 
     // Flow search.
     auto* searchGroup = new QGroupBox("Flow Search");
@@ -97,17 +181,17 @@ void ServerDashboard::setupUi() {
     searchLayout->addWidget(new QLabel("IP:"));
     searchLayout->addWidget(searchIpInput_);
     searchLayout->addWidget(searchBtn_);
-    huntLayout->addWidget(searchGroup);
+    layout->addWidget(searchGroup);
 
     searchResults_ = new QTableWidget(0, 6);
     searchResults_->setHorizontalHeaderLabels(
         {"Source", "Destination", "Port", "Verdict", "Score", "Flagged"});
     searchResults_->horizontalHeader()->setStretchLastSection(true);
     searchResults_->setEditTriggers(QTableWidget::NoEditTriggers);
-    huntLayout->addWidget(searchResults_);
+    layout->addWidget(searchResults_);
 
     // IOC search.
-    auto* iocGroup = new QGroupBox("IOC Search");
+    auto* iocGroup = new QGroupBox("IOC Indicator Search");
     auto* iocLayout = new QHBoxLayout(iocGroup);
     iocInput_ = new QLineEdit;
     iocInput_->setPlaceholderText("IPs (comma-separated)");
@@ -115,20 +199,26 @@ void ServerDashboard::setupUi() {
     iocLayout->addWidget(new QLabel("IOCs:"));
     iocLayout->addWidget(iocInput_);
     iocLayout->addWidget(iocBtn_);
-    huntLayout->addWidget(iocGroup);
+    layout->addWidget(iocGroup);
 
     iocResults_ = new QTableWidget(0, 5);
     iocResults_->setHorizontalHeaderLabels(
         {"Source", "Destination", "Port", "Verdict", "Flagged"});
     iocResults_->horizontalHeader()->setStretchLastSection(true);
     iocResults_->setEditTriggers(QTableWidget::NoEditTriggers);
-    huntLayout->addWidget(iocResults_);
+    layout->addWidget(iocResults_);
 
-    tabs_->addTab(huntTab, "Threat Hunting");
+    connect(searchBtn_, &QPushButton::clicked,
+            this, &ServerDashboard::onSearchFlows);
+    connect(iocBtn_, &QPushButton::clicked,
+            this, &ServerDashboard::onIocSearch);
 
-    // ── Rules tab ──────────────────────────────────────────────
-    auto* rulesTab = new QWidget;
-    auto* rulesLayout = new QVBoxLayout(rulesTab);
+    return tab;
+}
+
+QWidget* ServerDashboard::createRulesTab() {
+    auto* tab = new QWidget;
+    auto* layout = new QVBoxLayout(tab);
 
     auto* loadGroup = new QGroupBox("Load Rules");
     auto* loadLayout = new QHBoxLayout(loadGroup);
@@ -137,7 +227,7 @@ void ServerDashboard::setupUi() {
     loadRulesBtn_ = new QPushButton("Load");
     loadLayout->addWidget(rulesPathInput_);
     loadLayout->addWidget(loadRulesBtn_);
-    rulesLayout->addWidget(loadGroup);
+    layout->addWidget(loadGroup);
 
     auto* statsGroup = new QGroupBox("Rule Statistics");
     auto* statsLayout = new QFormLayout(statsGroup);
@@ -145,26 +235,16 @@ void ServerDashboard::setupUi() {
     yaraRulesLabel_ = new QLabel("--");
     statsLayout->addRow("Snort rules:", snortRulesLabel_);
     statsLayout->addRow("YARA rules:", yaraRulesLabel_);
-    rulesLayout->addWidget(statsGroup);
-    rulesLayout->addStretch();
+    layout->addWidget(statsGroup);
+    layout->addStretch();
 
-    tabs_->addTab(rulesTab, "Signatures");
+    connect(loadRulesBtn_, &QPushButton::clicked,
+            this, &ServerDashboard::onLoadRules);
 
-    mainLayout->addWidget(tabs_);
-
-    // Signals.
-    connect(connectBtn_, &QPushButton::clicked, this, &ServerDashboard::onConnect);
-    connect(disconnectBtn_, &QPushButton::clicked, this, &ServerDashboard::onDisconnect);
-    connect(searchBtn_, &QPushButton::clicked, this, &ServerDashboard::onSearchFlows);
-    connect(iocBtn_, &QPushButton::clicked, this, &ServerDashboard::onIocSearch);
-    connect(loadRulesBtn_, &QPushButton::clicked, this, &ServerDashboard::onLoadRules);
-
-    // Auto-refresh timer (2 seconds).
-    refreshTimer_ = new QTimer(this);
-    connect(refreshTimer_, &QTimer::timeout, this, &ServerDashboard::onRefresh);
+    return tab;
 }
 
-// ── Connection management ───────────────────────────────────────────
+// ── Connection ──────────────────────────────────────────────────────
 
 void ServerDashboard::onConnect() {
     client::ClientConfig config;
@@ -174,13 +254,10 @@ void ServerDashboard::onConnect() {
 
     client_ = std::make_unique<client::NidsClient>(config);
     if (client_->connect()) {
-        connected_ = true;
-        connectionStatus_->setText("Connected");
-        connectionStatus_->setStyleSheet("color: green; font-weight: bold;");
-        connectBtn_->setEnabled(false);
-        disconnectBtn_->setEnabled(true);
-        refreshTimer_->start(2000);
+        setConnectedState(true);
+        onRefreshInterfaces();
         onRefresh();
+        refreshTimer_->start(2000);
     } else {
         QMessageBox::warning(this, "Connection Failed",
             "Cannot connect to " + serverAddress_->text());
@@ -189,16 +266,25 @@ void ServerDashboard::onConnect() {
 }
 
 void ServerDashboard::onDisconnect() {
+    streaming_.store(false);
     refreshTimer_->stop();
     if (client_) {
         client_->disconnect();
         client_.reset();
     }
-    connected_ = false;
-    connectionStatus_->setText("Disconnected");
-    connectionStatus_->setStyleSheet("color: red; font-weight: bold;");
-    connectBtn_->setEnabled(true);
-    disconnectBtn_->setEnabled(false);
+    setConnectedState(false);
+}
+
+void ServerDashboard::setConnectedState(bool conn) {
+    connected_ = conn;
+    tabs_->setEnabled(conn);
+    connectBtn_->setEnabled(!conn);
+    disconnectBtn_->setEnabled(conn);
+    serverAddress_->setEnabled(!conn);
+    connectionStatus_->setText(conn ? "Connected" : "Disconnected");
+    connectionStatus_->setStyleSheet(
+        conn ? "color: green; font-weight: bold;"
+             : "color: red; font-weight: bold;");
 }
 
 void ServerDashboard::onRefresh() {
@@ -225,13 +311,16 @@ void ServerDashboard::updateHealthPanel() {
 void ServerDashboard::updateStatusPanel() {
     auto info = client_->getStatus();
     capturingLabel_->setText(info.capturing ? "Yes" : "No");
-    interfaceLabel_->setText(info.currentInterface.empty()
-        ? "(none)" : QString::fromStdString(info.currentInterface));
+    capturingLabel_->setStyleSheet(info.capturing
+        ? "color: green; font-weight: bold;" : "");
     sessionLabel_->setText(info.sessionId.empty()
-        ? "(none)" : QString::fromStdString(info.sessionId));
+        ? "--" : QString::fromStdString(info.sessionId));
     packetsLabel_->setText(QString::number(info.packetsCaptured));
     flowsLabel_->setText(QString::number(info.flowsDetected));
     flaggedLabel_->setText(QString::number(info.flowsFlagged));
+
+    startCaptureBtn_->setEnabled(!info.capturing);
+    stopCaptureBtn_->setEnabled(info.capturing);
 }
 
 void ServerDashboard::updateRuleStatsPanel() {
@@ -244,7 +333,106 @@ void ServerDashboard::updateRuleStatsPanel() {
         QString::number(stats.yara_files()) + " files)");
 }
 
-// ── Hunt operations ─────────────────────────────────────────────────
+// ── Capture control ─────────────────────────────────────────────────
+
+void ServerDashboard::onRefreshInterfaces() {
+    if (!connected_ || !client_) return;
+
+    auto ifaces = client_->listInterfaces();
+    interfaceCombo_->clear();
+    for (const auto& iface : ifaces) {
+        interfaceCombo_->addItem(QString::fromStdString(iface));
+    }
+}
+
+void ServerDashboard::onStartCapture() {
+    if (!connected_ || !client_) return;
+
+    auto iface = interfaceCombo_->currentText().toStdString();
+    if (iface.empty()) {
+        QMessageBox::warning(this, "Error", "Select an interface first");
+        return;
+    }
+
+    auto sessionId = client_->startCapture(iface);
+    if (sessionId.empty()) {
+        QMessageBox::warning(this, "Error", "Failed to start capture");
+    } else {
+        QMessageBox::information(this, "Capture Started",
+            "Session: " + QString::fromStdString(sessionId));
+    }
+    onRefresh();
+}
+
+void ServerDashboard::onStopCapture() {
+    if (!connected_ || !client_) return;
+
+    auto summary = client_->stopCapture("");
+    QMessageBox::information(this, "Capture Stopped",
+        QString::fromStdString(summary));
+    onRefresh();
+}
+
+// ── Detection streaming ─────────────────────────────────────────────
+
+void ServerDashboard::onStartStreaming() {
+    if (!connected_ || !client_) return;
+
+    streaming_.store(true);
+    startStreamBtn_->setEnabled(false);
+    stopStreamBtn_->setEnabled(true);
+    streamTable_->setRowCount(0);
+
+    // Run streaming in a background thread.
+    std::thread([this]() {
+        client_->streamDetections("", FILTER_ALL,
+            [this](const DetectionEvent& event) {
+                if (!streaming_.load()) return;
+
+                // Post to UI thread.
+                QMetaObject::invokeMethod(this, [this, event]() {
+                    int row = streamTable_->rowCount();
+                    if (row >= 1000) {
+                        streamTable_->removeRow(0);
+                        row = streamTable_->rowCount();
+                    }
+                    streamTable_->insertRow(row);
+                    streamTable_->setItem(row, 0,
+                        new QTableWidgetItem(QString::number(event.flow_index())));
+                    streamTable_->setItem(row, 1,
+                        new QTableWidgetItem(event.verdict() == VERDICT_ATTACK
+                            ? "ATTACK" : "BENIGN"));
+                    streamTable_->setItem(row, 2,
+                        new QTableWidgetItem(QString::fromStdString(
+                            event.flow().src_ip()) + ":" +
+                            QString::number(event.flow().src_port())));
+                    streamTable_->setItem(row, 3,
+                        new QTableWidgetItem(QString::fromStdString(
+                            event.flow().dst_ip()) + ":" +
+                            QString::number(event.flow().dst_port())));
+                    streamTable_->setItem(row, 4,
+                        new QTableWidgetItem(QString::fromStdString(
+                            event.flow().protocol())));
+                    streamTable_->setItem(row, 5,
+                        new QTableWidgetItem(QString::fromStdString(
+                            event.ml_classification())));
+                    streamTable_->setItem(row, 6,
+                        new QTableWidgetItem(QString::number(
+                            event.combined_score(), 'f', 3)));
+                    streamTable_->scrollToBottom();
+                });
+            },
+            streaming_);
+    }).detach();
+}
+
+void ServerDashboard::onStopStreaming() {
+    streaming_.store(false);
+    startStreamBtn_->setEnabled(true);
+    stopStreamBtn_->setEnabled(false);
+}
+
+// ── Threat hunting ──────────────────────────────────────────────────
 
 void ServerDashboard::onSearchFlows() {
     if (!connected_ || !client_) return;
@@ -305,6 +493,8 @@ void ServerDashboard::onIocSearch() {
     }
 }
 
+// ── Signature management ────────────────────────────────────────────
+
 void ServerDashboard::onLoadRules() {
     if (!connected_ || !client_) return;
 
@@ -313,11 +503,11 @@ void ServerDashboard::onLoadRules() {
 
     auto response = client_->loadRules(path);
 
-    QString msg = response.success()
-        ? QString("Loaded %1 rules").arg(response.rules_loaded())
-        : QString("Failed: %1").arg(QString::fromStdString(response.message()));
-
-    QMessageBox::information(this, "Load Rules", msg);
+    QMessageBox::information(this, "Load Rules",
+        response.success()
+            ? QString("Loaded %1 rules").arg(response.rules_loaded())
+            : QString("Failed: %1").arg(
+                  QString::fromStdString(response.message())));
     updateRuleStatsPanel();
 }
 

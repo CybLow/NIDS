@@ -1,16 +1,18 @@
 #pragma once
 
-/// ServerDashboard — Qt widget for monitoring a remote nids-server via gRPC.
+/// ServerDashboard — full remote management client for nids-server.
 ///
-/// Acts as a pure gRPC client. Shows server status, detection stats,
-/// hunt results, signature alerts, and inline IPS metrics. Completely
-/// independent of local capture/analysis — the server works standalone.
+/// Pure gRPC client. Provides complete server control: connection
+/// management, capture start/stop, live detection streaming, threat
+/// hunting, signature management, and inline IPS control.
+/// The server works standalone — this UI is one of many possible clients.
 
 #include <QWidget>
 
+#include <atomic>
 #include <memory>
-#include <string>
 
+class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -20,7 +22,6 @@ class QTimer;
 
 namespace nids::client {
 class NidsClient;
-struct ClientConfig;
 } // namespace nids::client
 
 namespace nids::ui {
@@ -33,26 +34,47 @@ public:
     ~ServerDashboard() override;
 
 private slots:
+    // Connection.
     void onConnect();
     void onDisconnect();
     void onRefresh();
+
+    // Capture control.
+    void onStartCapture();
+    void onStopCapture();
+    void onRefreshInterfaces();
+
+    // Threat hunting.
     void onSearchFlows();
     void onIocSearch();
+
+    // Signature management.
     void onLoadRules();
+
+    // Detection streaming.
+    void onStartStreaming();
+    void onStopStreaming();
 
 private:
     void setupUi();
+    QWidget* createConnectionBar();
+    QWidget* createHealthTab();
+    QWidget* createCaptureTab();
+    QWidget* createStreamingTab();
+    QWidget* createHuntTab();
+    QWidget* createRulesTab();
+
     void updateHealthPanel();
     void updateStatusPanel();
     void updateRuleStatsPanel();
+    void setConnectedState(bool connected);
 
-    // Connection.
+    // Connection bar.
     QLineEdit* serverAddress_ = nullptr;
     QPushButton* connectBtn_ = nullptr;
     QPushButton* disconnectBtn_ = nullptr;
     QLabel* connectionStatus_ = nullptr;
 
-    // Tabs.
     QTabWidget* tabs_ = nullptr;
 
     // Health tab.
@@ -62,13 +84,22 @@ private:
     QLabel* totalFlowsLabel_ = nullptr;
     QLabel* totalAlertsLabel_ = nullptr;
 
-    // Server status tab.
+    // Capture tab.
+    QComboBox* interfaceCombo_ = nullptr;
+    QPushButton* refreshIfacesBtn_ = nullptr;
+    QPushButton* startCaptureBtn_ = nullptr;
+    QPushButton* stopCaptureBtn_ = nullptr;
     QLabel* capturingLabel_ = nullptr;
-    QLabel* interfaceLabel_ = nullptr;
     QLabel* sessionLabel_ = nullptr;
     QLabel* packetsLabel_ = nullptr;
     QLabel* flowsLabel_ = nullptr;
     QLabel* flaggedLabel_ = nullptr;
+
+    // Streaming tab.
+    QPushButton* startStreamBtn_ = nullptr;
+    QPushButton* stopStreamBtn_ = nullptr;
+    QTableWidget* streamTable_ = nullptr;
+    std::atomic<bool> streaming_{false};
 
     // Hunt tab.
     QLineEdit* searchIpInput_ = nullptr;

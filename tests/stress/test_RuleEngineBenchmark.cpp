@@ -109,10 +109,8 @@ TEST(RuleEngineBenchmark, inspect_10000Rules_throughput) {
     infra::SnortRuleEngine engine;
     ASSERT_TRUE(engine.loadRules(path));
 
-    // Test payload that won't match any rule.
-    std::vector<std::uint8_t> payload(256, 0x41); // 'AAAA...'
     auto flow = makeFlow();
-
+    std::vector<std::uint8_t> payload(256, 0x41); // 'AAAA...'
     const int iterations = 100;
     double elapsedMs = 0;
     {
