@@ -8,7 +8,6 @@
 
 #include <filesystem>
 #include <string>
-#include <vector>
 
 namespace nids::app {
 
@@ -25,8 +24,6 @@ private:
     std::string askString(const std::string& prompt,
                            const std::string& defaultVal) const;
     bool askYesNo(const std::string& prompt, bool defaultVal) const;
-    int askChoice(const std::string& prompt,
-                  const std::vector<std::string>& options) const;
 
     void stepInterface();
     void stepDetection();

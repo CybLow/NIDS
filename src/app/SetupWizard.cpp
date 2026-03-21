@@ -38,21 +38,6 @@ bool SetupWizard::askYesNo(const std::string& prompt, bool defaultVal) const {
     return input[0] == 'y' || input[0] == 'Y';
 }
 
-int SetupWizard::askChoice(const std::string& prompt,
-                            const std::vector<std::string>& options) const {
-    std::cout << prompt << "\n";
-    for (std::size_t i = 0; i < options.size(); ++i) {
-        std::cout << "  " << (i + 1) << ") " << options[i] << "\n";
-    }
-    std::cout << "Choice [1]: ";
-    std::string input;
-    std::getline(std::cin, input);
-    if (input.empty()) return 0;
-    int choice = std::stoi(input) - 1;
-    return (choice >= 0 && choice < static_cast<int>(options.size()))
-        ? choice : 0;
-}
-
 // ── Setup steps ─────────────────────────────────────────────────────
 
 fs::path SetupWizard::run() {
