@@ -110,10 +110,10 @@ TEST(RuleEngineBenchmark, inspect_10000Rules_throughput) {
     ASSERT_TRUE(engine.loadRules(path));
 
     auto flow = makeFlow();
-    std::vector<std::uint8_t> payload(256, 0x41); // 'AAAA...'
     const int iterations = 100;
     double elapsedMs = 0;
     {
+        std::vector<std::uint8_t> payload(256, 0x41); // 'AAAA...'
         ScopedTimer timer(elapsedMs);
         for (int i = 0; i < iterations; ++i) {
             [[maybe_unused]] auto matches = engine.inspect(payload, flow);
