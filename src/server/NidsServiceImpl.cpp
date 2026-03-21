@@ -3,7 +3,7 @@
 #include "core/model/AttackType.h"
 #include "core/model/DetectionSource.h"
 #include "core/model/FlowQuery.h"
-#include "infra/flow/FlowKey.h"
+#include "core/model/FlowKey.h"
 
 #include <spdlog/spdlog.h>
 

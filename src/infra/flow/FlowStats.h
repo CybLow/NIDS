@@ -13,13 +13,15 @@
 #include "core/math/WelfordAccumulator.h"
 #include "core/model/FlowConstants.h"
 #include "core/model/FlowInfo.h"
-#include "infra/flow/FlowKey.h"
+#include "core/model/FlowKey.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace nids::infra {
+
+using core::FlowKey;
 
 /// Import WelfordAccumulator from core/ for convenience.
 using core::WelfordAccumulator;

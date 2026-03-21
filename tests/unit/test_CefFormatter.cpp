@@ -14,33 +14,11 @@
 using namespace nids;
 
 namespace {
+using nids::testing::makeFlow;
+using nids::testing::makeResult;
 
 /// Build a simple DetectionResult for testing.
-core::DetectionResult makeResult(core::AttackType type, float confidence,
-                                  float combinedScore,
-                                  core::DetectionSource source) {
-    core::DetectionResult r;
-    r.mlResult.classification = type;
-    r.mlResult.confidence = confidence;
-    r.finalVerdict = type;
-    r.combinedScore = combinedScore;
-    r.detectionSource = source;
-    return r;
-}
-
 /// Build a simple FlowInfo for testing.
-core::FlowInfo makeFlow(const std::string& srcIp, const std::string& dstIp,
-                         std::uint16_t srcPort, std::uint16_t dstPort,
-                         std::uint8_t proto) {
-    core::FlowInfo f;
-    f.srcIp = srcIp;
-    f.dstIp = dstIp;
-    f.srcPort = srcPort;
-    f.dstPort = dstPort;
-    f.protocol = proto;
-    return f;
-}
-
 } // namespace
 
 TEST(CefFormatter, format_benignFlow_containsCefHeader) {

@@ -5,7 +5,7 @@
 /// Used by VerdictEngine to block flows at the kernel level after
 /// ML detection. Tracks active block rules and sweeps expired ones.
 
-#include "infra/flow/FlowKey.h"
+#include "core/model/FlowKey.h"
 
 #include <chrono>
 #include <cstddef>
@@ -14,6 +14,8 @@
 #include <vector>
 
 namespace nids::infra {
+
+using core::FlowKey;
 
 class NetfilterBlocker {
 public:

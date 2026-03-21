@@ -1,3 +1,4 @@
+#include "helpers/TestFixtures.h"
 #include "app/VerdictEngine.h"
 
 #include "helpers/MockThreatIntel.h"
@@ -13,18 +14,8 @@ using namespace nids;
 using ::testing::Return;
 
 namespace {
-
-core::FlowInfo makeFlow(const std::string& src, const std::string& dst,
-                          std::uint16_t srcPort, std::uint16_t dstPort,
-                          std::uint8_t proto = 6) {
-    core::FlowInfo f;
-    f.srcIp = src;
-    f.dstIp = dst;
-    f.srcPort = srcPort;
-    f.dstPort = dstPort;
-    f.protocol = proto;
-    return f;
-}
+using nids::testing::makeFlow;
+using nids::testing::makeResult;
 
 std::vector<std::uint8_t> toBytes(const std::string& s) {
     return {s.begin(), s.end()};

@@ -9,7 +9,7 @@
 // (FlowStats) are in separate headers for SRP.
 
 #include "core/services/IFlowExtractor.h"
-#include "infra/flow/FlowKey.h"
+#include "core/model/FlowKey.h"
 #include "infra/flow/FlowStats.h"
 #include "infra/parsing/PacketParser.h"
 
@@ -26,6 +26,9 @@ class Packet;
 } // namespace pcpp
 
 namespace nids::infra {
+
+using core::FlowKey;
+using core::FlowKeyHash;
 
 /// Maximum packets per flow before forced split.  Prevents mega-flows
 /// (e.g. DDoS where millions of packets share a single 5-tuple) from
