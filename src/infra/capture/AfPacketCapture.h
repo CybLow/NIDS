@@ -1,11 +1,11 @@
 #pragma once
 
-/// AfPacketCapture — AF_PACKET inline capture for IPS mode.
+/// AfPacketCapture — AF_PACKET v3 inline capture with TPACKET_V3 ring buffers.
 ///
-/// Inline packet capture using Linux AF_PACKET raw sockets with
-/// poll()-based receive and per-packet verdict callback. Currently
-/// uses recv() (copy-based); TPACKET_V3 mmap ring buffers and
-/// PACKET_FANOUT multi-queue are planned optimizations.
+/// High-performance inline packet capture for IPS mode using Linux
+/// AF_PACKET sockets with memory-mapped TPACKET_V3 ring buffers
+/// (zero-copy receive). Packets are mapped into user-space via mmap(),
+/// processed through the verdict callback, and forwarded via send().
 /// Linux-only — compiled only on Linux via CMake generator expression.
 
 #ifdef __linux__
@@ -34,17 +34,26 @@ public:
     [[nodiscard]] core::IInlineCapture::Stats stats() const noexcept override;
 
 private:
-    [[nodiscard]] bool createSocket(const std::string& iface, int& fd) const;
+    [[nodiscard]] bool setupSocket(const std::string& iface, int& fd) const;
+    [[nodiscard]] bool setupTpacketV3(int fd);
     [[nodiscard]] bool bindToInterface(int fd, const std::string& iface) const;
     [[nodiscard]] bool setPromiscuous(const std::string& iface, int fd) const;
     void forwardPacket(const std::uint8_t* data, std::size_t len);
     void captureLoop();
+    void processBlock(void* blockHeader);
 
     core::InlineConfig config_;
     core::VerdictCallback verdictCb_;
 
-    int rxFd_ = -1;   ///< AF_PACKET socket for input NIC
-    int txFd_ = -1;   ///< Raw socket for output NIC
+    int rxFd_ = -1;       ///< AF_PACKET TPACKET_V3 socket for input
+    int txFd_ = -1;       ///< Raw socket for output
+    void* ringBuffer_ = nullptr;  ///< mmap'd TPACKET_V3 ring
+    std::size_t ringSize_ = 0;
+
+    /// Ring buffer parameters.
+    static constexpr unsigned kBlockCount = 64;
+    static constexpr unsigned kBlockSize = 1 << 22;  ///< 4 MB per block
+    static constexpr unsigned kFrameSize = 1 << 11;  ///< 2048 bytes
 
     std::atomic<bool> running_{false};
     mutable std::atomic<std::uint64_t> packetsReceived_{0};

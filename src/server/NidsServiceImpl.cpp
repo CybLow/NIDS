@@ -9,8 +9,11 @@
 
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <format>
+#include <map>
 #include <string>
+#include <thread>
 
 namespace nids::server {
 
@@ -176,22 +179,88 @@ grpc::Status NidsServiceImpl::StreamDetections(
 }
 
 grpc::Status NidsServiceImpl::StreamPackets(
-    grpc::ServerContext* /*context*/,
+    grpc::ServerContext* context,
     const StreamPacketsRequest* /*request*/,
-    grpc::ServerWriter<PacketEvent>* /*writer*/) {
+    grpc::ServerWriter<PacketEvent>* writer) {
 
-    return grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
-                        "Packet streaming not yet implemented");
+    if (!capturing_.load()) {
+        return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                            "No active capture session");
+    }
+
+    // Poll the session's packet table and stream new entries.
+    std::uint64_t lastIndex = 0;
+    if (session_) {
+        lastIndex = session_->packetCount();
+    }
+
+    while (!context->IsCancelled() && capturing_.load()) {
+        std::scoped_lock lock{sessionMutex_};
+        if (!session_) break;
+
+        auto currentCount = session_->packetCount();
+        if (currentCount > lastIndex) {
+            // Stream the count delta as a simple event.
+            PacketEvent event;
+            event.set_index(currentCount);
+            if (!writer->Write(event)) break;
+            lastIndex = currentCount;
+        }
+
+        // Avoid busy-spinning.
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    return grpc::Status::OK;
 }
 
 grpc::Status NidsServiceImpl::AnalyzeCapture(
-    grpc::ServerContext* /*context*/,
-    const AnalyzeCaptureRequest* /*request*/,
+    [[maybe_unused]] grpc::ServerContext* context,
+    const AnalyzeCaptureRequest* request,
     AnalyzeCaptureResponse* response) {
 
-    response->set_success(false);
-    return grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
-                        "Batch analysis via gRPC not yet implemented");
+    const auto& pcapPath = request->pcap_path();
+    if (pcapPath.empty()) {
+        response->set_success(false);
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                            "pcap_path is required");
+    }
+
+    if (!std::filesystem::exists(pcapPath)) {
+        response->set_success(false);
+        return grpc::Status(grpc::StatusCode::NOT_FOUND,
+                            "PCAP file not found: " + pcapPath);
+    }
+
+    // Extract flows from the PCAP file.
+    auto features = extractor_.extractFeatures(pcapPath);
+    const auto& metadata = extractor_.flowMetadata();
+
+    std::map<std::string, std::uint32_t> attackCounts;
+    std::uint32_t flaggedCount = 0;
+
+    for (std::size_t i = 0; i < features.size(); ++i) {
+        auto prediction = analyzer_.predictWithConfidence(features[i]);
+        auto detection = hybridService_.evaluate(
+            prediction, metadata[i].srcIp, metadata[i].dstIp, metadata[i]);
+
+        auto label = std::string{
+            core::attackTypeToString(detection.finalVerdict)};
+        attackCounts[label]++;
+
+        if (detection.isFlagged()) {
+            ++flaggedCount;
+        }
+    }
+
+    response->set_success(true);
+    response->set_total_analyzed(static_cast<std::uint32_t>(features.size()));
+    response->set_flagged_count(flaggedCount);
+    for (const auto& [label, count] : attackCounts) {
+        (*response->mutable_attack_counts())[label] = count;
+    }
+
+    return grpc::Status::OK;
 }
 
 grpc::Status NidsServiceImpl::GetStatus(
