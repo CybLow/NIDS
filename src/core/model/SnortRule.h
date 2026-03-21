@@ -35,10 +35,12 @@ struct SnortRule {
         std::vector<std::uint8_t> pattern; ///< Byte pattern (text or hex)
         bool nocase = false;
         bool negated = false;              ///< ! prefix
+        bool fastPattern = false;          ///< Suricata fast_pattern
         std::optional<int> offset;
         std::optional<int> depth;
         std::optional<int> distance;
         std::optional<int> within;
+        std::string stickyBuffer;          ///< Suricata: "http.uri", "dns.query", etc.
     };
 
     // ── PCRE match option ───────────────────────────────────────────

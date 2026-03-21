@@ -470,6 +470,72 @@ TEST(SnortRuleParser, parse_ipProtocol_returns0) {
     EXPECT_EQ(result->protocol, 0);
 }
 
+// ── Suricata compatibility ──────────────────────────────────────────
+
+TEST(SnortRuleParser, parse_suricataHttpUri_setStickyBuffer) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert http any any -> any any (msg:"T"; http.uri; content:"/admin"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_GE(result->contents.size(), 1u);
+    EXPECT_EQ(result->contents[0].stickyBuffer, "http.uri");
+}
+
+TEST(SnortRuleParser, parse_suricataDnsQuery_setStickyBuffer) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert dns any any -> any any (msg:"T"; dns.query; content:"malware.com"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_GE(result->contents.size(), 1u);
+    EXPECT_EQ(result->contents[0].stickyBuffer, "dns.query");
+}
+
+TEST(SnortRuleParser, parse_suricataTlsSni_setStickyBuffer) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tls any any -> any any (msg:"T"; tls.sni; content:"evil.com"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_GE(result->contents.size(), 1u);
+    EXPECT_EQ(result->contents[0].stickyBuffer, "tls.sni");
+}
+
+TEST(SnortRuleParser, parse_suricataHttpHeader_setStickyBuffer) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert http any any -> any any (msg:"T"; http.header; content:"X-Malware"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_GE(result->contents.size(), 1u);
+    EXPECT_EQ(result->contents[0].stickyBuffer, "http.header");
+}
+
+TEST(SnortRuleParser, parse_suricataFileData_setStickyBuffer) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert http any any -> any any (msg:"T"; file.data; content:"MZ"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_GE(result->contents.size(), 1u);
+    EXPECT_EQ(result->contents[0].stickyBuffer, "file.data");
+}
+
+TEST(SnortRuleParser, parse_suricataFastPattern_setsFlag) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; content:"pattern1"; content:"pattern2"; fast_pattern; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->contents.size(), 2u);
+    EXPECT_FALSE(result->contents[0].fastPattern);
+    EXPECT_TRUE(result->contents[1].fastPattern);
+}
+
+TEST(SnortRuleParser, parse_legacyHttpUri_setStickyBuffer) {
+    infra::SnortRuleParser parser;
+    auto result = parser.parse(
+        R"(alert tcp any any -> any any (msg:"T"; http_uri; content:"/login"; sid:1; rev:1;))");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_GE(result->contents.size(), 1u);
+    EXPECT_EQ(result->contents[0].stickyBuffer, "http_uri");
+}
+
 TEST(SnortRuleParser, parseFile_loadsTestRules) {
     auto path = findTestRules();
     if (path.empty()) GTEST_SKIP() << "Test rules not found";

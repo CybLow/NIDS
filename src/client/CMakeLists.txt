@@ -15,6 +15,7 @@ nids_set_target_defaults(nids-client-lib)
 add_executable(nids-cli cli_main.cpp)
 target_link_libraries(nids-cli PRIVATE
     nids-client-lib
+    nids_app
     spdlog::spdlog
 )
 nids_set_target_defaults(nids-cli)
