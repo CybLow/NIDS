@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace nids::testing {
 
@@ -43,6 +44,12 @@ namespace nids::testing {
     r.combinedScore = combinedScore;
     r.detectionSource = source;
     return r;
+}
+
+/// Convert a string to a byte vector (for payload testing).
+[[nodiscard]] inline std::vector<std::uint8_t> toBytes(
+    const std::string& s) {
+    return {s.begin(), s.end()};
 }
 
 } // namespace nids::testing
