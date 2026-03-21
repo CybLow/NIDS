@@ -82,6 +82,30 @@ public:
                           const DetectionCallback& callback,
                           const std::atomic<bool>& stopFlag) const;
 
+    /** Search flows in the flow database. */
+    [[nodiscard]] SearchFlowsResponse searchFlows(
+        const SearchFlowsRequest& request) const;
+
+    /** Search for IOC indicators. */
+    [[nodiscard]] IocSearchResponse iocSearch(
+        const IocSearchRequest& request) const;
+
+    /** Load signature/YARA rules from a path. */
+    [[nodiscard]] LoadRulesResponse loadRules(const std::string& path) const;
+
+    /** Get rule statistics. */
+    [[nodiscard]] GetRuleStatsResponse getRuleStats() const;
+
+    /** Health check. */
+    struct HealthInfo {
+        bool healthy = false;
+        std::string version;
+        std::uint64_t uptimeSeconds = 0;
+        std::uint64_t totalFlows = 0;
+        std::uint64_t totalAlerts = 0;
+    };
+    [[nodiscard]] HealthInfo healthCheck() const;
+
 private:
     ClientConfig config_;
     std::shared_ptr<grpc::Channel> channel_;

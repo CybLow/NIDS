@@ -1,10 +1,12 @@
 #pragma once
 
-/// AfPacketCapture — AF_PACKET v3 inline capture with TPACKET ring buffers.
+/// AfPacketCapture — AF_PACKET inline capture for IPS mode.
 ///
-/// High-performance inline packet capture for IPS mode using Linux
-/// AF_PACKET sockets with memory-mapped ring buffers (zero-copy).
-/// Linux-only — guarded by NIDS_HAS_AFPACKET compile definition.
+/// Inline packet capture using Linux AF_PACKET raw sockets with
+/// poll()-based receive and per-packet verdict callback. Currently
+/// uses recv() (copy-based); TPACKET_V3 mmap ring buffers and
+/// PACKET_FANOUT multi-queue are planned optimizations.
+/// Linux-only — compiled only on Linux via CMake generator expression.
 
 #ifdef __linux__
 

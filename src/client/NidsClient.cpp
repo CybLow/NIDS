@@ -176,4 +176,74 @@ void NidsClient::streamDetections(
     }
 }
 
+SearchFlowsResponse NidsClient::searchFlows(
+    const SearchFlowsRequest& request) const {
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::seconds(config_.rpcTimeoutSec));
+    SearchFlowsResponse response;
+    auto status = stub_->SearchFlows(&context, request, &response);
+    if (!status.ok()) {
+        spdlog::error("SearchFlows failed: {}", status.error_message());
+    }
+    return response;
+}
+
+IocSearchResponse NidsClient::iocSearch(
+    const IocSearchRequest& request) const {
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::seconds(config_.rpcTimeoutSec));
+    IocSearchResponse response;
+    auto status = stub_->IocSearch(&context, request, &response);
+    if (!status.ok()) {
+        spdlog::error("IocSearch failed: {}", status.error_message());
+    }
+    return response;
+}
+
+LoadRulesResponse NidsClient::loadRules(const std::string& path) const {
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::seconds(config_.rpcTimeoutSec));
+    LoadRulesRequest request;
+    request.set_path(path);
+    LoadRulesResponse response;
+    auto status = stub_->LoadRules(&context, request, &response);
+    if (!status.ok()) {
+        spdlog::error("LoadRules failed: {}", status.error_message());
+    }
+    return response;
+}
+
+GetRuleStatsResponse NidsClient::getRuleStats() const {
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::seconds(config_.rpcTimeoutSec));
+    GetRuleStatsRequest request;
+    GetRuleStatsResponse response;
+    auto status = stub_->GetRuleStats(&context, request, &response);
+    if (!status.ok()) {
+        spdlog::error("GetRuleStats failed: {}", status.error_message());
+    }
+    return response;
+}
+
+NidsClient::HealthInfo NidsClient::healthCheck() const {
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::seconds(config_.rpcTimeoutSec));
+    HealthCheckRequest request;
+    HealthCheckResponse response;
+
+    auto status = stub_->HealthCheck(&context, request, &response);
+    if (!status.ok()) {
+        return {false, "", 0, 0, 0};
+    }
+
+    return {response.healthy(), response.version(),
+            response.uptime_seconds(), response.total_flows_processed(),
+            response.total_alerts()};
+}
+
 } // namespace nids::client

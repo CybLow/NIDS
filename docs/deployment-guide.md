@@ -111,6 +111,9 @@ journalctl -u nids-server -f
 # Check server status
 nids-cli status
 
+# Health check
+nids-cli health
+
 # List network interfaces
 nids-cli interfaces
 
@@ -122,29 +125,41 @@ nids-cli stream --filter flagged
 
 # Stop capture
 nids-cli capture stop
+
+# Search flow database
+nids-cli search --ip 10.0.0.1 --flagged
+
+# IOC indicator search
+nids-cli ioc 10.0.0.1 192.168.1.100
+
+# Load Snort/YARA rules
+nids-cli rules load /opt/nids/rules/
+
+# Show rule statistics
+nids-cli rules stats
 ```
 
 ## gRPC API
 
-The server listens on `localhost:50051` by default. Available RPCs:
+The server listens on `localhost:50051` by default (insecure). 15 RPCs:
 
-| RPC | Description |
-|-----|-------------|
-| `ListInterfaces` | List available network interfaces |
-| `StartCapture` | Start live capture + detection |
-| `StopCapture` | Stop the current session |
-| `GetStatus` | Get server/session status |
-| `StreamDetections` | Stream real-time detection events |
-| `StreamPackets` | Stream raw captured packets |
-| `AnalyzeCapture` | Batch analysis of a PCAP file |
-| `SearchFlows` | Search historical flow database |
-| `IocSearch` | Search for IOC indicators |
-| `LoadRules` | Load Snort/YARA rules |
-| `GetRuleStats` | Get loaded rule statistics |
-| `HealthCheck` | Health probe for monitoring |
-| `BlockFlow` | Manually block a 5-tuple (inline IPS) |
-| `UnblockFlow` | Remove a manual block |
-| `GetInlineStats` | Get inline IPS statistics |
+| RPC | Description | Status |
+|-----|-------------|--------|
+| `ListInterfaces` | List available network interfaces | Implemented |
+| `StartCapture` | Start live capture + detection | Implemented |
+| `StopCapture` | Stop the current session | Implemented |
+| `GetStatus` | Get server/session status | Implemented |
+| `StreamDetections` | Stream real-time detection events | Implemented |
+| `HealthCheck` | Health probe for monitoring | Implemented |
+| `SearchFlows` | Search historical flow database | Implemented (requires flow index) |
+| `IocSearch` | Search for IOC indicators | Implemented (requires flow index) |
+| `LoadRules` | Load Snort/YARA rules | Implemented (requires engine) |
+| `GetRuleStats` | Get loaded rule statistics | Implemented |
+| `BlockFlow` | Manually block a 5-tuple | Implemented (requires verdict engine) |
+| `UnblockFlow` | Remove a manual block | Implemented (requires verdict engine) |
+| `GetInlineStats` | Get inline IPS statistics | Implemented |
+| `StreamPackets` | Stream raw captured packets | Planned |
+| `AnalyzeCapture` | Batch analysis of a PCAP file | Planned |
 
 ## Docker Sandbox (Testing)
 
