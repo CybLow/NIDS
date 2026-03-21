@@ -6,7 +6,6 @@
 /// and timeline construction against historical flow data.
 
 #include "core/model/AnomalyResult.h"
-#include "core/model/CorrelationCriteria.h"
 #include "core/model/HuntResult.h"
 #include "core/model/IndexedFlow.h"
 #include "core/model/TimelineEvent.h"
