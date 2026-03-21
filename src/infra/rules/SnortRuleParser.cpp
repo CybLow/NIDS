@@ -16,6 +16,28 @@ namespace fs = std::filesystem;
 
 namespace {
 
+/// Check if a keyword is a Suricata sticky buffer.
+[[nodiscard]] bool isStickyBuffer(std::string_view key) {
+    static constexpr std::array kBuffers = {
+        std::string_view{"http.uri"}, std::string_view{"http_uri"},
+        std::string_view{"http.header"}, std::string_view{"http_header"},
+        std::string_view{"http.method"}, std::string_view{"http_method"},
+        std::string_view{"http.cookie"}, std::string_view{"http_cookie"},
+        std::string_view{"http.user_agent"}, std::string_view{"http_user_agent"},
+        std::string_view{"http.host"}, std::string_view{"http_host"},
+        std::string_view{"http.request_body"}, std::string_view{"http_client_body"},
+        std::string_view{"http.response_body"}, std::string_view{"http_server_body"},
+        std::string_view{"http.stat_code"}, std::string_view{"http_stat_code"},
+        std::string_view{"http.stat_msg"}, std::string_view{"http_stat_msg"},
+        std::string_view{"dns.query"}, std::string_view{"dns_query"},
+        std::string_view{"tls.sni"}, std::string_view{"tls_sni"},
+        std::string_view{"tls.cert_subject"},
+        std::string_view{"file.data"}, std::string_view{"file_data"},
+        std::string_view{"pkt_data"}, std::string_view{"raw_uri"},
+    };
+    return std::ranges::find(kBuffers, key) != kBuffers.end();
+}
+
 /// Trim whitespace from both ends.
 [[nodiscard]] std::string_view trim(std::string_view s) {
     while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
@@ -251,12 +273,27 @@ std::expected<void, std::string> SnortRuleParser::parseOptions(
     std::string_view options, core::SnortRule& rule) const {
 
     auto tokens = splitOptions(options);
+    std::string pendingStickyBuffer;
+
     for (const auto& token : tokens) {
         auto [key, value] = splitKeyValue(token);
         auto result = parseOption(key, value, rule);
         if (!result) {
             spdlog::debug("SnortRuleParser: skipping option '{}': {}",
                          key, result.error());
+        }
+
+        // If we had a pending sticky buffer and just parsed a content,
+        // apply the sticky buffer to it.
+        if (!pendingStickyBuffer.empty() && key == "content" &&
+            !rule.contents.empty()) {
+            rule.contents.back().stickyBuffer = pendingStickyBuffer;
+            pendingStickyBuffer.clear();
+        }
+
+        // Detect sticky buffer keywords for next content.
+        if (isStickyBuffer(key)) {
+            pendingStickyBuffer = std::string(key);
         }
     }
     return {};
@@ -324,28 +361,8 @@ std::expected<void, std::string> SnortRuleParser::parseOption(
     } else if (key == "fast_pattern" && !rule.contents.empty()) {
         rule.contents.back().fastPattern = true;
     }
-    // Suricata sticky buffers — set on next content match.
-    else if (key == "http.uri" || key == "http_uri" ||
-             key == "http.header" || key == "http_header" ||
-             key == "http.method" || key == "http_method" ||
-             key == "http.cookie" || key == "http_cookie" ||
-             key == "http.user_agent" || key == "http_user_agent" ||
-             key == "http.host" || key == "http_host" ||
-             key == "http.request_body" || key == "http_client_body" ||
-             key == "http.response_body" || key == "http_server_body" ||
-             key == "http.stat_code" || key == "http_stat_code" ||
-             key == "http.stat_msg" || key == "http_stat_msg" ||
-             key == "dns.query" || key == "dns_query" ||
-             key == "tls.sni" || key == "tls_sni" ||
-             key == "tls.cert_subject" ||
-             key == "file.data" || key == "file_data" ||
-             key == "pkt_data" || key == "raw_uri") {
-        // Sticky buffer: applies to the NEXT content option.
-        // Store it so the next content gets it.
-        if (!rule.contents.empty()) {
-            rule.contents.back().stickyBuffer = std::string(key);
-        }
-    }
+    // Suricata sticky buffers are handled in parseOptions() — applied
+    // to the next content option after parsing. No action needed here.
     // Unknown options are silently skipped.
 
     return {};
