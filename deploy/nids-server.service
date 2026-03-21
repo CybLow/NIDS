@@ -9,9 +9,12 @@ Type=simple
 User=nids
 Group=nids
 
+# Create required directories before starting.
+ExecStartPre=/usr/bin/install -d -o nids -g nids -m 0750 /var/lib/nids
+ExecStartPre=/usr/bin/install -d -o nids -g nids -m 0750 /var/log/nids
+
 ExecStart=/usr/local/bin/nids-server \
-    --config /etc/nids/config.json \
-    --interface %i
+    --config /etc/nids/config.json
 
 Restart=on-failure
 RestartSec=5

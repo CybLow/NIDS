@@ -1,0 +1,57 @@
+{
+    "model": {
+        "path": "models/model.onnx",
+        "metadata_path": "models/model_metadata.json",
+        "onnx_intra_op_threads": 2
+    },
+    "capture": {
+        "default_dump_file": "dump.pcap"
+    },
+    "hybrid_detection": {
+        "weight_ml": 0.35,
+        "weight_threat_intel": 0.20,
+        "weight_heuristic": 0.10,
+        "ml_confidence_threshold": 0.7
+    },
+    "output": {
+        "console": {
+            "enabled": true
+        },
+        "syslog": {
+            "enabled": false,
+            "host": "localhost",
+            "port": 514,
+            "transport": "udp",
+            "format": "cef"
+        },
+        "json_file": {
+            "enabled": false,
+            "path": "data/alerts.jsonl",
+            "max_size_mb": 100,
+            "max_files": 10
+        }
+    },
+    "hunting": {
+        "enabled": false,
+        "flow_database_path": "data/flows.db",
+        "max_database_size_mb": 1024,
+        "pcap_storage": {
+            "storage_dir": "data/pcap",
+            "max_total_size_bytes": 10737418240,
+            "max_retention_hours": 168
+        }
+    },
+    "yara": {
+        "enabled": false,
+        "rules_directory": "data/yara"
+    },
+    "signatures": {
+        "enabled": false,
+        "rules_directory": "data/rules",
+        "home_net": "192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
+    },
+    "inline": {
+        "enabled": false,
+        "fail_open": true
+    }
+}

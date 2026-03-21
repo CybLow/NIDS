@@ -21,9 +21,9 @@ ONNX Runtime, and optionally gRPC + Qt6.
   statistics (O(1) memory per flow), timeout sweeps, time-window splitting
 
 ### Deployment Modes
-- **gRPC Server Daemon** (`nids-server`): Headless deployment with 7 RPCs
-  (ListInterfaces, StartCapture, StopCapture, GetStatus, StreamDetections,
-  StreamPackets, AnalyzeCapture)
+- **gRPC Server Daemon** (`nids-server`): Headless deployment with 15 RPCs
+  covering capture, streaming, threat hunting, signature management,
+  inline IPS control, and health monitoring
 - **CLI Client** (`nids-cli`): Remote control and monitoring via gRPC
 - **Headless Mode** (`NIDS --headless --interface eth0`): Standalone capture with
   console output, no Qt dependency at runtime
@@ -194,7 +194,7 @@ NIDS/
     NidsTargetDefaults.cmake  Shared compiler flags (ASan/UBSan in Debug)
   .github/workflows/          CI/CD (build, test, lint, coverage, release)
   proto/
-    nids.proto                gRPC service definitions (7 RPCs)
+    nids.proto                gRPC service definitions (15 RPCs)
   src/
     main.cpp                  GUI/headless entry point
     core/                     Domain layer (pure C++23, zero deps)
@@ -241,7 +241,7 @@ NIDS/
   docs/
     architecture.md           System architecture and detection philosophy
     model-training.md         Model training guide
-    deployment.md             Deployment instructions
+    deployment-guide.md       Deployment instructions
     roadmap.md                Phased project roadmap
     adr/                      Architecture Decision Records (6 ADRs)
 ```
@@ -251,7 +251,7 @@ NIDS/
 - [Architecture](docs/architecture.md) -- System design, layers, patterns, data flow
 - [Roadmap](docs/roadmap.md) -- All planned work, prioritized by phase
 - [Model Training](docs/model-training.md) -- How to train, export, and deploy the model
-- [Deployment](docs/deployment.md) -- Docker, bare metal, packaging, systemd
+- [Deployment](docs/deployment-guide.md) -- Docker, bare metal, packaging, systemd
 - [Installation](INSTALL.md) -- Build dependencies for all platforms
 - [Coding Standards](AGENTS.md) -- C++23/Qt6 conventions, banned patterns, design rules
 

@@ -44,10 +44,15 @@ void printUsage(std::string_view progName) {
         << "\n"
         << "Commands:\n"
         << "  status                              Show server status\n"
+        << "  health                              Health check\n"
         << "  interfaces                          List network interfaces\n"
         << "  capture start <iface> [--bpf <f>]   Start capture\n"
         << "  capture stop [session-id]            Stop capture\n"
         << "  stream [--filter flagged|clean|all]  Stream detections\n"
+        << "  search --ip <ip> [--flagged]         Search flow database\n"
+        << "  ioc <ip1> [<ip2> ...]               IOC indicator search\n"
+        << "  rules load <path>                   Load Snort/YARA rules\n"
+        << "  rules stats                         Show rule statistics\n"
         << "  help                                 Show this help\n"
         << "\n"
         << "Options:\n"
@@ -163,6 +168,87 @@ void cmdStream(nids::client::NidsClient& client,
     std::cout << "\nStreaming stopped.\n";
 }
 
+void cmdHealth(nids::client::NidsClient& client) {
+    auto info = client.healthCheck();
+    std::cout << "Health Check:\n"
+              << "  Healthy:     " << (info.healthy ? "yes" : "no") << "\n"
+              << "  Version:     " << info.version << "\n"
+              << "  Uptime:      " << info.uptimeSeconds << "s\n"
+              << "  Total flows: " << info.totalFlows << "\n"
+              << "  Total alerts:" << info.totalAlerts << "\n";
+}
+
+void cmdSearch(nids::client::NidsClient& client,
+               const std::vector<std::string>& args) {
+    nids::SearchFlowsRequest request;
+    bool flaggedOnly = false;
+
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--ip" && i + 1 < args.size()) {
+            request.set_any_ip(args[++i]);
+        } else if (args[i] == "--flagged") {
+            flaggedOnly = true;
+        } else if (args[i] == "--limit" && i + 1 < args.size()) {
+            request.set_limit(static_cast<std::uint32_t>(std::stoul(args[++i])));
+        }
+    }
+    request.set_flagged_only(flaggedOnly);
+    if (request.limit() == 0) request.set_limit(20);
+
+    auto response = client.searchFlows(request);
+
+    std::cout << "Found " << response.total_count() << " flows:\n\n";
+    for (const auto& f : response.flows()) {
+        std::cout << "  " << f.src_ip() << ":" << f.src_port()
+                  << " -> " << f.dst_ip() << ":" << f.dst_port()
+                  << "  " << f.verdict()
+                  << "  score=" << std::fixed << std::setprecision(2)
+                  << f.combined_score()
+                  << (f.is_flagged() ? " [FLAGGED]" : "") << "\n";
+    }
+}
+
+void cmdIocSearch(nids::client::NidsClient& client,
+                  const std::vector<std::string>& args) {
+    nids::IocSearchRequest request;
+    for (const auto& ip : args) {
+        request.add_ips(ip);
+    }
+
+    auto response = client.iocSearch(request);
+
+    std::cout << "IOC Search: scanned " << response.total_scanned()
+              << " flows, " << response.matched_flows_size()
+              << " matches:\n\n";
+    for (const auto& f : response.matched_flows()) {
+        std::cout << "  " << f.src_ip() << ":" << f.src_port()
+                  << " -> " << f.dst_ip() << ":" << f.dst_port()
+                  << "  " << f.verdict()
+                  << (f.is_flagged() ? " [FLAGGED]" : "") << "\n";
+    }
+}
+
+void cmdRulesLoad(nids::client::NidsClient& client,
+                  const std::vector<std::string>& args) {
+    if (args.empty()) {
+        std::cerr << "Error: path required\n";
+        return;
+    }
+    auto response = client.loadRules(args[0]);
+    std::cout << (response.success() ? "Success" : "Failed")
+              << ": " << response.message()
+              << " (" << response.rules_loaded() << " rules)\n";
+}
+
+void cmdRulesStats(nids::client::NidsClient& client) {
+    auto response = client.getRuleStats();
+    std::cout << "Rule Statistics:\n"
+              << "  Snort rules: " << response.total_rules()
+              << " (" << response.rule_files() << " files)\n"
+              << "  YARA rules:  " << response.yara_rules()
+              << " (" << response.yara_files() << " files)\n";
+}
+
 } // anonymous namespace
 
 int main(int argc, char* argv[]) {
@@ -219,6 +305,28 @@ int main(int argc, char* argv[]) {
         auto subArgs = std::vector<std::string>(
             positionalArgs.begin() + 1, positionalArgs.end());
         cmdStream(client, subArgs);
+    } else if (command == "health") {
+        cmdHealth(client);
+    } else if (command == "search") {
+        auto subArgs = std::vector<std::string>(
+            positionalArgs.begin() + 1, positionalArgs.end());
+        cmdSearch(client, subArgs);
+    } else if (command == "ioc") {
+        auto subArgs = std::vector<std::string>(
+            positionalArgs.begin() + 1, positionalArgs.end());
+        cmdIocSearch(client, subArgs);
+    } else if (command == "rules" && positionalArgs.size() >= 2) {
+        const auto& sub = positionalArgs[1];
+        auto subArgs = std::vector<std::string>(
+            positionalArgs.begin() + 2, positionalArgs.end());
+        if (sub == "load") {
+            cmdRulesLoad(client, subArgs);
+        } else if (sub == "stats") {
+            cmdRulesStats(client);
+        } else {
+            std::cerr << "Unknown rules subcommand: " << sub << "\n";
+            return 1;
+        }
     } else {
         std::cerr << "Unknown command: " << command << "\n";
         printUsage(argv[0]);

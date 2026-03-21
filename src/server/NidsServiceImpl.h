@@ -13,11 +13,15 @@
 
 #include "app/HybridDetectionService.h"
 #include "app/LiveDetectionPipeline.h"
+#include "app/VerdictEngine.h"
 #include "core/model/CaptureSession.h"
+#include "core/services/IContentScanner.h"
 #include "core/services/IFeatureNormalizer.h"
 #include "core/services/IFlowExtractor.h"
+#include "core/services/IFlowIndex.h"
 #include "core/services/IPacketAnalyzer.h"
 #include "core/services/IPacketCapture.h"
+#include "core/services/ISignatureEngine.h"
 
 #include <nids.grpc.pb.h>
 #include <nids.pb.h>
@@ -120,6 +124,12 @@ public:
         const UnblockFlowRequest* request,
         UnblockFlowResponse* response) override;
 
+    // Optional backend injection.
+    void setFlowIndex(core::IFlowIndex* index) { flowIndex_ = index; }
+    void setSignatureEngine(core::ISignatureEngine* engine) { signatureEngine_ = engine; }
+    void setContentScanner(core::IContentScanner* scanner) { contentScanner_ = scanner; }
+    void setVerdictEngine(app::VerdictEngine* engine) { verdictEngine_ = engine; }
+
     // Health check
     grpc::Status HealthCheck(
         grpc::ServerContext* context,
@@ -132,6 +142,12 @@ private:
     core::IPacketAnalyzer& analyzer_;
     core::IFeatureNormalizer& normalizer_;
     app::HybridDetectionService& hybridService_;
+
+    // Optional backends (set via setter, nullptr = disabled).
+    core::IFlowIndex* flowIndex_ = nullptr;
+    core::ISignatureEngine* signatureEngine_ = nullptr;
+    core::IContentScanner* contentScanner_ = nullptr;
+    app::VerdictEngine* verdictEngine_ = nullptr;
 
     // Session state
     mutable std::mutex sessionMutex_;
