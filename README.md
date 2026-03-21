@@ -130,11 +130,11 @@ cmake --build --preset Debug
 ctest --preset Debug
 ```
 
-Four test executables are built (403 tests total):
-- `nids_tests` -- Core/infra unit tests (324 tests, no Qt/ONNX dependencies)
-- `nids_qt_tests` -- Qt-dependent tests (31 tests: CaptureController, AnalysisService, pipeline)
-- `nids_stress_tests` -- Performance and concurrency stress tests (24 tests)
-- `nids_onnx_tests` -- ONNX Runtime tests (24 tests: OnnxAnalyzer, AnalyzerFactory)
+Four test executables are built (722+ tests total):
+- `nids_tests` -- Core/infra/app unit tests (722 tests)
+- `nids_qt_tests` -- Qt-dependent tests (CaptureController, AnalysisService, pipeline)
+- `nids_stress_tests` -- Performance, concurrency, and E2E pipeline benchmarks
+- `nids_onnx_tests` -- ONNX Runtime tests (OnnxAnalyzer, AnalyzerFactory)
 
 ## Model Training
 
@@ -277,12 +277,13 @@ NIDS/
 - [x] UI for hybrid detection results (Phase 7)
 - [x] Real-time per-flow detection with producer-consumer pipeline (Phase 8)
 - [x] gRPC server daemon, CLI client, Docker sandbox (Phase 9)
-- [x] C++23 modernization audit (`std::expected`, `std::span`, `std::ranges`,
-  `FilterBuilder`, `ICommand`, `PacketParser` extraction, `PipelineFactory`)
-- [ ] Model and detection improvements (Phase 10)
-- [ ] Documentation polish and coverage enforcement (Phase 11)
-
-See [docs/roadmap.md](docs/roadmap.md) for the full breakdown.
+- [x] C++23 modernization audit (Phase 10)
+- [x] SIEM output sinks -- CEF, LEEF, Syslog, JSON file (Phase 12)
+- [x] Threat hunting -- SQLite flow index, PCAP ring buffer, HuntEngine (Phase 13)
+- [x] YARA content scanning -- YaraScanner, TcpReassembler, 5-layer detection (Phase 14)
+- [x] Snort signature rules -- SnortRuleParser, SnortRuleEngine (Phase 15)
+- [x] Inline IPS gateway -- VerdictEngine, BypassManager, AF_PACKET TPACKET_V3 (Phase 16)
+- [x] Production hardening -- 15 gRPC RPCs, Docker, systemd, deployment docs (Phase 17)
 
 ## License
 

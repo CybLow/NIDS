@@ -55,8 +55,6 @@ detectionSourceFromString(std::string_view name) noexcept {
     if (name == "ML + Threat Intel") return MlPlusThreatIntel;
     if (name == "ML + Heuristic") return MlPlusHeuristic;
     if (name == "Ensemble") return Ensemble;
-    // Legacy compatibility
-    if (name == "Ensemble (ML + TI + Rules)") return Ensemble;
     return None;
 }
 

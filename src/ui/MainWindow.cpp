@@ -3,6 +3,10 @@
 #include "core/services/Configuration.h"
 #include "ui/WeightTuningDialog.h"
 
+#ifdef NIDS_HAS_GRPC_CLIENT
+#include "ui/ServerDashboard.h"
+#endif
+
 #include <QAction>
 #include <QCursor>
 #include <QHBoxLayout>
@@ -117,6 +121,10 @@ void MainWindow::setupUi() {
   tabWidget_ = new QTabWidget(this); // NOSONAR
   tabWidget_->addTab(packetsTab, "Packets");
   tabWidget_->addTab(flowsTab, "Flows");
+
+#ifdef NIDS_HAS_GRPC_CLIENT
+  tabWidget_->addTab(new ui::ServerDashboard(this), "Server Dashboard");
+#endif
 
   // -- Progress bar --
   analysisProgress_ = new QProgressBar(this); // NOSONAR
