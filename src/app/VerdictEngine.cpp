@@ -27,7 +27,7 @@ core::VerdictResult VerdictEngine::evaluate(
 
     // 1. Check dynamic block list (O(1) hash lookup).
     {
-        infra::FlowKey key{flow.srcIp, flow.dstIp,
+        core::FlowKey key{flow.srcIp, flow.dstIp,
                            flow.srcPort, flow.dstPort, flow.protocol};
         if (isBlocked(key)) {
             return {core::PacketVerdict::Drop,
@@ -91,12 +91,12 @@ core::VerdictResult VerdictEngine::evaluate(
 
 // ── Dynamic block management ────────────────────────────────────────
 
-bool VerdictEngine::isBlocked(const infra::FlowKey& key) const {
+bool VerdictEngine::isBlocked(const core::FlowKey& key) const {
     std::scoped_lock lock{blockMutex_};
     return blockedFlows_.contains(key);
 }
 
-void VerdictEngine::blockFlow(const infra::FlowKey& key,
+void VerdictEngine::blockFlow(const core::FlowKey& key,
                                std::string reason) {
     std::scoped_lock lock{blockMutex_};
     if (blockedFlows_.insert(key).second) {
@@ -106,7 +106,7 @@ void VerdictEngine::blockFlow(const infra::FlowKey& key,
     }
 }
 
-void VerdictEngine::unblockFlow(const infra::FlowKey& key) {
+void VerdictEngine::unblockFlow(const core::FlowKey& key) {
     std::scoped_lock lock{blockMutex_};
     blockedFlows_.erase(key);
 }

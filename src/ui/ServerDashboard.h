@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <memory>
+#include <thread>
 
 class QComboBox;
 class QLabel;
@@ -117,6 +118,9 @@ private:
 
     // Auto-refresh.
     QTimer* refreshTimer_ = nullptr;
+
+    // Streaming thread (RAII — auto-joins on destruction).
+    std::jthread streamThread_;
 
     // gRPC client.
     std::unique_ptr<client::NidsClient> client_;

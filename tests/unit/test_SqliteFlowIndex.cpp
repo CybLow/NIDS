@@ -7,6 +7,7 @@
 #include "core/model/FlowQuery.h"
 #include "core/model/IndexedFlow.h"
 
+#include "helpers/TestFixtures.h"
 #include <gtest/gtest.h>
 
 #include <cstddef>

@@ -92,7 +92,7 @@ TEST(VerdictEngine, tiDisabled_noBlock) {
 TEST(VerdictEngine, dynamicBlock_drops) {
     app::VerdictEngine engine(nullptr, nullptr, nullptr);
 
-    infra::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
+    core::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
     engine.blockFlow(key, "ML detected DDoS");
 
     auto payload = toBytes("data");
@@ -106,7 +106,7 @@ TEST(VerdictEngine, dynamicBlock_drops) {
 TEST(VerdictEngine, dynamicBlock_unblock_forwards) {
     app::VerdictEngine engine(nullptr, nullptr, nullptr);
 
-    infra::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
+    core::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
     engine.blockFlow(key, "test");
     EXPECT_EQ(engine.blockCount(), 1u);
 
@@ -143,13 +143,13 @@ TEST(VerdictEngine, emptyPayload_noDetectors_forwards) {
 
 TEST(VerdictEngine, isBlocked_unknownFlow_returnsFalse) {
     app::VerdictEngine engine(nullptr, nullptr, nullptr);
-    infra::FlowKey key{"1.2.3.4", "5.6.7.8", 111, 222, 6};
+    core::FlowKey key{"1.2.3.4", "5.6.7.8", 111, 222, 6};
     EXPECT_FALSE(engine.isBlocked(key));
 }
 
 TEST(VerdictEngine, blockFlow_duplicateKey_noDouble) {
     app::VerdictEngine engine(nullptr, nullptr, nullptr);
-    infra::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
+    core::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
 
     engine.blockFlow(key, "first");
     engine.blockFlow(key, "second"); // duplicate insert

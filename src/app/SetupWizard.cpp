@@ -2,12 +2,16 @@
 
 #include <spdlog/spdlog.h>
 
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <string>
+
+#ifdef __linux__
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 namespace nids::app {
 
@@ -114,16 +118,31 @@ void SetupWizard::downloadRulesAndFeeds() const {
     // Find the download script.
     for (const auto& dir : {".", "..", "scripts/ops", "/opt/nids/scripts"}) {
         auto script = fs::path(dir) / "download_rules.sh";
-        if (fs::exists(script)) {
-            int rc = std::system(script.string().c_str()); // NOSONAR
-            if (rc == 0) {
+        if (!fs::exists(script)) continue;
+
+#ifdef __linux__
+        // Use fork/exec instead of banned system().
+        pid_t pid = ::fork();
+        if (pid == 0) {
+            auto path = script.string();
+            char* argv[] = {path.data(), nullptr};
+            ::execvp(path.c_str(), argv);
+            ::_exit(127); // exec failed
+        } else if (pid > 0) {
+            int status = 0;
+            ::waitpid(pid, &status, 0);
+            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
                 std::cout << "Download complete.\n";
             } else {
-                std::cout << "Download script returned " << rc
-                          << " (some downloads may have failed).\n";
+                std::cout << "Download script failed (some downloads "
+                             "may have failed).\n";
             }
-            return;
         }
+#else
+        std::cout << "Automatic download not available on this platform.\n"
+                  << "Run manually: " << script.string() << "\n";
+#endif
+        return;
     }
 
     std::cout << "Download script not found. Run manually:\n"

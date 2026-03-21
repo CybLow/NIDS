@@ -6,6 +6,7 @@
 #include "core/model/FlowInfo.h"
 
 #include <nlohmann/json.hpp>
+#include "helpers/TestFixtures.h"
 #include <gtest/gtest.h>
 
 #include <cstddef>

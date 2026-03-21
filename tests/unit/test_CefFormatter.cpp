@@ -5,6 +5,7 @@
 #include "core/model/DetectionSource.h"
 #include "core/model/FlowInfo.h"
 
+#include "helpers/TestFixtures.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>

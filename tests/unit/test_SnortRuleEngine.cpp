@@ -3,6 +3,7 @@
 #include "core/model/FlowInfo.h"
 #include "core/model/SignatureMatch.h"
 
+#include "helpers/TestFixtures.h"
 #include <gtest/gtest.h>
 
 #include <cstdint>
