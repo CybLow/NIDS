@@ -13,6 +13,7 @@
 #include <net/if.h>
 #include <poll.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -22,6 +23,9 @@ AfPacketCapture::AfPacketCapture() = default;
 
 AfPacketCapture::~AfPacketCapture() {
     stop();
+    if (ringBuffer_ && ringBuffer_ != MAP_FAILED) {
+        ::munmap(ringBuffer_, ringSize_);
+    }
     if (rxFd_ >= 0) ::close(rxFd_);
     if (txFd_ >= 0) ::close(txFd_);
 }
@@ -29,21 +33,30 @@ AfPacketCapture::~AfPacketCapture() {
 bool AfPacketCapture::initialize(const core::InlineConfig& config) {
     config_ = config;
 
-    if (!createSocket(config.inputInterface, rxFd_)) return false;
+    if (!setupSocket(config.inputInterface, rxFd_)) return false;
+    if (!setupTpacketV3(rxFd_)) return false;
     if (!bindToInterface(rxFd_, config.inputInterface)) return false;
     if (config.promiscuous) {
         [[maybe_unused]] auto ok = setPromiscuous(config.inputInterface, rxFd_);
     }
 
-    if (!createSocket(config.outputInterface, txFd_)) return false;
+    // TX socket (plain raw socket for forwarding).
+    txFd_ = ::socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+    if (txFd_ < 0) {
+        spdlog::error("AfPacketCapture: TX socket() failed: {}",
+                      std::strerror(errno));
+        return false;
+    }
     if (!bindToInterface(txFd_, config.outputInterface)) return false;
 
-    spdlog::info("AfPacketCapture: initialized {} -> {}",
-                 config.inputInterface, config.outputInterface);
+    spdlog::info("AfPacketCapture: initialized {} -> {} "
+                 "(TPACKET_V3, {} blocks x {} bytes)",
+                 config.inputInterface, config.outputInterface,
+                 kBlockCount, kBlockSize);
     return true;
 }
 
-bool AfPacketCapture::createSocket(
+bool AfPacketCapture::setupSocket(
     [[maybe_unused]] const std::string& iface, int& fd) const {
     fd = ::socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     if (fd < 0) {
@@ -51,6 +64,47 @@ bool AfPacketCapture::createSocket(
                       iface, std::strerror(errno));
         return false;
     }
+    return true;
+}
+
+bool AfPacketCapture::setupTpacketV3(int fd) {
+    int version = TPACKET_V3;
+    if (::setsockopt(fd, SOL_PACKET, PACKET_VERSION,
+                     &version, sizeof(version)) < 0) {
+        spdlog::error("AfPacketCapture: PACKET_VERSION V3 failed: {}",
+                      std::strerror(errno));
+        return false;
+    }
+
+    tpacket_req3 req{};
+    req.tp_block_size = kBlockSize;
+    req.tp_block_nr = kBlockCount;
+    req.tp_frame_size = kFrameSize;
+    req.tp_frame_nr = (kBlockSize / kFrameSize) * kBlockCount;
+    req.tp_retire_blk_tov = 60;
+    req.tp_sizeof_priv = 0;
+    req.tp_feature_req_word = 0;
+
+    if (::setsockopt(fd, SOL_PACKET, PACKET_RX_RING,
+                     &req, sizeof(req)) < 0) {
+        spdlog::error("AfPacketCapture: PACKET_RX_RING failed: {}",
+                      std::strerror(errno));
+        return false;
+    }
+
+    ringSize_ = static_cast<std::size_t>(kBlockSize) * kBlockCount;
+    ringBuffer_ = ::mmap(nullptr, ringSize_,
+                         PROT_READ | PROT_WRITE,
+                         MAP_SHARED | MAP_LOCKED,
+                         fd, 0);
+
+    if (ringBuffer_ == MAP_FAILED) {
+        spdlog::error("AfPacketCapture: mmap() failed: {}",
+                      std::strerror(errno));
+        ringBuffer_ = nullptr;
+        return false;
+    }
+
     return true;
 }
 
@@ -79,8 +133,7 @@ bool AfPacketCapture::bindToInterface(
 bool AfPacketCapture::setPromiscuous(
     const std::string& iface, int fd) const {
     struct ifreq ifr{};
-    // Safe: iface is validated at bind time; IFNAMSIZ includes null.
-    iface.copy(ifr.ifr_name, IFNAMSIZ - 1); // NOSONAR — bounded by IFNAMSIZ
+    iface.copy(ifr.ifr_name, IFNAMSIZ - 1);
 
     if (::ioctl(fd, SIOCGIFFLAGS, &ifr) < 0) {
         spdlog::warn("AfPacketCapture: SIOCGIFFLAGS failed for {}", iface);
@@ -110,6 +163,8 @@ void AfPacketCapture::forwardPacket(const std::uint8_t* data,
     }
 }
 
+// ── TPACKET_V3 capture loop ────────────────────────────────────────
+
 void AfPacketCapture::start() {
     running_.store(true);
     captureLoop();
@@ -120,30 +175,56 @@ void AfPacketCapture::stop() {
 }
 
 void AfPacketCapture::captureLoop() {
-    std::vector<std::uint8_t> buf(static_cast<std::size_t>(config_.snaplen));
+    if (!ringBuffer_) {
+        spdlog::error("AfPacketCapture: ring buffer not initialized");
+        return;
+    }
 
     pollfd pfd{};
     pfd.fd = rxFd_;
-    pfd.events = POLLIN;
+    pfd.events = POLLIN | POLLERR;
+
+    unsigned blockIdx = 0;
 
     while (running_.load()) {
-        if (int ret = ::poll(&pfd, 1, 100); ret <= 0) continue;
+        auto* blockPtr = static_cast<std::uint8_t*>(ringBuffer_) +
+                         blockIdx * kBlockSize;
+        auto* hdr = reinterpret_cast<tpacket_block_desc*>(blockPtr); // NOLINT
 
-        auto len = ::recv(rxFd_, buf.data(), buf.size(), MSG_DONTWAIT);
-        if (len <= 0) continue;
+        if ((hdr->hdr.bh1.block_status & TP_STATUS_USER) == 0) {
+            if (int ret = ::poll(&pfd, 1, 100); ret <= 0) continue;
+            if ((hdr->hdr.bh1.block_status & TP_STATUS_USER) == 0) continue;
+        }
 
-        auto pktLen = static_cast<std::size_t>(len);
+        processBlock(hdr);
+
+        hdr->hdr.bh1.block_status = TP_STATUS_KERNEL;
+        blockIdx = (blockIdx + 1) % kBlockCount;
+    }
+}
+
+void AfPacketCapture::processBlock(void* blockHeader) {
+    auto* hdr = static_cast<tpacket_block_desc*>(blockHeader);
+    auto numPkts = hdr->hdr.bh1.num_pkts;
+    auto* pkt = reinterpret_cast<tpacket3_hdr*>( // NOLINT
+        static_cast<std::uint8_t*>(blockHeader) +
+        hdr->hdr.bh1.offset_to_first_pkt);
+
+    for (std::uint32_t i = 0; i < numPkts; ++i) {
+        auto* data = reinterpret_cast<const std::uint8_t*>(pkt) + // NOLINT
+                     pkt->tp_mac;
+        auto len = pkt->tp_snaplen;
+
         packetsReceived_.fetch_add(1);
-        bytesReceived_.fetch_add(pktLen);
+        bytesReceived_.fetch_add(len);
 
-        using namespace std::chrono;
-        auto nowUs = duration_cast<microseconds>(
-            system_clock::now().time_since_epoch()).count();
+        auto timestampUs = static_cast<int64_t>(pkt->tp_sec) * 1'000'000 +
+                           static_cast<int64_t>(pkt->tp_nsec) / 1'000;
 
         auto verdict = core::PacketVerdict::Forward;
         if (verdictCb_) {
             verdict = verdictCb_(
-                std::span<const std::uint8_t>(buf.data(), pktLen), nowUs);
+                std::span<const std::uint8_t>(data, len), timestampUs);
         }
 
         using enum core::PacketVerdict;
@@ -151,13 +232,16 @@ void AfPacketCapture::captureLoop() {
         case Forward:
         case Alert:
         case Bypass:
-            forwardPacket(buf.data(), pktLen);
+            forwardPacket(data, len);
             break;
         case Drop:
         case Reject:
             packetsDropped_.fetch_add(1);
             break;
         }
+
+        pkt = reinterpret_cast<tpacket3_hdr*>( // NOLINT
+            reinterpret_cast<std::uint8_t*>(pkt) + pkt->tp_next_offset);
     }
 }
 
