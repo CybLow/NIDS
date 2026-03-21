@@ -14,6 +14,7 @@ add_library(nids_app STATIC
     HuntEngine.cpp
     VerdictEngine.cpp
     BypassManager.cpp
+    SetupWizard.cpp
     commands/CaptureCommands.cpp
 )
 
@@ -23,6 +24,7 @@ target_link_libraries(nids_app
     PRIVATE
         nids_infra
         spdlog::spdlog
+        nlohmann_json::nlohmann_json
 )
 
 nids_set_target_defaults(nids_app)

@@ -14,6 +14,7 @@
 ///   stream [--filter flagged|clean|all]   Stream detection events
 ///   help                            Show this help message
 
+#include "app/SetupWizard.h"
 #include "client/NidsClient.h"
 
 #include <nids.pb.h>
@@ -53,6 +54,8 @@ void printUsage(std::string_view progName) {
         << "  ioc <ip1> [<ip2> ...]               IOC indicator search\n"
         << "  rules load <path>                   Load Snort/YARA rules\n"
         << "  rules stats                         Show rule statistics\n"
+        << "  rules download                      Download community rules\n"
+        << "  setup                               Run first-time setup wizard\n"
         << "  help                                 Show this help\n"
         << "\n"
         << "Options:\n"
@@ -275,7 +278,20 @@ int main(int argc, char* argv[]) {
 
     const auto& command = positionalArgs[0];
 
-    // Connect to server
+    // Local commands (no server connection needed).
+    if (command == "setup") {
+        nids::app::SetupWizard wizard;
+        wizard.run();
+        return 0;
+    }
+    if (command == "rules" && positionalArgs.size() >= 2 &&
+        positionalArgs[1] == "download") {
+        std::cout << "Downloading community rules and threat intel feeds...\n";
+        int rc = std::system("scripts/ops/download_rules.sh"); // NOSONAR
+        return rc == 0 ? 0 : 1;
+    }
+
+    // Connect to server for remote commands.
     nids::client::NidsClient client(config);
     if (!client.connect()) {
         std::cerr << "Failed to connect to NIDS server at "

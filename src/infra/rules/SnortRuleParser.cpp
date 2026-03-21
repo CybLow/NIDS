@@ -321,6 +321,30 @@ std::expected<void, std::string> SnortRuleParser::parseOption(
         rule.contents.back().distance = parseInt(value);
     } else if (key == "within" && !rule.contents.empty()) {
         rule.contents.back().within = parseInt(value);
+    } else if (key == "fast_pattern" && !rule.contents.empty()) {
+        rule.contents.back().fastPattern = true;
+    }
+    // Suricata sticky buffers — set on next content match.
+    else if (key == "http.uri" || key == "http_uri" ||
+             key == "http.header" || key == "http_header" ||
+             key == "http.method" || key == "http_method" ||
+             key == "http.cookie" || key == "http_cookie" ||
+             key == "http.user_agent" || key == "http_user_agent" ||
+             key == "http.host" || key == "http_host" ||
+             key == "http.request_body" || key == "http_client_body" ||
+             key == "http.response_body" || key == "http_server_body" ||
+             key == "http.stat_code" || key == "http_stat_code" ||
+             key == "http.stat_msg" || key == "http_stat_msg" ||
+             key == "dns.query" || key == "dns_query" ||
+             key == "tls.sni" || key == "tls_sni" ||
+             key == "tls.cert_subject" ||
+             key == "file.data" || key == "file_data" ||
+             key == "pkt_data" || key == "raw_uri") {
+        // Sticky buffer: applies to the NEXT content option.
+        // Store it so the next content gets it.
+        if (!rule.contents.empty()) {
+            rule.contents.back().stickyBuffer = std::string(key);
+        }
     }
     // Unknown options are silently skipped.
 

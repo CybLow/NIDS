@@ -17,6 +17,7 @@
 
 #include "app/HeadlessCaptureRunner.h"
 #include "app/PipelineFactory.h"
+#include "app/SetupWizard.h"
 #include "core/services/Configuration.h"
 #include "infra/capture/PcapCapture.h"
 #include "infra/config/ConfigLoader.h"
@@ -137,6 +138,14 @@ int main(int argc, char* argv[]) {
     if (!networkGuard.isInitialized()) {
         spdlog::critical("Failed to initialize networking");
         return 1;
+    }
+
+    // -- First-run setup wizard --
+    if (args.configPath.empty() &&
+        nids::app::SetupWizard::isSetupNeeded("config.json")) {
+        spdlog::info("No configuration found. Running setup wizard...");
+        nids::app::SetupWizard wizard;
+        args.configPath = wizard.run().string();
     }
 
     // -- Configuration --
