@@ -26,7 +26,6 @@ using core::FlowKey;
 /// Import WelfordAccumulator from core/ for convenience.
 using core::WelfordAccumulator;
 
-/// Re-export core constant for backward compatibility within infra/ layer.
 using core::kFlowFeatureCount;
 
 /** Accumulated per-flow statistics used to compute the 77-feature vector. */

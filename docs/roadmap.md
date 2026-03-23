@@ -557,10 +557,11 @@ For implementation, the recommended order is:
 2. ~~**Phase 7** — UI for hybrid results~~ [DONE]
 3. ~~**Phase 8** — Real-time flow extraction~~ [DONE]
 4. ~~**Phase 9** — gRPC server/client~~ [DONE]
-5. **Phase 10** — Model improvements (iterative, can be done in parallel with others)
-6. **Phase 11** — Documentation polish (ongoing)
-7. **Phase 12** — SIEM output sinks (4-5 weeks, zero new deps, immediate operational value)
-8. **Phase 13** — Threat hunting (6-8 weeks, SQLite, high SOC value)
-9. **Phase 14** — YARA rules (6-8 weeks, libyara, malware/C2 detection)
-10. **Phase 15** — Snort rules (10-14 weeks, PCRE2, comprehensive signature coverage)
-11. **Phase 16** — Inline IPS gateway (13-18 weeks, Linux-only, depends on Phase 15)
+5. ~~**Phase 10** — C++23 modernization audit~~ [DONE]
+6. ~~**Phase 12** — SIEM output sinks~~ [DONE]
+7. ~~**Phase 13** — Threat hunting~~ [DONE]
+8. ~~**Phase 14** — YARA content scanning~~ [DONE]
+9. ~~**Phase 15** — Snort signature rules~~ [DONE]
+10. ~~**Phase 16** — Inline IPS gateway~~ [DONE]
+11. ~~**Phase 17** — Production hardening, gRPC API completion~~ [DONE]
+12. ~~**Phase 18** — Plug-and-play: rule downloader, Suricata compat, setup wizard~~ [DONE]
