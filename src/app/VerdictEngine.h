@@ -7,7 +7,7 @@
 
 #include "core/model/FlowInfo.h"
 #include "core/model/PacketVerdict.h"
-#include "infra/flow/FlowKey.h"
+#include "core/model/FlowKey.h"
 
 #include <cstdint>
 #include <mutex>
@@ -45,13 +45,13 @@ public:
         const core::FlowInfo& flow) const;
 
     /// Check if a flow is dynamically blocked.
-    [[nodiscard]] bool isBlocked(const infra::FlowKey& key) const;
+    [[nodiscard]] bool isBlocked(const core::FlowKey& key) const;
 
     /// Add a dynamic block for a flow (from ML verdict).
-    void blockFlow(const infra::FlowKey& key, std::string reason);
+    void blockFlow(const core::FlowKey& key, std::string reason);
 
     /// Remove a dynamic block.
-    void unblockFlow(const infra::FlowKey& key);
+    void unblockFlow(const core::FlowKey& key);
 
     /// Clear all dynamic blocks.
     void clearBlocks();
@@ -69,7 +69,7 @@ private:
     VerdictPolicy policy_;
 
     mutable std::mutex blockMutex_;
-    std::unordered_set<infra::FlowKey, infra::FlowKeyHash> blockedFlows_;
+    std::unordered_set<core::FlowKey, core::FlowKeyHash> blockedFlows_;
 };
 
 } // namespace nids::app

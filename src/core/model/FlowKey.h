@@ -9,7 +9,7 @@
 #include <functional>
 #include <string>
 
-namespace nids::infra {
+namespace nids::core {
 
 /** Five-tuple flow key identifying a unique bidirectional network flow. */
 struct FlowKey {
@@ -40,4 +40,4 @@ struct FlowKeyHash {
     }
 };
 
-} // namespace nids::infra
+} // namespace nids::core

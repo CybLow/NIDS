@@ -6,7 +6,7 @@
 /// without triggering any detection, it can be bypassed (skip further
 /// inspection) to reduce CPU overhead.
 
-#include "infra/flow/FlowKey.h"
+#include "core/model/FlowKey.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -27,16 +27,16 @@ public:
     explicit BypassManager(BypassPolicy policy = {});
 
     /// Track a forwarded (clean) packet for a flow.
-    void trackForwarded(const infra::FlowKey& key, int64_t nowUs);
+    void trackForwarded(const core::FlowKey& key, int64_t nowUs);
 
     /// Check if a flow should be bypassed.
-    [[nodiscard]] bool shouldBypass(const infra::FlowKey& key) const;
+    [[nodiscard]] bool shouldBypass(const core::FlowKey& key) const;
 
     /// Mark a flow as bypassed (explicitly, e.g., after ML confirms benign).
-    void markBypassed(const infra::FlowKey& key);
+    void markBypassed(const core::FlowKey& key);
 
     /// Revoke bypass for a flow (if a new alert triggers).
-    void revokeBypass(const infra::FlowKey& key);
+    void revokeBypass(const core::FlowKey& key);
 
     /// Clean up expired flow tracking.
     void sweep(int64_t nowUs, int64_t timeoutUs);
@@ -59,7 +59,7 @@ private:
     };
 
     BypassPolicy policy_;
-    std::unordered_map<infra::FlowKey, FlowTracker, infra::FlowKeyHash> flows_;
+    std::unordered_map<core::FlowKey, FlowTracker, core::FlowKeyHash> flows_;
     mutable std::mutex mutex_;
 };
 

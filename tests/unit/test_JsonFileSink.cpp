@@ -6,6 +6,7 @@
 #include "core/model/FlowInfo.h"
 
 #include <nlohmann/json.hpp>
+#include "helpers/TestFixtures.h"
 #include <gtest/gtest.h>
 
 #include <cstddef>
@@ -17,34 +18,8 @@ using namespace nids;
 namespace fs = std::filesystem;
 
 namespace {
-
-core::DetectionResult makeResult(core::AttackType type, float confidence,
-                                  float combinedScore,
-                                  core::DetectionSource source) {
-    core::DetectionResult r;
-    r.mlResult.classification = type;
-    r.mlResult.confidence = confidence;
-    r.finalVerdict = type;
-    r.combinedScore = combinedScore;
-    r.detectionSource = source;
-    return r;
-}
-
-core::FlowInfo makeFlow(const std::string& srcIp, const std::string& dstIp,
-                         std::uint16_t srcPort, std::uint16_t dstPort,
-                         std::uint8_t proto) {
-    core::FlowInfo f;
-    f.srcIp = srcIp;
-    f.dstIp = dstIp;
-    f.srcPort = srcPort;
-    f.dstPort = dstPort;
-    f.protocol = proto;
-    f.totalFwdPackets = 100;
-    f.totalBwdPackets = 50;
-    f.flowDurationUs = 5000000.0;
-    f.avgPacketSize = 512.0;
-    return f;
-}
+using nids::testing::makeFlow;
+using nids::testing::makeResult;
 
 /// Count lines in a file.
 std::size_t countLines(const fs::path& path) {
@@ -172,10 +147,10 @@ TEST(JsonFileSink, toJson_containsFlowMetrics) {
     auto jsonStr = infra::JsonFileSink::toJson(0, result, flow);
     auto j = nlohmann::json::parse(jsonStr);
 
-    EXPECT_EQ(j["flow"]["totalFwdPackets"], 100u);
-    EXPECT_EQ(j["flow"]["totalBwdPackets"], 50u);
-    EXPECT_DOUBLE_EQ(j["flow"]["flowDurationUs"].get<double>(), 5000000.0);
-    EXPECT_DOUBLE_EQ(j["flow"]["avgPacketSize"].get<double>(), 512.0);
+    EXPECT_EQ(j["flow"]["totalFwdPackets"], 10u);
+    EXPECT_EQ(j["flow"]["totalBwdPackets"], 5u);
+    EXPECT_DOUBLE_EQ(j["flow"]["flowDurationUs"].get<double>(), 1000000.0);
+    EXPECT_DOUBLE_EQ(j["flow"]["avgPacketSize"].get<double>(), 256.0);
 }
 
 TEST(JsonFileSink, startStop_writesToFile) {

@@ -16,8 +16,6 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
-#include <thread>
-
 namespace nids::ui {
 
 ServerDashboard::ServerDashboard(QWidget* parent) : QWidget(parent) {
@@ -383,13 +381,20 @@ void ServerDashboard::onStartStreaming() {
     stopStreamBtn_->setEnabled(true);
     streamTable_->setRowCount(0);
 
-    // Run streaming in a background thread.
-    std::thread([this]() {
+    // Stop any previous stream thread (jthread auto-joins).
+    streaming_.store(false);
+    if (streamThread_.joinable()) {
+        streamThread_.request_stop();
+        streamThread_.join();
+    }
+    streaming_.store(true);
+
+    // Run streaming in a managed jthread.
+    streamThread_ = std::jthread([this](std::stop_token) {
         client_->streamDetections("", FILTER_ALL,
             [this](const DetectionEvent& event) {
                 if (!streaming_.load()) return;
 
-                // Post to UI thread.
                 QMetaObject::invokeMethod(this, [this, event]() {
                     int row = streamTable_->rowCount();
                     if (row >= 1000) {
@@ -423,7 +428,7 @@ void ServerDashboard::onStartStreaming() {
                 });
             },
             streaming_);
-    }).detach();
+    });
 }
 
 void ServerDashboard::onStopStreaming() {

@@ -13,7 +13,7 @@
 #include "core/math/WelfordAccumulator.h"
 #include "core/model/FlowConstants.h"
 #include "core/model/FlowInfo.h"
-#include "infra/flow/FlowKey.h"
+#include "core/model/FlowKey.h"
 
 #include <cstdint>
 #include <string>
@@ -21,10 +21,11 @@
 
 namespace nids::infra {
 
+using core::FlowKey;
+
 /// Import WelfordAccumulator from core/ for convenience.
 using core::WelfordAccumulator;
 
-/// Re-export core constant for backward compatibility within infra/ layer.
 using core::kFlowFeatureCount;
 
 /** Accumulated per-flow statistics used to compute the 77-feature vector. */

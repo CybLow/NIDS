@@ -1,3 +1,4 @@
+#include "helpers/TestFixtures.h"
 #include "app/VerdictEngine.h"
 
 #include "helpers/MockThreatIntel.h"
@@ -13,18 +14,8 @@ using namespace nids;
 using ::testing::Return;
 
 namespace {
-
-core::FlowInfo makeFlow(const std::string& src, const std::string& dst,
-                          std::uint16_t srcPort, std::uint16_t dstPort,
-                          std::uint8_t proto = 6) {
-    core::FlowInfo f;
-    f.srcIp = src;
-    f.dstIp = dst;
-    f.srcPort = srcPort;
-    f.dstPort = dstPort;
-    f.protocol = proto;
-    return f;
-}
+using nids::testing::makeFlow;
+using nids::testing::makeResult;
 
 std::vector<std::uint8_t> toBytes(const std::string& s) {
     return {s.begin(), s.end()};
@@ -92,7 +83,7 @@ TEST(VerdictEngine, tiDisabled_noBlock) {
 TEST(VerdictEngine, dynamicBlock_drops) {
     app::VerdictEngine engine(nullptr, nullptr, nullptr);
 
-    infra::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
+    core::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
     engine.blockFlow(key, "ML detected DDoS");
 
     auto payload = toBytes("data");
@@ -106,7 +97,7 @@ TEST(VerdictEngine, dynamicBlock_drops) {
 TEST(VerdictEngine, dynamicBlock_unblock_forwards) {
     app::VerdictEngine engine(nullptr, nullptr, nullptr);
 
-    infra::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
+    core::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
     engine.blockFlow(key, "test");
     EXPECT_EQ(engine.blockCount(), 1u);
 
@@ -143,13 +134,13 @@ TEST(VerdictEngine, emptyPayload_noDetectors_forwards) {
 
 TEST(VerdictEngine, isBlocked_unknownFlow_returnsFalse) {
     app::VerdictEngine engine(nullptr, nullptr, nullptr);
-    infra::FlowKey key{"1.2.3.4", "5.6.7.8", 111, 222, 6};
+    core::FlowKey key{"1.2.3.4", "5.6.7.8", 111, 222, 6};
     EXPECT_FALSE(engine.isBlocked(key));
 }
 
 TEST(VerdictEngine, blockFlow_duplicateKey_noDouble) {
     app::VerdictEngine engine(nullptr, nullptr, nullptr);
-    infra::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
+    core::FlowKey key{"10.0.0.1", "192.168.1.1", 12345, 80, 6};
 
     engine.blockFlow(key, "first");
     engine.blockFlow(key, "second"); // duplicate insert

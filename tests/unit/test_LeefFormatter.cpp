@@ -5,6 +5,7 @@
 #include "core/model/DetectionSource.h"
 #include "core/model/FlowInfo.h"
 
+#include "helpers/TestFixtures.h"
 #include <gtest/gtest.h>
 
 #include <string>
@@ -12,30 +13,8 @@
 using namespace nids;
 
 namespace {
-
-core::DetectionResult makeResult(core::AttackType type, float confidence,
-                                  float combinedScore,
-                                  core::DetectionSource source) {
-    core::DetectionResult r;
-    r.mlResult.classification = type;
-    r.mlResult.confidence = confidence;
-    r.finalVerdict = type;
-    r.combinedScore = combinedScore;
-    r.detectionSource = source;
-    return r;
-}
-
-core::FlowInfo makeFlow(const std::string& srcIp, const std::string& dstIp,
-                         std::uint16_t srcPort, std::uint16_t dstPort,
-                         std::uint8_t proto) {
-    core::FlowInfo f;
-    f.srcIp = srcIp;
-    f.dstIp = dstIp;
-    f.srcPort = srcPort;
-    f.dstPort = dstPort;
-    f.protocol = proto;
-    return f;
-}
+using nids::testing::makeFlow;
+using nids::testing::makeResult;
 
 } // namespace
 

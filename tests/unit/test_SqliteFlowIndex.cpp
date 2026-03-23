@@ -7,6 +7,7 @@
 #include "core/model/FlowQuery.h"
 #include "core/model/IndexedFlow.h"
 
+#include "helpers/TestFixtures.h"
 #include <gtest/gtest.h>
 
 #include <cstddef>
@@ -17,6 +18,8 @@ using namespace nids;
 namespace fs = std::filesystem;
 
 namespace {
+using nids::testing::makeFlow;
+using nids::testing::makeResult;
 
 /// RAII helper to remove test database on scope exit.
 struct DbGuard {
@@ -29,34 +32,6 @@ struct DbGuard {
         fs::remove(fs::path(path.string() + "-shm"), ec);
     }
 };
-
-core::FlowInfo makeFlow(const std::string& src, const std::string& dst,
-                          std::uint16_t srcPort, std::uint16_t dstPort,
-                          std::uint8_t proto) {
-    core::FlowInfo f;
-    f.srcIp = src;
-    f.dstIp = dst;
-    f.srcPort = srcPort;
-    f.dstPort = dstPort;
-    f.protocol = proto;
-    f.totalFwdPackets = 10;
-    f.totalBwdPackets = 5;
-    f.flowDurationUs = 1000000.0;
-    f.avgPacketSize = 256.0;
-    return f;
-}
-
-core::DetectionResult makeResult(core::AttackType type, float confidence,
-                                   float combinedScore,
-                                   core::DetectionSource source) {
-    core::DetectionResult r;
-    r.mlResult.classification = type;
-    r.mlResult.confidence = confidence;
-    r.finalVerdict = type;
-    r.combinedScore = combinedScore;
-    r.detectionSource = source;
-    return r;
-}
 
 } // namespace
 

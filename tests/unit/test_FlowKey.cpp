@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-using nids::infra::FlowKey;
+using nids::core::FlowKey;
 
 // ── FlowKey tests ────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ TEST(FlowKey, Equality_portDifference) {
 }
 
 TEST(FlowKey, HashConsistency) {
-  nids::infra::FlowKeyHash hasher;
+  nids::core::FlowKeyHash hasher;
   FlowKey a{"10.0.0.1", "192.168.1.1", 12345, 443, 6};
   FlowKey b{"10.0.0.1", "192.168.1.1", 12345, 443, 6};
   FlowKey c{"10.0.0.2", "192.168.1.1", 12345, 443, 6};
@@ -39,7 +39,7 @@ TEST(FlowKey, HashConsistency) {
 }
 
 TEST(FlowKey, HashDiffersForProtocol) {
-  nids::infra::FlowKeyHash hasher;
+  nids::core::FlowKeyHash hasher;
   FlowKey tcp{"10.0.0.1", "10.0.0.2", 80, 443, 6};
   FlowKey udp{"10.0.0.1", "10.0.0.2", 80, 443, 17};
   EXPECT_NE(hasher(tcp), hasher(udp));

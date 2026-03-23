@@ -10,7 +10,7 @@ namespace nids::app {
 BypassManager::BypassManager(BypassPolicy policy)
     : policy_(std::move(policy)) {}
 
-void BypassManager::trackForwarded(const infra::FlowKey& key,
+void BypassManager::trackForwarded(const core::FlowKey& key,
                                     int64_t nowUs) {
     if (!policy_.enabled) return;
 
@@ -33,7 +33,7 @@ void BypassManager::trackForwarded(const infra::FlowKey& key,
     }
 }
 
-bool BypassManager::shouldBypass(const infra::FlowKey& key) const {
+bool BypassManager::shouldBypass(const core::FlowKey& key) const {
     if (!policy_.enabled) return false;
 
     std::scoped_lock lock{mutex_};
@@ -42,12 +42,12 @@ bool BypassManager::shouldBypass(const infra::FlowKey& key) const {
     return it->second.bypassed;
 }
 
-void BypassManager::markBypassed(const infra::FlowKey& key) {
+void BypassManager::markBypassed(const core::FlowKey& key) {
     std::scoped_lock lock{mutex_};
     flows_[key].bypassed = true;
 }
 
-void BypassManager::revokeBypass(const infra::FlowKey& key) {
+void BypassManager::revokeBypass(const core::FlowKey& key) {
     std::scoped_lock lock{mutex_};
     auto it = flows_.find(key);
     if (it != flows_.end()) {

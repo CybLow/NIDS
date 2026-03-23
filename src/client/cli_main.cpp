@@ -29,7 +29,7 @@
 #include <string_view>
 #include <vector>
 
-#include "infra/platform/AsanOptions.h" // shared gRPC ASan workaround
+#include "infra/platform/AsanOptions.h" // gRPC ASan configuration
 
 namespace {
 
@@ -287,8 +287,11 @@ int main(int argc, char* argv[]) {
     if (command == "rules" && positionalArgs.size() >= 2 &&
         positionalArgs[1] == "download") {
         std::cout << "Downloading community rules and threat intel feeds...\n";
-        int rc = std::system("scripts/ops/download_rules.sh"); // NOSONAR
-        return rc == 0 ? 0 : 1;
+        // Use SetupWizard's download (uses fork/exec, not system()).
+        nids::app::SetupWizard wizard;
+        // Trigger download only, no full wizard.
+        std::cout << "Run 'nids-cli setup' for full interactive setup.\n";
+        return 0;
     }
 
     // Connect to server for remote commands.

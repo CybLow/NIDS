@@ -3,7 +3,7 @@
 #include "core/model/AttackType.h"
 #include "core/model/DetectionSource.h"
 #include "core/model/FlowQuery.h"
-#include "infra/flow/FlowKey.h"
+#include "core/model/FlowKey.h"
 
 #include <spdlog/spdlog.h>
 
@@ -440,7 +440,7 @@ grpc::Status NidsServiceImpl::BlockFlow(
         return grpc::Status::OK;
     }
 
-    infra::FlowKey key{
+    core::FlowKey key{
         request->src_ip(), request->dst_ip(),
         static_cast<std::uint16_t>(request->src_port()),
         static_cast<std::uint16_t>(request->dst_port()),
@@ -461,7 +461,7 @@ grpc::Status NidsServiceImpl::UnblockFlow(
         return grpc::Status::OK;
     }
 
-    infra::FlowKey key{
+    core::FlowKey key{
         request->src_ip(), request->dst_ip(),
         static_cast<std::uint16_t>(request->src_port()),
         static_cast<std::uint16_t>(request->dst_port()),

@@ -3,6 +3,7 @@
 #include "core/model/FlowInfo.h"
 #include "core/model/SignatureMatch.h"
 
+#include "helpers/TestFixtures.h"
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -13,6 +14,8 @@
 using namespace nids;
 
 namespace {
+using nids::testing::makeFlow;
+using nids::testing::makeResult;
 
 [[nodiscard]] std::filesystem::path findTestRules() {
     for (const auto& base : {".", "..", "../.."}) {
@@ -22,18 +25,6 @@ namespace {
     auto p = std::filesystem::path(NIDS_SOURCE_DIR) / "tests" / "data" / "test_snort.rules";
     if (std::filesystem::exists(p)) return p;
     return {};
-}
-
-core::FlowInfo makeFlow(const std::string& src, const std::string& dst,
-                          std::uint16_t srcPort, std::uint16_t dstPort,
-                          std::uint8_t proto) {
-    core::FlowInfo f;
-    f.srcIp = src;
-    f.dstIp = dst;
-    f.srcPort = srcPort;
-    f.dstPort = dstPort;
-    f.protocol = proto;
-    return f;
 }
 
 std::vector<std::uint8_t> toBytes(const std::string& s) {

@@ -5,7 +5,7 @@
 using namespace nids;
 
 namespace {
-infra::FlowKey makeKey(const std::string& src = "10.0.0.1",
+core::FlowKey makeKey(const std::string& src = "10.0.0.1",
                         const std::string& dst = "192.168.1.1",
                         std::uint16_t sp = 12345,
                         std::uint16_t dp = 80) {

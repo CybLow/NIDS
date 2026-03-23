@@ -2,11 +2,7 @@
 
 /// gRPC Server for the NIDS headless daemon.
 ///
-/// This header provides the top-level NidsServer class and re-exports
-/// the split sub-headers for backward compatibility:
-///   - ServerConfig      (server/ServerConfig.h)
-///   - GrpcStreamSink    (server/GrpcStreamSink.h)
-///   - NidsServiceImpl   (server/NidsServiceImpl.h)
+/// Top-level NidsServer class that owns the gRPC server lifecycle.
 
 #include "server/ServerConfig.h"
 #include "server/NidsServiceImpl.h"

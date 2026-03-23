@@ -34,7 +34,7 @@
 #include <string_view>
 #include <thread>
 
-#include "infra/platform/AsanOptions.h" // shared gRPC ASan workaround
+#include "infra/platform/AsanOptions.h" // gRPC ASan configuration
 
 namespace {
 
